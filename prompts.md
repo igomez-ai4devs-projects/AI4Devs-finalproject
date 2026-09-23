@@ -1375,3 +1375,54 @@ pega la salida completa.
 Implementado ticket T-C10-06
 
 </br>
+
+**Prompt 7:**
+
+Agent: Claude Code - Sonnet 4.6
+
+### Request:
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-07.md ·
+`libs/shared/util` — librería de helpers puros
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+El ticket lleva `agent: backend-engineer`, pero **aquí no se escribe una línea de NestJS**: es
+`platform:shared` y framework-free. La skill que manda es `sport-itsm-engineering-principles`
+(SOLID, KISS, YAGNI, errores tipados, funciones pequeñas), con `sport-itsm-architecture` para la
+fila `util` de la matriz y `sport-itsm-workflow` para el ciclo de cierre. No apliques idiomas de
+`sport-itsm-backend` a este código.
+
+#### Precondición
+T-C10-01 … T-C10-06 deben estar hechos. Compruébalo antes de tocar nada:
+
+    node -v                                  # v22.x
+    ls libs                                  # NO debe existir: esta es la primera librería
+    pnpm nx show projects                    # EXACTAMENTE: api, api-e2e, web, web-e2e
+    pnpm verify:boundaries                   # 9/9 en verde, exit 0
+    node -e "console.log(JSON.stringify(require('./tsconfig.base.json').compilerOptions.paths))"
+                                             # debe imprimir {} — este ticket escribe el PRIMER alias
+    git status --porcelain                   # limpio antes de empezar
+
+Si `verify:boundaries` falla, PARA: este ticket crea el primer proyecto `type:util` real, que es
+justo la fila más restrictiva de la matriz (`util` solo puede depender de `util`).
+
+#### El ticket es el contrato
+Lee docs/backlog/C10/tickets/T-C10-07.md entero: su `## Scope` es exhaustivo y su "Out of scope"
+es vinculante. Lee además, y no de memoria:
+
+- ARCHITECTURE.md §5.5 — el comando generador EXACTO para `shared-util` (no lo inventes).
+- ARCHITECTURE.md §5.2/§5.3 — la fila `util` de la matriz de tipos y la regla de plataforma:
+  `platform:shared` solo puede depender de `platform:shared` (§5.4). Es el tipo más restringido
+  del workspace y por eso va primero entre las librerías compartidas.
+- ARCHITECTURE.md §369 — `scope:shared` NO implica `platform:shared`; aquí sí coinciden, y la
+  razón (código sin framework que ambas plataformas importan) es justamente lo que debes proteger.
+- PROJECT-STRUCTURE.md — la fila `libs/shared/util` ("pure, dependency-free helpers") y la
+  convención de **Public API**: un único barrel `src/index.ts` y el alias `@sport-itsm/*`.
+- CLAUDE.md §2 (Jest **29.7**, TypeScript 5.9 strict) y §3 ("What NOT to do", primera viñeta:
+  ningún framework dentro de `type:domain` / `type:application` — con más razón en `type:util`).
+
+### Response:
+
+Implementado ticket T-C10-07
+
+</br>

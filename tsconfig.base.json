@@ -16,7 +16,9 @@
     "noImplicitOverride": true,
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true,
-    "paths": {}
+    "paths": {
+      "@sport-itsm/shared-util": ["libs/shared/util/src/index.ts"]
+    }
   },
   "exclude": ["node_modules", "tmp"]
 }
