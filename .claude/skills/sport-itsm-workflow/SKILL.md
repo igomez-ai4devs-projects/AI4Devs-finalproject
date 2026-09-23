@@ -72,7 +72,10 @@ This is the part that decides whether a task is actually done.
   it never shows an illegal import would be caught. That is what `pnpm verify:boundaries` is for —
   it scaffolds deliberate violations, asserts each is rejected, checks three legal control edges are
   *not* rejected, and removes the scaffolding. Re-run it after any change to the tag vocabulary, the
-  type matrix or `depConstraints`.
+  type matrix or `depConstraints`. It is **one run at a time**: it mutates `tsconfig.base.json` and
+  `libs/__boundary-probe/` while it works, so a second run started in parallel aborts on the
+  directory lock with `Nothing was modified by this run` and exit 1. If you see that message, another
+  agent is mid-run — wait and retry rather than deleting the directory.
 - **A probe must isolate the rule it claims to test.** If a deliberate violation trips a different
   rule first, say which one actually fired. Revert every probe before closing, and leave the files it
   touched byte-identical.
@@ -95,21 +98,38 @@ pnpm nx test <project>                # Jest
 pnpm nx lint <project>                # ESLint, boundary checks included
 pnpm nx run-many -t lint test build   # every project
 pnpm nx affected -t lint test build   # only what changed against main
-pnpm verify:boundaries                # proves the boundary rule still bites
+pnpm verify:boundaries                # proves the boundary rule still bites — 10/10 today
+pnpm nx e2e api-e2e | e2e web-e2e     # Cypress 15 + Cucumber, one smoke scenario each
 pnpm nx show projects                 # exactly the projects the tickets created
 pnpm nx graph                         # dependency graph
 pnpm prettier --check . | --write .   # the formatting gate
 pnpm nx reset                         # clear the Nx cache when it looks stale
 ```
 
-**Not runnable yet, and why.** `pnpm nx e2e api-e2e | web-e2e` — neither acceptance project exists
-until `T-C10-06`. `pnpm typeorm migration:generate|run|revert -d apps/api/src/data-source.ts` — there
-is no data source, no migration and no database until `T-C10-16` / `T-C10-17`. There is **no CI**:
-no `.gitlab-ci.yml`, no `.github/workflows/`. Do not write configuration for a pipeline that does
-not exist, and do not claim a check ran in CI.
+**Not runnable yet, and why.** `pnpm typeorm migration:generate|run|revert -d apps/api/src/data-source.ts`
+— TypeORM is not installed, `apps/api/src/data-source.ts` does not exist, and there is no migration
+and no database until `T-C10-16` / `T-C10-17`. That is the only command on the surface above that is
+still a promise rather than a gate.
 
-**Unit test suites are configured but empty.** Both `test` targets pass via `passWithNoTests`, so a
-green run proves the runner works and nothing more.
+**There is CI, and it runs a specific set of checks — do not overstate or understate it.**
+`.github/workflows/deploy-stage.yml` (there is no `.gitlab-ci.yml`) runs on every push to `main` and
+every pull request, in three jobs:
+
+| Job | Runs | When |
+|---|---|---|
+| `verify` | `pnpm install --frozen-lockfile`, `pnpm prettier --check .`, `pnpm nx run-many -t lint test build`, `pnpm verify:boundaries` | every push and PR |
+| `acceptance` | `pnpm nx e2e api-e2e`, then `pnpm nx e2e web-e2e` | every push and PR, after `verify` |
+| `deploy-stage` | builds and pushes both images to `ghcr.io`, then calls the Render deploy hooks (ADR-013) | **only** a push landing on `main`; never a branch, never a PR |
+
+So a check *may* be claimed to run in CI **if and only if** it is one of the commands in that table.
+No `typeorm migration:*` command runs in CI, deliberately — adding one before `T-C10-16` would invent
+a gate this repository cannot pass. The pipeline is owned by `ci-cd-expert`: report a gap, do not
+edit the workflow as a side effect of another ticket.
+
+**Unit test suites are real for libraries, empty for the two applications.** `shared-util` runs 3
+suites / 19 tests (`T-C10-07`). `api` and `web` still pass via `passWithNoTests`, so for those two a
+green run proves the runner works and nothing more — read the output before believing a green
+`run-many -t test`.
 
 ## Artifact ownership — report, do not edit
 

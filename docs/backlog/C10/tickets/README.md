@@ -3,8 +3,8 @@
 > Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/epic-map.md` (§ `C10`, § **Foundation ownership (priced once)**) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §9 · PRD §7.10, §4.3, §14.2
 > Test plan: [`../test-plan.md`](../test-plan.md)
 
-**69 tickets · 174h.** One ticket exceeds the 3h cap — `T-C10-06`, which records why in its `## Context`.
-20 tickets are **foundation** work with `story: —`. 18 are the whole workspace, priced into `C10` by the epic map and deliberately left storyless by the Business Analyst (finding **F14**); the 19th, `T-C10-68`, is a defect found in that same shipped foundation output; the 20th, `T-C10-69`, is a scope gap found while implementing ADR-013 (deployment) against that same foundation — see **Block I** and **Block J**.
+**70 tickets · 176h.** One ticket exceeds the 3h cap — `T-C10-06`, which records why in its `## Context`.
+21 tickets are **foundation** work with `story: —`. 18 are the whole workspace, priced into `C10` by the epic map and deliberately left storyless by the Business Analyst (finding **F14**); the 19th, `T-C10-68`, is a defect found in that same shipped foundation output; the 20th, `T-C10-69`, is a scope gap found while implementing ADR-013 (deployment) against that same foundation; the 21st, `T-C10-70`, is a verification gap found while implementing `T-C10-07` — the `"types": []` layer-purity setting (`ARCHITECTURE.md` §5.5) is correctly authored but no workspace target ever typechecks against it (§12.3) — see **Block I**, **Block J** and **Block K**.
 5 tickets are **blocked**: 4 by **F16** (nobody has enumerated which operations are *privileged*), 1 by **F17** (nobody has decided where a denied authorization is recorded).
 
 The numbering **is** the implementation order. `T-C10-01` is built first. Where the order departs from the story sequence, the reason is stated below the affected block.
@@ -17,7 +17,7 @@ The numbering **is** the implementation order. `T-C10-01` is built first. Where 
 | `foundation` | `true` when no story backs it; the owning source is cited in its `## Context` |
 | `layer` | DDD layer per `ARCHITECTURE.md` §5.3 |
 | `platform` | `backend` / `frontend` / `shared` — stated for every ticket, and load-bearing where `agent` is `—` |
-| `agent` | `backend-engineer`, `frontend-engineer`, `ci-cd-expert` for Docker/CI/per-project tooling (`T-C10-68` is this epic's first use, `T-C10-69` its second), or `—` for workspace tooling and E2E test code that predates a named owner for that kind of work |
+| `agent` | `backend-engineer`, `frontend-engineer`, `ci-cd-expert` for Docker/CI/per-project tooling (`T-C10-68` is this epic's first use, `T-C10-69` its second, `T-C10-70` its third), or `—` for workspace tooling and E2E test code that predates a named owner for that kind of work |
 | `phase` | `0` per PRD §14.2, or `unphased` where the PRD assigns none (finding **F9**) |
 | `blocked_by` | The finding that must be resolved before the ticket is real work |
 
@@ -192,6 +192,18 @@ Source: epic map, **Foundation ownership (priced once)**. Nothing else in this e
 
 ---
 
+## Block K · Library typecheck enforcement — 1 ticket · 2h · `foundation: true`, phase 0
+
+| # | Title | Layer | Agent | Est. |
+|---|---|---|---|---:|
+| [T-C10-70](T-C10-70.md) | `typecheck` target for library projects — close the CI gap on layer purity | build tooling (`nx.json` target inference + CI gate) | ci-cd-expert | 2h |
+
+**A verification gap, not a defect in shipped code.** `T-C10-07` (Block A) correctly set `"types": []` in `libs/shared/util/tsconfig.lib.json` per `ARCHITECTURE.md` §5.5; the gap is that no workspace target ever reads that file — a `--bundler=none` library has no `build` target, and Jest compiles specs through `tsconfig.spec.json`, never `tsconfig.lib.json`. `ARCHITECTURE.md` §12.3 names this explicitly as a known follow-up rather than selling it as resolved. It is not a `T-C10-68`-style defect in already-shipped output, and not a `T-C10-69`-style scope gap surfaced by a downstream ADR — it is a verification gap: the policy is correctly authored, nothing was ever wired to check it. Numbered last for the same reason `T-C10-68` and `T-C10-69` are — ticket IDs are stable and appended at the next free ID — but it belongs, logically, immediately after `T-C10-07` and before `T-C10-08`, both in Block A: CI should enforce layer purity from the first context-bearing library onward, not after a dozen libraries exist to retrofit.
+
+**No ownership split.** Unlike `T-C10-69`, this ticket does not span two agents. Retrofitting `libs/shared/util`, adding the Nx target-inference plugin and updating the CI `run-many` invocation are all `ci-cd-expert`'s per-project `project.json`/`nx.json`/`.github/workflows/` ownership; no domain or application code changes, so `backend-engineer` has no stake in this ticket.
+
+---
+
 ## Totals
 
 | Block | Tickets | Hours | Phase |
@@ -206,8 +218,9 @@ Source: epic map, **Foundation ownership (priced once)**. Nothing else in this e
 | H · SCMS SSO | 4 | 9.5 | unphased |
 | I · Workspace defect cleanup | 1 | 0.5 | 0 |
 | J · Deployable migration packaging | 1 | 3.0 | 0 |
-| **Total** | **69** | **174.0** | |
+| K · Library typecheck enforcement | 1 | 2.0 | 0 |
+| **Total** | **70** | **176.0** | |
 
-Foundation (`story: —`): **20 tickets · 51h** — all of block A, plus `T-C10-18`, plus `T-C10-68` (block I) and `T-C10-69` (block J). Phase 0: 57 tickets · 143.5h. Unphased: 12 tickets · 30.5h.
+Foundation (`story: —`): **21 tickets · 53h** — all of block A, plus `T-C10-18`, plus `T-C10-68` (block I), `T-C10-69` (block J) and `T-C10-70` (block K). Phase 0: 58 tickets · 145.5h. Unphased: 12 tickets · 30.5h.
 
-By agent: `backend-engineer` 48 · `frontend-engineer` 13 · `ci-cd-expert` 2 · `—` 6. The six `—` tickets are three workspace-tooling tickets, the two scaffolding tickets that span both platforms, and one API-E2E spec — work that belongs to neither dev agent, so each names its layer and platform instead. `T-C10-68` is the first ticket in this epic to name `ci-cd-expert` explicitly, for per-project `project.json` target ownership, and `T-C10-69` its second — see the note below the Reading-a-ticket table if that agent is not yet recognised by whoever picks this up.
+By agent: `backend-engineer` 48 · `frontend-engineer` 13 · `ci-cd-expert` 3 · `—` 6. The six `—` tickets are three workspace-tooling tickets, the two scaffolding tickets that span both platforms, and one API-E2E spec — work that belongs to neither dev agent, so each names its layer and platform instead. `T-C10-68` is the first ticket in this epic to name `ci-cd-expert` explicitly, for per-project `project.json` target ownership, `T-C10-69` its second, and `T-C10-70` its third — see the note below the Reading-a-ticket table if that agent is not yet recognised by whoever picks this up.

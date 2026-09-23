@@ -30,12 +30,23 @@ const probeDir = path.join(repoRoot, 'libs', PREFIX);
 const tsconfigPath = path.join(repoRoot, 'tsconfig.base.json');
 
 /**
- * The exact bytes of `tsconfig.base.json` before anything is scaffolded.
- * Teardown writes these back verbatim rather than re-serialising the parsed
+ * The exact bytes of `tsconfig.base.json` before anything is scaffolded, and a
+ * flag recording whether this process is the one that scaffolded.
+ *
+ * Both are set inside `scaffold()`, *after* it has won the directory lock, and
+ * both are deliberately not read at module load. A second run that starts while
+ * a first is still in flight must abort without touching a single byte: reading
+ * `tsconfig.base.json` up front would capture the first run's *scaffolded*
+ * state, and an unconditional teardown would then delete the first run's
+ * projects out from under it and write that polluted file back as if it were
+ * pristine. Teardown therefore runs only for the process that owns the probes.
+ *
+ * The bytes are written back verbatim rather than re-serialised from the parsed
  * object: `JSON.stringify` would expand short arrays that Prettier keeps on one
  * line, leaving a spurious diff behind every run.
  */
-const originalTsconfig = fs.readFileSync(tsconfigPath, 'utf8');
+let originalTsconfig = null;
+let ownsProbes = false;
 
 /** Libraries the probes import. They carry tags only; they import nothing. */
 const TARGETS = {
@@ -45,6 +56,7 @@ const TARGETS = {
   sladomain: ['platform:backend', 'scope:sla', 'type:domain'],
   app: ['platform:backend', 'scope:shared', 'type:app'],
   sharedui: ['platform:frontend', 'scope:shared', 'type:ui'],
+  contracts: ['platform:shared', 'scope:shared', 'type:contracts'],
 };
 
 /**
@@ -118,6 +130,13 @@ const SOURCES = [
     expect: 'fail',
     rule: 'type:e2e may depend only on contracts and util',
   },
+  {
+    id: 'p7',
+    tags: ['platform:shared', 'scope:shared', 'type:util'],
+    imports: 'contracts',
+    expect: 'fail',
+    rule: 'type matrix: util is the innermost type — it may depend only on util',
+  },
 ];
 
 const projectName = (id) => `${PREFIX}-${id}`;
@@ -149,11 +168,33 @@ function writeProject(id, tags, importsFrom) {
 }
 
 function scaffold() {
-  if (fs.existsSync(probeDir)) {
+  // The parent must exist before the lock below can be taken, and `libs/` is
+  // not guaranteed: it is absent in any tree older than T-C10-07, in a fresh
+  // worktree of an earlier branch, and after an aggressive `git clean`. Create
+  // it separately and idempotently — `recursive: true` succeeds whether or not
+  // it is already there. This does not weaken the lock, which is taken on
+  // `probeDir` itself, and it restores what the pre-lock version got for free
+  // from `writeProject`'s recursive mkdir. Teardown removes `libs/` again if it
+  // is left empty, so a tree without it ends the run without it.
+  fs.mkdirSync(path.dirname(probeDir), { recursive: true });
+
+  // `mkdir` without `recursive` is the lock: it either creates the directory or
+  // throws EEXIST, atomically, so two concurrent runs cannot both believe they
+  // own the probes. `existsSync` followed by a create would leave a window
+  // between the two calls wide enough for exactly that.
+  try {
+    fs.mkdirSync(probeDir, { recursive: false });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
     throw new Error(
-      `${probeDir} already exists — a previous run did not clean up. Remove it first.`,
+      `${probeDir} already exists — another run is in flight, or a previous one did not clean up. ` +
+        `Wait for it, or remove the directory and restore tsconfig.base.json before retrying. ` +
+        `Nothing was modified by this run.`,
     );
   }
+  ownsProbes = true;
+  originalTsconfig = fs.readFileSync(tsconfigPath, 'utf8');
+
   const aliases = [
     ...Object.entries(TARGETS).map(([id, tags]) =>
       writeProject(id, tags, null),
@@ -168,8 +209,13 @@ function scaffold() {
   fs.writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2) + '\n');
 }
 
-/** Removes only what this script created; never touches a real library. */
+/**
+ * Removes only what this script created; never touches a real library, and
+ * never touches anything at all unless this process won the lock in
+ * `scaffold()` — otherwise an aborted second run would clean up after the first.
+ */
 function teardown() {
+  if (!ownsProbes) return;
   fs.rmSync(probeDir, { recursive: true, force: true });
   const libs = path.join(repoRoot, 'libs');
   if (fs.existsSync(libs) && fs.readdirSync(libs).length === 0) {

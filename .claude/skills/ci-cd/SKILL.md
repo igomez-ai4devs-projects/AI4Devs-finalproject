@@ -23,10 +23,12 @@ reference that matches the task.
 
 Local and stage infrastructure is scaffolded: `docker/` holds the three compose files
 (`docker-compose.dev.yml`, `docker-compose.e2e.yml`, `docker-compose.stage.yml`) plus
-`docker/backend/` and `docker/frontend/` Dockerfiles, and `.github/workflows/deploy-stage.yml` builds,
-pushes and deploys stage. Still absent: `apps/api/src/data-source.ts` and any migration (both owned by
-`T-C10-16` / `T-C10-17`) and the `apps/api-e2e` / `apps/web-e2e` projects (`T-C10-06`) — so no TypeORM
-CLI command and no `nx e2e` run belongs in a workflow yet.
+`docker/backend/` and `docker/frontend/` Dockerfiles, and `.github/workflows/deploy-stage.yml` runs
+three jobs — `verify`, `acceptance` (`pnpm nx e2e api-e2e` / `web-e2e` for real; `T-C10-06` is closed
+and both projects exist, confirmed by `pnpm nx show projects`), and `deploy-stage`, which builds,
+pushes and deploys stage, gated to a push on `main` only. Still absent: `apps/api/src/data-source.ts`
+and any migration (both owned by `T-C10-16` / `T-C10-17`) — so no `typeorm migration:*` command
+belongs in a workflow yet.
 
 **The deployment platform is decided.** [ADR-013](../../../docs/product/ARCHITECTURE.md) (`docs/product/ARCHITECTURE.md`
 §10) — Render, stage only, no production, prebuilt images pushed to `ghcr.io` and deployed by calling

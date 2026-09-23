@@ -19,7 +19,7 @@ them.
 | Formatting | `pnpm prettier --check .` | Nothing deviates from `.prettierrc` |
 | Lint + boundaries | `pnpm nx run-many -t lint` | ESLint passes, including `@nx/enforce-module-boundaries` |
 | **Boundary rule still bites** | `pnpm verify:boundaries` | Deliberate violations are still rejected — see below |
-| Unit tests | `pnpm nx run-many -t test` | Today: that the runner works. Both suites are empty (`passWithNoTests`) |
+| Unit tests | `pnpm nx run-many -t test` | `shared-util` (`T-C10-07`) runs a real suite — 3 spec files, 19 tests — and proves actual assertions. `api` and `web` are still empty and pass only via `passWithNoTests`; for those two the gate proves only that the runner works |
 | Build | `pnpm nx run-many -t build` | `api` and `web` compile |
 | Changed-only | `pnpm nx affected -t lint test build` | The same, restricted to what changed against `main` |
 
@@ -30,8 +30,9 @@ checks three legal control edges are *not* rejected, and removes the scaffolding
 pipeline execution, and always after a change to the tag vocabulary, the type matrix or
 `depConstraints`.
 
-**Not yet runnable in a pipeline:** `pnpm nx e2e api-e2e | web-e2e` (neither project exists until
-`T-C10-06`) and any TypeORM migration command (no data source until `T-C10-16`).
+**Runnable in the pipeline today:** `pnpm nx e2e api-e2e | web-e2e` — `T-C10-06` is closed, both
+projects exist, and the `acceptance` job below runs them for real. **Still not yet runnable:** any
+TypeORM migration command (no data source until `T-C10-16`).
 
 ## Runner setup — the parts that are easy to get wrong
 
@@ -64,15 +65,21 @@ archived; copy it into the workspace first, then cache the relative path.
 1. **`verify`** — runs on every push and pull request: checkout with full history, pnpm before Node
    (`.nvmrc`), `pnpm install --frozen-lockfile`, `prettier --check`, `nx run-many -t lint test build`,
    `verify:boundaries`, then uploads `dist/` as an artifact so `deploy-stage` never rebuilds it.
-2. **`deploy-stage`** — `needs: verify`, gated to `github.ref == 'refs/heads/main'` on a `push` event
-   only (never a PR, never another branch — Render has one stage environment, no previews). Downloads
-   the `dist/` artifact, logs in to `ghcr.io` with the built-in `GITHUB_TOKEN` (`packages: write`),
-   builds and pushes both images via `docker compose -f docker/docker-compose.stage.yml build|push`,
-   then calls both Render deploy hooks with `imgURL` pinned to the commit SHA that was just pushed.
+2. **`acceptance`** — `needs: verify`, runs on every push and pull request (shallow checkout — no
+   `nx affected` here, so full history is not needed). pnpm before Node, `pnpm install
+   --frozen-lockfile`, then `pnpm nx e2e api-e2e` and `pnpm nx e2e web-e2e` for real: `T-C10-06` is
+   closed and both projects exist. Neither step brings up `docker/docker-compose.e2e.yml` or any
+   database service — `api-e2e`'s own `serve-under-test` target supplies `NODE_ENV`/`PORT` and
+   `apps/api` boots with no database, per the workflow's own comment on that step.
+3. **`deploy-stage`** — `needs: [verify, acceptance]`, gated to `github.event_name == 'push' &&
+   github.ref == 'refs/heads/main'` (never a PR, never another branch — Render has one stage
+   environment, no previews). Downloads the `dist/` artifact, logs in to `ghcr.io` with the built-in
+   `GITHUB_TOKEN` (`packages: write`), builds and pushes both images via
+   `docker compose -f docker/docker-compose.stage.yml build|push`, then calls both Render deploy hooks
+   with `imgURL` pinned to the commit SHA that was just pushed.
 
-Not yet added, and deliberately: an **`acceptance`** job for the Cypress suites — blocked on
-`T-C10-06` — and any `typeorm migration:*` step — blocked on `T-C10-16`. Adding either now would be a
-gate this repository cannot actually pass.
+Not yet added, and deliberately: any `typeorm migration:*` step — blocked on `T-C10-16`. Adding one
+now would be a gate this repository cannot actually pass.
 
 `concurrency` is keyed on `github.ref` so a new push cancels the previous run for that ref, and every
 action is pinned by commit SHA (with the version tag as a trailing comment) rather than a mutable tag.

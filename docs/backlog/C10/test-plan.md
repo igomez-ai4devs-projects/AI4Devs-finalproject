@@ -1,11 +1,11 @@
 # Test Plan — C10 · Identity & Access Management
 
-> Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/C10/tickets/` (67 tickets) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §9 · PRD §7.10, §4.3
+> Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/C10/tickets/` (70 tickets) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §9 · PRD §7.10, §4.3
 > This document is both the **BDD specification** and the **test strategy** for the epic. Every scenario below is written to seed a `.feature` file or a `*.spec.ts` directly.
 
 ## Context
 
-`C10` is the phase-0 anchor: authentication, RBAC, record visibility, role administration, session lifecycle and denied-authorization recording, on top of the entire workspace foundation. Nothing was read from the codebase because there is none — no `package.json`, no `apps/`, no `libs/`, no test. Every scenario below is therefore written from the user stories and the architecture, not from source.
+`C10` is the phase-0 anchor: authentication, RBAC, record visibility, role administration, session lifecycle and denied-authorization recording, on top of the entire workspace foundation. At the time this plan was written, none of that foundation existed. It has since been scaffolded — `apps/api`, `apps/web`, both Cypress/Cucumber harnesses and `libs/shared/util` (with 3 real Jest suites, 19 tests) all exist, `pnpm nx show projects` returns five projects, and `pnpm verify:boundaries` reports 10/10 — but none of it implements any scenario below: `apps/api` and `apps/web` are still `passWithNoTests`, and no `identity-access` library, port, use case or endpoint exists yet. Every scenario below is therefore still written from the user stories and the architecture, not from source.
 
 **High-risk area.** This epic *is* the auth surface. `FR-IAM-01` states Sport ITSM exposes no anonymous surface at all, which makes the negative scenarios (`AT-C10-06`, `AT-C10-07`) the most valuable tests in the epic: they are the only ones that hold for routes that do not exist yet.
 
@@ -13,7 +13,7 @@
 
 | Excluded | Why |
 |---|---|
-| The 18 **foundation** tickets (`story: —`) | They have no persona and no user-observable behavior. Their *done* is the mechanical check written in the ticket itself — `pnpm nx lint`, a `pnpm nx graph` with no illegal edge, a migration that runs and reverts. Turning a lint rule into a Gherkin scenario would add ceremony, not coverage. |
+| The 21 **foundation** tickets (`story: —`) | They have no persona and no user-observable behavior. Their *done* is the mechanical check written in the ticket itself — `pnpm nx lint`, a `pnpm nx graph` with no illegal edge, a migration that runs and reverts. Turning a lint rule into a Gherkin scenario would add ceremony, not coverage. |
 | End-to-end proof of `FR-IAM-03` over real tickets | Finding **F15**: the records the visibility predicates filter belong to `C1` and `C2`. This epic proves the **predicate and the scope restriction**; the ticket-level proof lands with those epics. |
 | Persisting a role change as an `AuditEntry` | Finding **F5**: `C10` publishes the domain event, `C18` records it. `AT-C10-43` and `AT-C10-44` assert publication against a test subscriber and stop there. |
 | Structured logging, health probes, i18n scaffolding, the a11y baseline | Priced into the `NFR` epic standalone slice by the epic map, not into `C10`. |

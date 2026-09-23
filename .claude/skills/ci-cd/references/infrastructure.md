@@ -24,7 +24,7 @@ If a task implies one, it is a scope change, not an infrastructure detail.
 |---|---|---|
 | Local, no containers | **Works today** | `pnpm nx serve api` / `serve web`. This is the daily loop |
 | Local Docker stack | **Works today** | `docker/docker-compose.dev.yml` — `postgres:18.6` plus `api`/`web` dev images |
-| E2E database | **Works today, unused until `T-C10-06`** | `docker/docker-compose.e2e.yml` — disposable `postgres:18.6` |
+| E2E database | **Works today, still unused** | `docker/docker-compose.e2e.yml` — disposable `postgres:18.6`. `T-C10-06` is closed and its `acceptance` job in `deploy-stage.yml` runs `nx e2e api-e2e`/`web-e2e` for real, but neither step brings up this compose file or any database service — `apps/api` boots for the suite with no database (see `pipeline.md`) |
 | Pipeline runner | **Built** | GitHub Actions, `.github/workflows/deploy-stage.yml` — see `pipeline.md` |
 | Stage | **Decided and built (ADR-013), not yet deployed** | Render, prebuilt `ghcr.io` images from `docker/docker-compose.stage.yml`; see below |
 | Production | **Does not exist and none is planned** | ADR-013, driver K8 (academic/portfolio delivery capacity) |

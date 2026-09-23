@@ -13,7 +13,7 @@
 
 > ## Reading notice — this document describes a target, not an implementation
 >
-> **This document is still ahead of the code.** The Nx workspace exists and `apps/api` + `apps/web` are scaffolded (`T-C10-01` … `T-C10-05`), but there is no `libs/` directory yet: no shared kernel, no bounded-context library, no domain model, no adapter. Every context, port, adapter and dependency edge below is therefore **prescriptive design intent** that scaffolding must still produce, not documentation of code that has been written — the two applications are composition roots wired to nothing. See §12.3 for the check-by-check status. Statements are written in the present tense for readability; read them as "shall be" wherever §12.3 does not say otherwise.
+> **This document is still ahead of the code.** The Nx workspace exists, `apps/api` + `apps/web` + both E2E suites are scaffolded (`T-C10-01` … `T-C10-06`), and `libs/` now holds exactly one library — `libs/shared/util` (`T-C10-07`), the pure-helper corner of the shared kernel. Everything else is still absent: no `shared/contracts`, no `shared/domain`, no `shared/ui`, no bounded-context library, no domain model, no adapter. Every context, port, adapter and **every dependency edge** below is therefore **prescriptive design intent** that scaffolding must still produce, not documentation of code that has been written — the two applications remain composition roots wired to nothing, and the graph still has zero edges. See §12.3 for the check-by-check status. Statements are written in the present tense for readability; read them as "shall be" wherever §12.3 does not say otherwise.
 >
 > **Behavioral authority is the PRD.** Where `readme.md` §1.2 still mentions *live windows*, *event-aware SLA policies*, *deployment freeze windows*, *change calendars around competition windows* or a *public/spectator surface*, those concepts are **superseded and out of scope** (PRD §3.3, §11 K5, FR-CHG-07 retired). This architecture therefore contains **no competition-calendar model, no time-based SLA modulation, no freeze-window engine and no anonymous surface**. Competition impact is a single agent-set boolean with mandatory justification that raises assessed Impact inside the configurable **Impact x Urgency** matrix (FR-INC-05, FR-SLA-04).
 >
@@ -479,37 +479,96 @@ The same technique carries `approval`, `notification`, `audit` and the SCMS anti
 
 ### 5.5 Scaffolding commands
 
-Structure is materialized only with Nx generators, always with explicit tags.
+Structure is materialized only with Nx generators, always with explicit tags. Every invocation below is **executable as written**: copy it whole, do not trim it to the tags. Run it once with `--dry-run --no-interactive` first — the dry run lists every file it would create *and* every workspace file it would update, which is the cheapest way to catch a wrong name or an unintended `nx.json` edit.
+
+Three properties of the Nx 21.6 generators make any shorter form unsafe, and all three were paid for once already:
+
+1. **The project name is a flag, never a positional.** In `@nx/js:lib` the first positional argument is bound to `directory`, not to `name`. Passing the project name positionally *and* `--directory=` makes the generator drop the positional **silently** and name the project after the last directory segment — `libs/shared/util` yields a project called `util`, so `pnpm nx test shared-util` then fails against a project that does not exist, and `jest.config.ts` carries `displayName: 'util'`. `@nx/angular:lib` is stricter and fails outright with `Schema does not support positional arguments`, so the Angular commands do not run at all. Always pass `--name=`.
+2. **The generator defaults are not this architecture's defaults.** `@nx/js:lib` defaults to `--bundler=tsc`, which gives the library its own `package.json` — activating the `banTransitiveDependencies` rule that is latent today only because the root manifest is the only one — and a `build` target that CI then executes in `pnpm nx run-many -t lint test build`. A library that publishes nothing must be generated with `--bundler=none`. `@nx/angular:lib` defaults to `--style=css` and `--changeDetection=Default`, both of which contradict §3 of `CLAUDE.md` (SCSS design tokens; `OnPush` on every component).
+3. **The defaults are themselves mutable.** `@nx/angular:library` writes a `generators['@nx/angular:library']` block into **`nx.json`** on first use (`linter`, `unitTestRunner`, `strict`), so a later invocation that omits a flag inherits whatever the first one happened to choose. Pinning every flag that matters keeps each command reproducible in isolation and turns that `nx.json` diff into a no-op to review rather than a decision to reconstruct.
+
+**Fixed flag set — TypeScript libraries** (`type:domain`, `type:application`, `type:infrastructure`, `type:contracts`, `type:util`):
+
+| Flag | Value | Why it is not optional |
+|---|---|---|
+| `--name` | the Nx project name | See (1) above. |
+| `--directory` | `libs/<context>/<layer>` | Folder structure *is* the architecture (§5.1). |
+| `--tags` | the three axes | §5.2; a project without all three is rejected by the matrix (probe `p4`). |
+| `--importPath` | `@sport-itsm/<project>` | The single alias convention every barrel import uses. |
+| `--bundler` | `none` | No own `package.json`, no `build` target. See (2). |
+| `--unitTestRunner` | `jest` | Jest 29 is the pinned runner (`CLAUDE.md` §2). |
+| `--linter` | `eslint` | Boundary enforcement runs inside `nx lint`. |
+| `--testEnvironment` | `node` | These libraries never touch a DOM. |
+| `--useProjectJson` | `true` | Every existing project is configured through `project.json`; mixing in `package.json`-based configuration makes "where are this project's tags?" ambiguous. |
+
+**Fixed flag set — Angular libraries** (`type:feature`, `type:ui`, `type:data-access`): `--name`, `--directory`, `--tags`, `--importPath`, `--unitTestRunner=jest` and `--linter=eslint` carry the same meaning, plus `--style=scss` (design tokens, never CSS), `--changeDetection=OnPush`, `--standalone --skipModule` (no `NgModule` ever) and `--prefix=` — the selector prefix, which `apps/web/eslint.config.mjs` requires each library to declare for itself. The convention is `ui` for the design system and the **context slug** for a context's own libraries. `@nx/angular:lib` has no `--bundler`/`--useProjectJson`: it is non-buildable and `project.json`-configured by default.
 
 ```bash
 # Shared kernel
-pnpm nx g @nx/js:lib shared-contracts --directory=libs/shared/contracts \
-  --tags=platform:shared,scope:shared,type:contracts
-pnpm nx g @nx/js:lib shared-domain --directory=libs/shared/domain \
-  --tags=platform:shared,scope:shared,type:domain
-pnpm nx g @nx/js:lib shared-util --directory=libs/shared/util \
-  --tags=platform:shared,scope:shared,type:util
+pnpm nx g @nx/js:lib --name=shared-contracts --directory=libs/shared/contracts \
+  --tags=platform:shared,scope:shared,type:contracts \
+  --importPath=@sport-itsm/shared-contracts \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
+pnpm nx g @nx/js:lib --name=shared-domain --directory=libs/shared/domain \
+  --tags=platform:shared,scope:shared,type:domain \
+  --importPath=@sport-itsm/shared-domain \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
+pnpm nx g @nx/js:lib --name=shared-util --directory=libs/shared/util \
+  --tags=platform:shared,scope:shared,type:util \
+  --importPath=@sport-itsm/shared-util \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
 
 # Shared UI - the in-house design system; Angular code, therefore platform:frontend
-pnpm nx g @nx/angular:lib shared-ui --directory=libs/shared/ui \
-  --tags=platform:frontend,scope:shared,type:ui
+pnpm nx g @nx/angular:lib --name=shared-ui --directory=libs/shared/ui \
+  --tags=platform:frontend,scope:shared,type:ui \
+  --importPath=@sport-itsm/shared-ui --prefix=ui \
+  --style=scss --changeDetection=OnPush --standalone --skipModule \
+  --unitTestRunner=jest --linter=eslint
 
 # Backend hexagon for one context
-pnpm nx g @nx/js:lib incident-domain --directory=libs/incident/domain \
-  --tags=platform:backend,scope:incident,type:domain
-pnpm nx g @nx/js:lib incident-application --directory=libs/incident/application \
-  --tags=platform:backend,scope:incident,type:application
-pnpm nx g @nx/js:lib incident-infrastructure --directory=libs/incident/infrastructure \
-  --tags=platform:backend,scope:incident,type:infrastructure
+pnpm nx g @nx/js:lib --name=incident-domain --directory=libs/incident/domain \
+  --tags=platform:backend,scope:incident,type:domain \
+  --importPath=@sport-itsm/incident-domain \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
+pnpm nx g @nx/js:lib --name=incident-application --directory=libs/incident/application \
+  --tags=platform:backend,scope:incident,type:application \
+  --importPath=@sport-itsm/incident-application \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
+pnpm nx g @nx/js:lib --name=incident-infrastructure --directory=libs/incident/infrastructure \
+  --tags=platform:backend,scope:incident,type:infrastructure \
+  --importPath=@sport-itsm/incident-infrastructure \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
 
 # Frontend slice for the same context
-pnpm nx g @nx/angular:lib incident-feature --directory=libs/incident/feature \
-  --tags=platform:frontend,scope:incident,type:feature
-pnpm nx g @nx/angular:lib incident-ui --directory=libs/incident/ui \
-  --tags=platform:frontend,scope:incident,type:ui
-pnpm nx g @nx/angular:lib incident-data-access --directory=libs/incident/data-access \
-  --tags=platform:frontend,scope:incident,type:data-access
+pnpm nx g @nx/angular:lib --name=incident-feature --directory=libs/incident/feature \
+  --tags=platform:frontend,scope:incident,type:feature \
+  --importPath=@sport-itsm/incident-feature --prefix=incident \
+  --style=scss --changeDetection=OnPush --standalone --skipModule \
+  --unitTestRunner=jest --linter=eslint
+pnpm nx g @nx/angular:lib --name=incident-ui --directory=libs/incident/ui \
+  --tags=platform:frontend,scope:incident,type:ui \
+  --importPath=@sport-itsm/incident-ui --prefix=incident \
+  --style=scss --changeDetection=OnPush --standalone --skipModule \
+  --unitTestRunner=jest --linter=eslint
+pnpm nx g @nx/angular:lib --name=incident-data-access --directory=libs/incident/data-access \
+  --tags=platform:frontend,scope:incident,type:data-access \
+  --importPath=@sport-itsm/incident-data-access --prefix=incident \
+  --style=scss --changeDetection=OnPush --standalone --skipModule \
+  --unitTestRunner=jest --linter=eslint
 ```
+
+**Two steps the generator cannot do, required before the library is considered scaffolded.**
+
+1. **Purity is also a compiler setting.** In every `type:domain`, `type:application`, `type:contracts` and `type:util` library, change the generated `"types": ["node"]` in `tsconfig.lib.json` to `"types": []`. The dependency rule (§3) forbids I/O in those layers, but `@types/node` makes `process`, `Buffer`, `fs` and `setTimeout` *compile* there, so without this the ban rests on code review alone; emptying `types` hands it to `tsc`. `type:infrastructure` libraries and the two applications keep `["node"]` — they are the layers whose job is I/O — and `tsconfig.spec.json` is untouched, so specs keep their Jest and Node types. Angular libraries are generated without a `types` entry and need no edit. `libs/shared/util` is the first library to carry this setting. Be honest about its current reach: with `--bundler=none` a library has no `build` target, and Jest compiles specs through `tsconfig.spec.json`, so **no workspace target reads `tsconfig.lib.json` today** — the setting bites in the editor and in review, and becomes a CI gate only once the workspace grows a `typecheck` target (§12.3). Apply it anyway: retrofitting purity across a dozen libraries is far more expensive than setting it at generation time.
+2. **Remove the sample unit.** The generator writes a placeholder `src/lib/<name>.ts` + `.spec.ts` and exports it from the barrel. Delete both and export the library's real public API from `src/index.ts`; the barrel is a library's only legal import surface, so whatever is not exported there does not exist to the rest of the workspace.
+
+Then verify: `pnpm nx show project <name>` for the three tags, and `pnpm nx lint <name>` — which is what runs the boundary matrix.
 
 ---
 
@@ -1019,6 +1078,8 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 | Check | Command | Enforces |
 |---|---|---|
 | Module boundaries and lint | `pnpm nx lint <project>` | §5.3 type matrix, scope rule, platform rule |
+| Boundaries actually bite | `pnpm verify:boundaries` | That the matrix rejects a violation, not merely that legal code passes (10 probes, `tools/boundary-probes/`) |
+| Layer purity at compile time | editor `tsc` today; a `typecheck` target when one exists (see §12.3) | `"types": []` in the `tsconfig.lib.json` of every `type:domain`, `type:application`, `type:contracts` and `type:util` library — `process`, `Buffer` and `fs` must not even typecheck there (§5.5) |
 | Dependency graph inspection | `pnpm nx graph` | Absence of context-to-context edges; §5.4 |
 | Changed-only gate | `pnpm nx affected -t lint test build` | CI enforcement on every change |
 | Unit tests without infrastructure | `pnpm nx test <context>-domain` | Domain purity — a domain test that needs a database proves a violation |
@@ -1037,16 +1098,17 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 
 ### 12.3 Current verification status
 
-The Nx workspace, the pinned toolchain, the lint/format layer and the enforced boundary matrix exist (`T-C10-01` … `T-C10-03`), and **all four applications are scaffolded**: `apps/api` (NestJS 11, `T-C10-04`), `apps/web` (Angular 20 standalone shell, `T-C10-05`) and both acceptance harnesses, `apps/api-e2e` and `apps/web-e2e` (Cypress 15 + Cucumber, driven directly per ADR-011, `T-C10-06`). `pnpm nx show projects` reports exactly `api`, `api-e2e`, `web` and `web-e2e`.
+The Nx workspace, the pinned toolchain, the lint/format layer and the enforced boundary matrix exist (`T-C10-01` … `T-C10-03`), **all four applications are scaffolded** — `apps/api` (NestJS 11, `T-C10-04`), `apps/web` (Angular 20 standalone shell, `T-C10-05`) and both acceptance harnesses, `apps/api-e2e` and `apps/web-e2e` (Cypress 15 + Cucumber, driven directly per ADR-011, `T-C10-06`) — and **the first library exists**: `libs/shared/util` (`platform:shared`, `scope:shared`, `type:util`, `T-C10-07`). `pnpm nx show projects` reports exactly `api`, `api-e2e`, `web`, `web-e2e` and `shared-util`.
 
-What does **not** exist yet: no `libs/` directory — no shared kernel, no bounded-context library, no domain model. The two composition roots are wired to nothing: no use case, no TypeORM entity, no migration, no endpoint beyond bootstrap. The acceptance harnesses exist and run, but carry only their smoke scenarios: the epic's acceptance scenarios belong to the tickets that own the behavior.
+What does **not** exist yet: the rest of the shared kernel (`shared/contracts`, `shared/domain`, `shared/ui`), every bounded-context library, and every domain model. The two composition roots are wired to nothing: no use case, no TypeORM entity, no migration, no endpoint beyond bootstrap — and nothing imports `shared-util` yet. The acceptance harnesses exist and run, but carry only their smoke scenarios: the epic's acceptance scenarios belong to the tickets that own the behavior.
 
 What that means for each check:
 
-- **Module boundaries.** Configured and *proven to bite*. Because a green lint over legal code would not demonstrate that an illegal import is caught, the rule is verified by `pnpm verify:boundaries` (`tools/boundary-probes/`), which scaffolds throwaway projects carrying one deliberate violation each — type matrix, scope rule, platform rule, the two-tag case, the ban on depending on a `type:app`, and the `type:e2e` restriction — asserts every one is rejected, checks that three legal control edges are *not* rejected, and removes the scaffolding. Re-run it after any change to the tag vocabulary, the type matrix or `depConstraints`.
-- **Dependency graph inspection.** Operational, and no longer empty: `pnpm nx graph` reports four projects. It remains **uninformative**, because they are two `type:app` composition roots and two `type:e2e` suites, none with a library to depend on — the graph has four nodes and zero edges. Each suite reaches its application through an Nx *task* dependency (`dependsOn`), deliberately not through an implicit dependency, so no `e2e → app` edge is asserted that the type matrix would forbid. It becomes a real check with the first `libs/` ticket.
-- **Changed-only gate and lint over real code.** Live. `pnpm nx run-many -t lint test build` now runs real tasks for all four applications and passes, and `pnpm nx affected` has projects to select. The Angular rule set is confirmed active on `apps/web/**` and absent on `apps/api/**` (`pnpm eslint --print-config`).
-- **Unit tests.** Configured (Jest 29 on both projects) but **empty**: both `test` targets run with `passWithNoTests`, so a green result proves the runner works, not that anything is tested. The first real suite arrives with the first domain library.
+- **Module boundaries.** Configured and *proven to bite*. Because a green lint over legal code would not demonstrate that an illegal import is caught, the rule is verified by `pnpm verify:boundaries` (`tools/boundary-probes/`), which scaffolds throwaway projects carrying one deliberate violation each — type matrix (`domain → infrastructure`), scope rule, platform rule, the two-tag case, the ban on depending on a `type:app`, the `type:e2e` restriction, and the most restrictive row of all, `type:util → type:contracts` — asserts every one is rejected, checks that three legal control edges are *not* rejected, and removes the scaffolding. **10 probes, exit 0.** Re-run it after any change to the tag vocabulary, the type matrix or `depConstraints`.
+- **Dependency graph inspection.** Operational, and still **uninformative**: `pnpm nx graph` reports five projects — two `type:app` composition roots, two `type:e2e` suites and one `type:util` library — with **zero edges**, because nothing imports `shared-util` yet. Each E2E suite reaches its application through an Nx *task* dependency (`dependsOn`), deliberately not through an implicit dependency, so no `e2e → app` edge is asserted that the type matrix would forbid. Note what actually promotes this to a real check: **not** the first `libs/` ticket, which only adds a node, but the first ticket that *consumes* a library and so draws the first edge.
+- **Changed-only gate and lint over real code.** Live. `pnpm nx run-many -t lint test build` now runs real tasks for all five projects and passes, and `pnpm nx affected` has projects to select. The Angular rule set is confirmed active on `apps/web/**` and absent on `apps/api/**` (`pnpm eslint --print-config`).
+- **Layer purity at compile time.** Configured, **not yet gated**. `libs/shared/util/tsconfig.lib.json` carries `"types": []` as §5.5 requires, but a `--bundler=none` library has no `build` target and Jest compiles through `tsconfig.spec.json`, so no target in the workspace currently typechecks a library's `tsconfig.lib.json`. The setting therefore holds in the editor and in review, not in CI. Closing that gap — adding a `typecheck` target for library projects — is a known follow-up, worth doing before the first context hexagon makes the blind spot expensive.
+- **Unit tests.** Configured (Jest 29) and **no longer empty**: `pnpm nx test shared-util` runs 3 suites / 19 tests over the shared-kernel helpers (`T-C10-07`). The two applications are still at `passWithNoTests` — for them a green result proves the runner works, not that anything is tested. The first suite over a domain model arrives with the first context library.
 - **Acceptance.** Executable: `pnpm nx e2e api-e2e` and `pnpm nx e2e web-e2e` run Cypress 15 with `.feature` files as the spec entry point, each target starting the application under test itself — the API from its own build with `NODE_ENV`/`PORT` supplied by the target (never from a gitignored `.env`), the shell from `web:serve` as a continuous task. Both suites hold **one smoke scenario**, which proves the chain runs end to end and nothing about product behavior.
 
-The next scaffolding tasks create `libs/shared/*` and then the `incident` hexagon per §5.5.
+The next scaffolding tasks complete `libs/shared/*` — `contracts`, `domain`, `ui` — and then build the `incident` hexagon, in every case with the exact commands and post-generation steps of §5.5.
