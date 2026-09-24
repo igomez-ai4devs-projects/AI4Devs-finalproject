@@ -1761,6 +1761,6 @@ Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasad
 
 ### Response:
 
-Implementado ticket T-C10-08
+Implementado ticket T-C10-09
 
 </br>
