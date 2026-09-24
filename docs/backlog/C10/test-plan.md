@@ -1,11 +1,11 @@
 # Test Plan — C10 · Identity & Access Management
 
-> Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/C10/tickets/` (70 tickets) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §9 · PRD §7.10, §4.3
+> Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/C10/tickets/` (71 tickets) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §9 · PRD §7.10, §4.3
 > This document is both the **BDD specification** and the **test strategy** for the epic. Every scenario below is written to seed a `.feature` file or a `*.spec.ts` directly.
 
 ## Context
 
-`C10` is the phase-0 anchor: authentication, RBAC, record visibility, role administration, session lifecycle and denied-authorization recording, on top of the entire workspace foundation. At the time this plan was written, none of that foundation existed. It has since been scaffolded — `apps/api`, `apps/web`, both Cypress/Cucumber harnesses and `libs/shared/util` (with 3 real Jest suites, 19 tests) all exist, `pnpm nx show projects` returns five projects, and `pnpm verify:boundaries` reports 10/10 — but none of it implements any scenario below: `apps/api` and `apps/web` are still `passWithNoTests`, and no `identity-access` library, port, use case or endpoint exists yet. Every scenario below is therefore still written from the user stories and the architecture, not from source.
+`C10` anchors Phase 0 but is no longer a Phase-0-only epic: authentication, RBAC and record visibility (`FR-IAM-01/02/03`) plus role administration and its audit trail (`FR-IAM-05`) are Phase 0; device-bounded access termination and deliberate sign-out (`FR-IAM-06`, `FR-IAM-08`) are Phase 1; denied-authorization recording (`FR-IAM-07`) is Phase 2; SCMS SSO (`FR-IAM-04`) is Phase 3 — all on top of the entire workspace foundation. At the time this plan was written, none of that foundation existed. It has since been scaffolded — `apps/api`, `apps/web`, both Cypress/Cucumber harnesses and `libs/shared/util` (with 3 real Jest suites, 19 tests) all exist, `pnpm nx show projects` returns five projects, and `pnpm verify:boundaries` reports 10/10 — but none of it implements any scenario below: `apps/api` and `apps/web` are still `passWithNoTests`, and no `identity-access` library, port, use case or endpoint exists yet. Every scenario below is therefore still written from the user stories and the architecture, not from source.
 
 **High-risk area.** This epic *is* the auth surface. `FR-IAM-01` states Sport ITSM exposes no anonymous surface at all, which makes the negative scenarios (`AT-C10-06`, `AT-C10-07`) the most valuable tests in the epic: they are the only ones that hold for routes that do not exist yet.
 
@@ -13,7 +13,7 @@
 
 | Excluded | Why |
 |---|---|
-| The 21 **foundation** tickets (`story: —`) | They have no persona and no user-observable behavior. Their *done* is the mechanical check written in the ticket itself — `pnpm nx lint`, a `pnpm nx graph` with no illegal edge, a migration that runs and reverts. Turning a lint rule into a Gherkin scenario would add ceremony, not coverage. |
+| The 22 **foundation** tickets (`story: —`) | They have no persona and no user-observable behavior. Their *done* is the mechanical check written in the ticket itself — `pnpm nx lint`, a `pnpm nx graph` with no illegal edge, a migration that runs and reverts. Turning a lint rule into a Gherkin scenario would add ceremony, not coverage. |
 | End-to-end proof of `FR-IAM-03` over real tickets | Finding **F15**: the records the visibility predicates filter belong to `C1` and `C2`. This epic proves the **predicate and the scope restriction**; the ticket-level proof lands with those epics. |
 | Persisting a role change as an `AuditEntry` | Finding **F5**: `C10` publishes the domain event, `C18` records it. `AT-C10-43` and `AT-C10-44` assert publication against a test subscriber and stop there. |
 | Structured logging, health probes, i18n scaffolding, the a11y baseline | Priced into the `NFR` epic standalone slice by the epic map, not into `C10`. |
@@ -67,7 +67,7 @@ Test stack: **Jest 29.7** (unit, integration) · **jest-preset-angular** (compon
 #### AT-C10-04 — Credentials are persisted only as a bcrypt hash — P0 — type: Integration — impl: `backend-engineer`
 
 **Given** a user created through the credential-hashing helper
-**When** the row is read directly from `identity_access.user`
+**When** the row is read directly from `iam.iam_user`
 **Then** the password column holds a bcrypt hash, no reversible representation exists anywhere in the row, and the same plaintext verifies through the local adapter.
 
 - Test data: a freshly created user · Dependencies: real PostgreSQL · Covers: US-C10-01, US-C10-09 (`T-C10-21`, `T-C10-22`)
@@ -119,30 +119,33 @@ Test stack: **Jest 29.7** (unit, integration) · **jest-preset-angular** (compon
 - Test data: `requester-a` · Dependencies: running API and web · Covers: US-C10-02 (`T-C10-30`)
 - Why E2E: the whole value is the round trip through the router and back.
 
-### US-C10-03 · Sign out and terminate the session
+### US-C10-03 · Sign out and end usable access on the device
 
-#### AT-C10-10 — Sign-out terminates the session and clears the client — P0 — type: E2E — impl: `apps/web-e2e` (frontend platform)
+> **Rewritten this revision.** PRD §14.8 (device-bounded termination) forbids validating access against a central session record, so the three scenarios below no longer test a server-held session. `AT-C10-10` and `AT-C10-12` are regenerated; `AT-C10-11` is repurposed from proving central revocation (now explicitly out of scope) to proving the accepted residual risk holds exactly where the PRD draws it, no further.
 
-**Given** the agent `agent-l1` with an active session
+#### AT-C10-10 — Sign-out ends usable access on the signing-out device, including a queued request — P0 — type: E2E — impl: `apps/web-e2e` (frontend platform)
+
+**Given** the agent `agent-l1` with an active session on any authenticated surface
 **When** they choose sign out
-**Then** the server session record is terminated, the client holds no token, the shell navigates to sign-in, and pressing the browser back button does not return an authenticated view.
+**Then** the client discards every credential and cached authenticated state it held in one step, the shell navigates to sign-in, and this is reachable the same way from any authenticated surface, not only one screen; **and given** a request the browser had already queued before sign-out completed, **when** it is finally sent, **then** it carries no token (the interceptor reads the store live, not a captured value) and is rejected as unauthenticated, and pressing the browser back button does not return an authenticated view.
 
-- Test data: `agent-l1` · Dependencies: running API and web · Covers: US-C10-03 (`T-C10-33`, `T-C10-34`)
+- Test data: `agent-l1` · Dependencies: running web (no backend call is made by this flow) · Covers: US-C10-03 (`T-C10-34`)
+- Why E2E, not API-E2E: the whole property is client-side — there is no backend endpoint for sign-out (`T-C10-32`/`T-C10-33` are retired).
 
-#### AT-C10-11 — A token from a signed-out session cannot be replayed — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform)
+#### AT-C10-11 — A token extracted before sign-out still verifies from a different context, until its own natural expiry — P2 — type: API-E2E — impl: `apps/api-e2e` (backend platform)
 
-**Given** a token whose session has been signed out, still inside its natural expiry
-**When** it is presented on any protected route
-**Then** the response is `401`, because the guard validates the session record and not only the signature.
+**Given** a token captured before sign-out, still inside its natural expiry
+**When** it is presented on a protected route from a context other than the signing-out device (e.g. directly over HTTP, simulating a different device)
+**Then** the response is `200` — this is the accepted residual risk PRD §14.8 states explicitly ("Sport ITSM does not guarantee that access already granted to a session is withdrawn centrally before that lifetime elapses"), not a defect.
+- **Why this scenario exists at P2, not as a gap:** to prove the boundary is exactly where the product decision says it is. If this test ever starts failing, someone has reintroduced central session validation that `T-C10-24`'s retirement removed — regressing the very defect PRD §14.8 exists to close, in the other direction.
 
-- Test data: `agent-l1`, a captured pre-sign-out token · Dependencies: running API · Covers: US-C10-03 (`T-C10-24`, `T-C10-28`, `T-C10-32`)
-- Why API-E2E: this is the single scenario that proves session validation is wired into the global guard rather than into one controller.
+- Test data: `agent-l1`, a captured pre-sign-out token · Dependencies: running API · Covers: US-C10-03, PRD §14.8
 
-#### AT-C10-12 — Signing in again creates a new session and never revives the old one — P1 — type: API-E2E — impl: `apps/api-e2e` (backend platform)
+#### AT-C10-12 — Signing in again issues a fresh, independent token — P1 — type: API-E2E — impl: `apps/api-e2e` (backend platform)
 
-**Given** a user who has signed out
-**When** they sign in again
-**Then** a new session record and a new token are issued, the previous session stays terminated, and the previous token is still rejected.
+**Given** a user who has signed out on one device
+**When** they sign in again, on that device or another
+**Then** a new token is issued with its own fresh expiry, and nothing about the previous sign-out or the previous token's continued validity elsewhere affects it — there is no shared session state for the two to interact through.
 
 - Test data: `agent-l1` · Dependencies: running API · Covers: US-C10-03
 
@@ -152,7 +155,7 @@ Test stack: **Jest 29.7** (unit, integration) · **jest-preset-angular** (compon
 
 **Given** an empty database
 **When** the migration chain has run
-**Then** `identity_access.role` holds exactly eight rows with the stable identifiers of PRD §4.3 — Requester, Organizer / League Admin, Agent (L1), Analyst (L2/L3), Change/Release Manager, Approver, Service Manager, System Administrator — and re-running the seed adds nothing.
+**Then** `iam.iam_role` holds exactly eight rows with the stable identifiers of PRD §4.3 — Requester, Organizer / League Admin, Agent (L1), Analyst (L2/L3), Change/Release Manager, Approver, Service Manager, System Administrator — and re-running the seed adds nothing.
 
 - Test data: none beyond the seed · Dependencies: real PostgreSQL · Covers: US-C10-04 (`T-C10-36`)
 
@@ -257,13 +260,13 @@ Test stack: **Jest 29.7** (unit, integration) · **jest-preset-angular** (compon
 - Test data: Organizer role, empty grant collection · Dependencies: none · Covers: US-C10-07
 - Why it earns a test: it is the scenario where a role-label shortcut would silently pass, and this is the assertion that catches it.
 
-#### AT-C10-25 — The grant is a persisted, explicit record — P1 — type: Integration — impl: `backend-engineer`
+#### AT-C10-25 — The grant is a persisted, explicit record, active while open-ended — P1 — type: Integration — impl: `backend-engineer`
 
 **Given** the scope-grant table
-**When** a grant is written and read back
-**Then** it carries an explicit kind and target identifier, a duplicate is rejected by the unique constraint, and nothing about the grant is inferred from a name match, a text field or a role label.
+**When** an active grant (`valid_to IS NULL`) is written and read back
+**Then** it carries an explicit kind and a subject reference (an external identifier and/or a free-text label, at least one present), its `validPeriod` round-trips as an open-ended `DateTimeRange`, a second active grant for the same triple is rejected by `uq_iam_competition_scope_active` (via its `COALESCE`, even when the two rows differ only in which of the two subject columns is set), and nothing about the grant is inferred from a name match, a text field or a role label; **and given** that grant retired (`valid_to` set) and a new grant issued for the same triple, the new insert succeeds, because the unique constraint applies only to active grants.
 
-- Test data: one competition grant · Dependencies: real PostgreSQL · Covers: US-C10-07 (`T-C10-44`)
+- Test data: one competition grant, then the same triple retired and reissued · Dependencies: real PostgreSQL · Covers: US-C10-07 (`T-C10-44`, `T-C10-43`)
 
 ### US-C10-08 · Cross-competition visibility for a League Administrator
 
@@ -444,66 +447,78 @@ Test stack: **Jest 29.7** (unit, integration) · **jest-preset-angular** (compon
 
 - Test data: three use-case invocations against stubbed repositories · Dependencies: none · Covers: US-C10-13
 
-### US-C10-14 · Session terminates after a configurable inactivity period
+### US-C10-14 · Session terminates after a configurable inactivity period, on the device
 
-#### AT-C10-46 — The inactivity window terminates an idle session and slides for an active one — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform)
+> **Rewritten this revision.** PRD §14.8 replaces one server-tracked sliding window with **two independent, device-bounded caps**. Phase 1 (PRD §14.3) — finding **F9** closed for `C10`.
 
-**Given** a configured inactivity period and an active session
-**When** no request is made for longer than that period, and separately when requests continue inside it
-**Then** the first case is rejected with `401` on the next request and the session record is terminated, and the second case slides the window and is not terminated.
+#### AT-C10-46 — The maximum session lifetime is fixed at issuance and never slides — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform)
 
-- Test data: `agent-l1`, `FixedClock` advanced deterministically past and short of the boundary · Dependencies: running API, real DB, injectable clock · Covers: US-C10-14 (`T-C10-57`)
-- The boundary itself — at, just below and just above — is covered by unit tests on the aggregate; this scenario proves the guard applies it.
+**Given** a configured maximum session lifetime and a freshly issued token
+**When** several authenticated requests are made before that lifetime elapses, and then one after it has elapsed
+**Then** every request before expiry succeeds and the token's `exp` claim is unchanged by all of them, and the request after expiry is rejected with `401` by the ordinary expiry check — no session record is consulted, because none exists.
 
-#### AT-C10-47 — Boot fails fast on a missing or invalid window — P1 — type: Integration — impl: `backend-engineer`
+- Test data: `agent-l1`, `FixedClock` advanced deterministically past and short of the boundary · Dependencies: running API, injectable clock · Covers: US-C10-14 (`T-C10-26`, `T-C10-57`)
+- This scenario is the regression guard for the defect PRD §14.8 fixed: it proves the bound is a fixed `exp`, not a server-tracked, per-request-extended window.
 
-**Given** the inactivity key absent, zero, negative and non-numeric in turn
+#### AT-C10-47 — The device enforces its own inactivity bound, entirely locally — P0 — type: E2E — impl: `apps/web-e2e` (frontend platform)
+
+**Given** a configured inactivity period
+**When** the device is left idle longer than that period
+**Then** the client itself — with no server round-trip — clears its auth state and routes to sign-in; **and given** continued use within the period, **when** activity keeps occurring, **then** the local idle timer keeps resetting and the device does not lose access on that account, up to the maximum lifetime of `AT-C10-46`.
+
+- Test data: a short inactivity-window fixture · Dependencies: running web only (no API dependency for this bound) · Covers: US-C10-14 (`T-C10-58`)
+- Why E2E, not API-E2E: inactivity has no backend component at all; testing it against the API would test nothing, because the API is never involved in this bound.
+
+#### AT-C10-48 — Boot fails fast on a missing or invalid window, for either bound — P1 — type: Integration — impl: `backend-engineer`
+
+**Given** the inactivity key and, separately, the maximum-lifetime key each absent, zero, negative and non-numeric in turn
 **When** the application boots for each
-**Then** it fails fast with a message naming the key and does not start; with a valid positive duration it starts and the value is available through `ConfigService`.
+**Then** it fails fast with a message naming the offending key and does not start; with valid positive durations for both it starts and both values are available through `ConfigService`.
 
-- Test data: four configuration fixtures · Dependencies: `@nestjs/testing` container · Covers: US-C10-14 (`T-C10-56`)
+- Test data: eight configuration fixtures (four per key) · Dependencies: `@nestjs/testing` container · Covers: US-C10-14 (`T-C10-56`)
 
-#### AT-C10-48 — The warning offers stay-signed-in and never loses form data — P1 — type: E2E — impl: `apps/web-e2e` (frontend platform)
+#### AT-C10-49 — The warning offers stay-signed-in, entirely on the device, and never loses form data — P1 — type: E2E — impl: `apps/web-e2e` (frontend platform)
 
-**Given** an agent with a partially completed form and a session approaching expiry
+**Given** an agent with a partially completed form and the device approaching either bound
 **When** the remaining time crosses the warning threshold
-**Then** a localized warning appears with an explicit stay-signed-in action, choosing it slides the window server-side, and if the session is lost instead, the entered data is retained, restored after re-authentication, and the user is told so.
+**Then** a localized warning appears with an explicit stay-signed-in action; for the inactivity bound, choosing it resets the local idle timer with **no HTTP request**; for the maximum-lifetime bound, no client action can extend it, and if either bound ends access before the user responds, the entered data is retained, restored after re-authentication, and the user is told so.
 
-- Test data: a short window fixture, a form with entered data · Dependencies: running API and web · Covers: US-C10-14 (`T-C10-58`)
+- Test data: a short window fixture, a form with entered data · Dependencies: running web (API only for the maximum-lifetime warning's own `exp` read from the token already held) · Covers: US-C10-14 (`T-C10-58`)
 
-### US-C10-15 · Step-up re-authentication for privileged administrative actions
+### US-C10-15 · Prove identity again at the moment of a privileged administrative action
 
-> ⚠ **Blocked by finding F16.** The set of *privileged* operations is defined nowhere in the PRD or the architecture. `US-C10-15` proposes one as an explicit assumption of this backlog. The scenarios below are written against that proposed set and are **not runnable as acceptance for `FR-IAM-06`** until the Product Owner confirms or replaces it. The mechanism can be built and unit-tested meanwhile.
+> **Retitled and rewritten this revision.** The previous title and scenarios described a step-up "window" tracked server-side. PRD §14.8 rules that out explicitly: proof authorizes only the attempt it accompanies, never a stretch of time that follows it. Phase 1 (PRD §14.3). ⚠ **Still blocked by finding F16** for the scenarios' full end-to-end status — the privileged set is now the PRD's own list (`FR-IAM-06`), but the remaining `NFR-SEC-06` judgment call keeps the set open. The mechanism itself is fully testable now.
 
-#### AT-C10-49 — A privileged operation without a step-up mark is refused distinctly — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform) — **blocked: F16**
+#### AT-C10-50 — A privileged operation invoked with no re-authentication credential is refused distinctly — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform) — **blocked: F16**
 
-**Given** a declared privileged operation and a session not re-authenticated within the step-up window
+**Given** a declared privileged operation invoked with no re-authentication credential attached to the request
 **When** it is invoked
 **Then** it is refused with a distinct machine-readable re-authentication-required outcome — not a generic `403` — nothing is persisted, and the error code differs from `FORBIDDEN`.
 
-- Test data: `sysadmin-1` with a stale step-up mark · Dependencies: running API, `FixedClock` · Covers: US-C10-15 (`T-C10-60`) · Blocked on: which operations are privileged
+- Test data: `sysadmin-1` invoking role assignment with no credential attached · Dependencies: running API · Covers: US-C10-15 (`T-C10-60`) · Blocked on: which operations are privileged
 
-#### AT-C10-50 — Re-authentication unblocks the retry — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform) — **blocked: F16**
+#### AT-C10-51 — A valid credential authorizes only the attempt it accompanies — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform) — **blocked: F16**
 
 **Given** that refusal
-**When** the administrator re-enters valid credentials and retries the original operation
-**Then** the session is marked step-up-verified for the configured window, the retry succeeds, and a second privileged operation inside the window proceeds without a further prompt.
+**When** the administrator retries the same operation with a valid credential attached to the retried request
+**Then** the operation is authorized for this attempt and succeeds; **and given** the administrator immediately invokes a **second**, different privileged operation with no credential attached to that second request, **when** it is invoked, **then** it is refused exactly like the first was — proof given for the first call does not carry over, because nothing was stored to carry it.
 
-- Test data: `sysadmin-1` and a valid credential · Dependencies: running API, `FixedClock` · Covers: US-C10-15
+- Test data: `sysadmin-1` and a valid credential · Dependencies: running API · Covers: US-C10-15
+- This scenario's second half is the regression guard for the defect PRD §14.8 fixed: a prior version of this ticket would have let the second call proceed on a stored "step-up-verified" mark.
 
-#### AT-C10-51 — A failed step-up grants nothing and is logged — P1 — type: Unit — impl: `backend-engineer` — **blocked: F16**
+#### AT-C10-52 — A failed re-authentication changes nothing and is logged — P1 — type: Unit — impl: `backend-engineer` — **blocked: F16**
 
-**Given** invalid credentials at the step-up prompt
-**When** they are submitted
-**Then** the session keeps its existing privileges, gains no step-up mark, and the attempt is logged.
+**Given** invalid credentials attached to a privileged request
+**When** it is submitted
+**Then** the actor's ordinary session and non-privileged access are unaffected, the privileged operation is not authorized, and the attempt is logged.
 
 - Test data: stub identity provider returning `InvalidCredential` · Dependencies: none · Covers: US-C10-15
 
 ### US-C10-16 · Denied authorizations on privileged operations are recorded
 
-> ⚠ **Blocked by findings F16 and F17.** F16 leaves the scoping condition undefined, exactly as above. F17 leaves the **destination** undefined: a denial has no previous value, no new value and no natural record reference, so it does not fit the `AuditEntry` shape of `FR-AUD-02`, and the alternative — a dedicated `identity-access` security log — has not been chosen. `AT-C10-52` and `AT-C10-53` are writable now against the record and the port; `AT-C10-54` is not writable at all.
+> **Phase 2** (PRD §14.4) — finding **F9** closed for `C10`; this story follows once Phase 2 opens and does not travel with the Phase 0/1 blocks. ⚠ **Blocked by findings F16 and F17.** F16 leaves the `NFR-SEC-06` judgment call open, exactly as above. F17 leaves the **destination** undefined: a denial has no previous value, no new value and no natural record reference, so it does not fit the `AuditEntry` shape of `FR-AUD-02`, and the alternative — a dedicated `identity-access` security log — has not been chosen. `AT-C10-53` and `AT-C10-54` are writable now against the record and the port; `AT-C10-55` is not writable at all.
 
-#### AT-C10-52 — A privileged denial produces a complete record — P0 — type: Unit — impl: `backend-engineer` — **blocked: F16**
+#### AT-C10-53 — A privileged denial produces a complete record — P0 — type: Unit — impl: `backend-engineer` — **blocked: F16**
 
 **Given** a privileged operation
 **When** the authorization predicate denies it
@@ -511,7 +526,7 @@ Test stack: **Jest 29.7** (unit, integration) · **jest-preset-angular** (compon
 
 - Test data: an actor lacking the permission, `FixedClock` · Dependencies: none · Covers: US-C10-16 (`T-C10-62`) · Blocked on: which operations are privileged
 
-#### AT-C10-53 — Ordinary denials and anonymous rejections produce nothing — P1 — type: Unit — impl: `backend-engineer` — **blocked: F16**
+#### AT-C10-54 — Ordinary denials and anonymous rejections produce nothing — P1 — type: Unit — impl: `backend-engineer` — **blocked: F16**
 
 **Given** a visibility denial on a non-privileged operation, and an unauthenticated request rejected by the global guard
 **When** each occurs
@@ -519,11 +534,11 @@ Test stack: **Jest 29.7** (unit, integration) · **jest-preset-angular** (compon
 
 - Test data: a requester denied on another record; an anonymous request · Dependencies: none · Covers: US-C10-16
 
-#### AT-C10-54 — A denial record is durably recorded and readable — P0 — **NOT WRITABLE** — **blocked: F17**
+#### AT-C10-55 — A denial record is durably recorded and readable — P0 — **NOT WRITABLE** — **blocked: F17**
 
 This scenario cannot be specified until the Architect chooses the destination — a `C18` audit entry or a dedicated `identity-access` security log — and the Product Owner confirms retention and access. Writing it against either option now would encode a guess as an acceptance criterion.
 
-**Consequence if the decision is deferred:** `US-C10-16` ships only as far as `AT-C10-52` and `AT-C10-53` — the record is produced and handed to an unbound port — and **`FR-IAM-07` remains unsatisfied**. That must be reported at the epic review, not quietly closed.
+**Consequence if the decision is deferred:** `US-C10-16` ships only as far as `AT-C10-53` and `AT-C10-54` — the record is produced and handed to an unbound port — and **`FR-IAM-07` remains unsatisfied**. That must be reported at the epic review, not quietly closed.
 
 ---
 
@@ -533,11 +548,11 @@ This scenario cannot be specified until the Architect chooses the destination �
 | --- | --- | --- | --- |
 | Unit | 19 | P0:13 P1:6 | `backend-engineer` — all 19; Angular component tests are ticket-level, see below |
 | Integration | 9 | P0:6 P1:2 P2:1 | `backend-engineer` |
-| API-E2E | 19 | P0:15 P1:4 | `apps/api-e2e` — e2e-harness work, backend platform, `type:e2e` |
-| E2E | 6 | P0:3 P1:3 | `apps/web-e2e` — e2e-harness work, frontend platform, `type:e2e` |
-| **Total** | **53** | **P0:37 P1:15 P2:1** | plus `AT-C10-54`, not writable (F17) |
+| API-E2E | 19 | P0:14 P1:4 P2:1 | `apps/api-e2e` — e2e-harness work, backend platform, `type:e2e` |
+| E2E | 7 | P0:4 P1:3 | `apps/web-e2e` — e2e-harness work, frontend platform, `type:e2e` |
+| **Total** | **54** | **P0:37 P1:15 P2:2** | plus `AT-C10-55`, not writable (F17) |
 
-Five of the 53 are **blocked** — `AT-C10-49` to `AT-C10-53` — and `AT-C10-54` cannot be written at all. Runnable acceptance today: **48 scenarios**.
+Five of the 54 are **blocked** — `AT-C10-50` to `AT-C10-54` — and `AT-C10-55` cannot be written at all. Runnable acceptance today: **49 scenarios**.
 
 Component-level Jest tests for the Angular pieces (`T-C10-13` to `T-C10-15`, `T-C10-30`, `T-C10-49`, `T-C10-50`, `T-C10-53`, `T-C10-58`, `T-C10-61`) are specified inside those tickets and owned by `frontend-engineer`; they are not repeated here, because a component test is a ticket-completion check rather than an epic acceptance scenario.
 
@@ -550,8 +565,8 @@ Component-level Jest tests for the Angular pieces (`T-C10-13` to `T-C10-15`, `T-
 | `FR-IAM-03` | US-C10-06, 07, 08 | AT-C10-20 → 28 | ✅ 9, at predicate level only (**F15**) |
 | `FR-IAM-04` | US-C10-09, 10 | AT-C10-29 → 35 | ✅ 7 |
 | `FR-IAM-05` | US-C10-11, 12, 13 | AT-C10-36 → 45 | ✅ 10, publication only (**F5**) |
-| `FR-IAM-06` | US-C10-14, 15 | AT-C10-46 → 51 | ⚠ 3 of 6 — step-up blocked by **F16** |
-| `FR-IAM-07` | US-C10-16 | AT-C10-52 → 54 | ⛔ 0 — blocked by **F16** and **F17** |
+| `FR-IAM-06` | US-C10-14, 15 | AT-C10-46 → 52 | ⚠ 4 of 7 — re-authentication blocked by **F16** |
+| `FR-IAM-07` | US-C10-16 | AT-C10-53 → 55 | ⛔ 0 — blocked by **F16** and **F17**; Phase 2, not Phase 0/1 |
 
 ## Risk-based notes
 
@@ -559,14 +574,14 @@ Component-level Jest tests for the Angular pieces (`T-C10-13` to `T-C10-15`, `T-
 
 **Where depth was deliberately not spent.** The visibility predicates (`FR-IAM-03`) get nine tight unit scenarios rather than an E2E sweep, because the records they filter do not exist in this epic (**F15**). Adding a shallow E2E over a stub ticket would create a test that proves the stub, then rots the moment `C1` lands.
 
-**Determinism.** Every time-dependent scenario — session expiry, step-up window, event timestamps — runs on `FixedClock` (`T-C10-09`, ADR-009). No scenario in this plan sleeps, and none asserts against wall-clock time.
+**Determinism.** Every time-dependent scenario — token expiry, the device-local inactivity and maximum-lifetime bounds, event timestamps — runs on `FixedClock` (`T-C10-09`, ADR-009). No scenario in this plan sleeps, and none asserts against wall-clock time.
 
-**Regression posture.** No defect story exists in this epic, so no mandatory regression scenario applies. The nearest equivalent is `AT-C10-40`: once permissions are resolved per request, any later change that reintroduces trust in token claims fails it immediately.
+**Regression posture.** No defect story exists in this epic, so no mandatory regression scenario applies. The nearest equivalent is `AT-C10-40`: once permissions are resolved per request, any later change that reintroduces trust in token claims fails it immediately. This revision adds three more of the same shape, each written specifically to catch a reversion toward the design PRD §14.8 rejected: `AT-C10-11` (a central session check silently reintroduced would make this scenario fail, because it currently — correctly — verifies), `AT-C10-46` (a sliding or otherwise extended expiry would change the `exp` claim mid-test), and `AT-C10-51`'s second half (a stored step-up mark would let the second privileged call proceed without its own credential).
 
 ## Open decisions this plan cannot resolve
 
 | Finding | Decision needed | Owner | Blocks |
 |---|---|---|---|
-| **F16** | Enumerate which operations are *privileged*. `US-C10-15` proposes role assignment and revocation plus Admin Console configuration of catalog, taxonomy, SLA policies, workflows and notification templates — an assumption, not a decision. | Product Owner | `T-C10-59`, `T-C10-60`, `T-C10-61`, `T-C10-62` · `AT-C10-49` → `AT-C10-53` |
-| **F17** | Choose where a denied authorization is recorded: a `C18` audit entry or a dedicated `identity-access` security log, with its immutability guarantee and retention. | Architect, with the Product Owner confirming retention and access | `T-C10-63` · `AT-C10-54` |
-| **F9** | Assign a phase to `FR-IAM-04`, `FR-IAM-06` and `FR-IAM-07`. `FR-IAM-06` is a security control landing at no stated point. | Product Owner | Sequencing of blocks F, G, H — 12 tickets, 30.5h |
+| **F16** | **Partially resolved.** `FR-IAM-06` now states the privileged set directly in the PRD text — role grant/revocation, reference-data and policy configuration, and every `NFR-SEC-06`-restricted operation. **Still open:** whether every `NFR-SEC-06`-restricted Admin Console screen counts is a judgment call, not settled by the wording alone. | Product Owner | `T-C10-59`, `T-C10-60`, `T-C10-61`, `T-C10-62` · `AT-C10-50` → `AT-C10-54` |
+| **F17** | Choose where a denied authorization is recorded: a `C18` audit entry or a dedicated `identity-access` security log, with its immutability guarantee and retention. | Architect, with the Product Owner confirming retention and access | `T-C10-63` · `AT-C10-55` |
+| **F9** | **Closed for `C10` this revision.** The Product Owner has assigned every `FR-IAM-*` requirement a phase: `FR-IAM-06`/`08` Phase 1, `FR-IAM-07` Phase 2, `FR-IAM-04` Phase 3. `C10` is no longer a Phase-0-only epic — its Phase-0 cut is `FR-IAM-01/02/03/05` alone. | Closed | Sequencing of blocks F, G, H is now fixed by phase, not open |
