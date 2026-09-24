@@ -279,7 +279,7 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | FR-INC-12 | The system MUST support reassignment between Resolver Groups and individual agents, preserving full assignment history. | M |
 | FR-INC-13 | The system MUST support **functional escalation** (to a higher support tier) and **hierarchical escalation** (to management) triggered manually or automatically by SLA thresholds. | M |
 | FR-INC-14 | The system MUST allow an agent to convert a mis-classified record between Incident and Service Request, preserving the original reference, history and audit trail. | S |
-| FR-INC-15 | The system MUST reject or flag Incident submissions that describe in-application sport decisions, offering the correct path (Knowledge Article or Service Catalog item) before submission. | S |
+| FR-INC-15 | The system MUST reject or flag Incident submissions that describe in-application sport decisions, offering the correct path (Knowledge Article or Service Catalog item) before submission. | **M** |
 | FR-INC-16 | The system SHOULD suggest relevant Knowledge Articles at intake time based on the description and category, and MUST record when a suggestion led to abandonment of the submission (deflection). | S |
 | FR-INC-17 | The system SHOULD detect and propose duplicate/related Incidents affecting the same service and competition subject within a configurable time window. | S |
 | FR-INC-18 | The system MUST record First Contact Resolution when an Incident is resolved by L1 within the first interaction without reassignment. | M |
@@ -418,8 +418,15 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | FR-IAM-03 | A requester MUST only be able to view and act on their **own** tickets, except where an explicit competition-scoped visibility rule grants broader access (Organizer, League Administrator). | M |
 | FR-IAM-04 | The system MUST support integration with the SCMS platform's identity provider / SSO for user authentication and profile attributes. | S |
 | FR-IAM-05 | The system MUST support role assignment and revocation by a System Administrator, fully audited. | M |
-| FR-IAM-06 | The system MUST terminate sessions after a configurable inactivity period and MUST require re-authentication for privileged administrative actions. | S |
+| FR-IAM-06 | The system MUST end an authenticated session after a **configurable period of inactivity**, so that an unattended device stops granting access without the user having to act; and it MUST require the actor to **prove their identity again at the moment of the action** before any privileged administrative action is performed (role grant or revocation, reference-data and policy configuration, and every operation restricted by NFR-SEC-06) — an earlier successful authentication is not sufficient on its own. **Assurance level (deliberate decision, §14.8):** termination is enforced on the user's device together with a bounded maximum session lifetime, after which access stops being granted. Sport ITSM does **not** guarantee that access already granted to a session is withdrawn centrally before that lifetime elapses. The threat this requirement covers is the **unattended or handed-over shared device** (service-desk workstation, venue tablet, shared organizer device), not the replay of access material extracted from a device. | S |
 | FR-IAM-07 | Every authorization decision that denies access MUST be recorded when it concerns privileged operations. | C |
+| FR-IAM-08 | A user MUST be able to **end their own session deliberately**, from any authenticated surface, without waiting for the inactivity period of FR-IAM-06 to elapse. After sign-out the device MUST retain no usable access: any further action on that device MUST require a new authentication, so that the next user of a shared device necessarily acts under their own identity and every audit entry is attributed to the person who actually performed the action (FR-AUD-02). Sign-out carries the **same assurance level as FR-IAM-06**. | M |
+
+| FR-IAM-09 | On a **lawful erasure request** from a player, an official or any other identified person, a System Administrator MUST be able to render that person's personal data **non-identifying across every surface of the product** — records, comments, notifications, exports, work lists, reports and activity history — in a single authorized operation, and MUST be able to evidence that the request was received, acted upon and completed. **Anonymization, never deletion.** The operation MUST NOT delete any record or any audit entry, and MUST NOT change what the history says happened: every entry remains present and in sequence, with its timestamp, action, actor role, previous and new values and any SLA, approval or authorization evidence intact, so that every record stays fully reconstructable (NFR-AUD-01). Only the person's **identifiability** is removed — by substituting a stable non-identifying surrogate wherever they were named, and by replacing personal data embedded in free text with a marker. **Precedence over FR-AUD-03 and FR-AUD-06.** This is the **single authorized exception** to the immutability of audit entries, and it is deliberately narrow: it may neutralize personal data only, never remove, reorder, re-word or re-time an entry, and the operation is itself recorded as a **new immutable entry** stating who performed it, when and under what lawful basis — never what the removed data was. A retention period MUST NOT be used to refuse or defer a lawful erasure request; where a retention period applies, the record is retained for its full term **in anonymized form**. **Irreversible.** The system MUST NOT retain any means of reversing the substitution and MUST NOT re-identify the person from any surviving record. | M |
+
+> **Why this requirement exists, and why here.** Constraint **K9** and `NFR-SEC-07` oblige Sport ITSM to honor deletion and anonymization rights over the personal data of players and officials. Until this revision, no functional requirement delivered that capability: the obligation was stated as a quality attribute with nothing to build behind it, which produces no story, no acceptance criterion and no code. The obligation does not disappear when it is unfunded — it only becomes invisible until someone exercises the right. It is placed in **C10** because the subject of an erasure request is a **person**, whose identity this capability owns, and because executing it is a privileged administrative action of the kind C10 already governs (`FR-IAM-05`, and the step-up proof required by `FR-IAM-06`).
+
+> **Why sign-out is a requirement of this product.** Sport ITSM is operated by a shift-based Service Desk on shared workstations, and its requester-side surfaces are used on shared venue devices by officials and organizers. Attribution integrity (§1.3 principle 3, FR-AUD-02) therefore depends on a user being able to hand a device over deliberately, rather than waiting for a timer to expire. FR-IAM-08 exists for that reason, not to provide central revocation of access — see §14.8.
 
 ### 7.11 C11 — Omnichannel Intake (cross-cutting)
 
@@ -494,10 +501,10 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | --- | --- | --- |
 | FR-AUD-01 | The system MUST record an immutable entry for every state transition, field change, assignment, comment, approval, notification and automated rule execution on every record type. | M |
 | FR-AUD-02 | Each audit entry MUST capture: actor (user or system rule), timestamp, record reference, action, previous value and new value. | M |
-| FR-AUD-03 | Audit entries MUST NOT be editable or deletable by any role, including System Administrator. | M |
+| FR-AUD-03 | Audit entries MUST NOT be editable or deletable by any role, including System Administrator. The **single exception** is the anonymization of personal data under `FR-IAM-09`, which never deletes, reorders, re-words or re-times an entry and never alters what the entry says happened — it neutralizes personal data within an entry that is otherwise preserved, and is itself recorded as a new immutable entry. No other exception exists, and none may be introduced in a derived artifact. | M |
 | FR-AUD-04 | The full activity history of a record MUST be viewable by authorized roles, with requester-visible entries separated from internal entries. | M |
 | FR-AUD-05 | The system MUST record administrative configuration changes (catalog, SLA policy, workflow, role assignment) in the audit trail. | M |
-| FR-AUD-06 | Audit history MUST be retained for a configurable retention period not shorter than the record's own retention. | S |
+| FR-AUD-06 | Audit history MUST be retained for a configurable retention period not shorter than the record's own retention. Retention MUST NOT be invoked to refuse or defer a lawful erasure request (`FR-IAM-09`): an anonymized record is retained for the remainder of its period **in anonymized form**, never exempted from erasure and never deleted early because of it. | S |
 
 ---
 
@@ -534,7 +541,7 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | NFR-SEC-04 | Internal work notes MUST never be exposed to requesters through any channel, including notifications and exports. |
 | NFR-SEC-05 | Credentials and secrets MUST never be stored or transmitted in readable form, and MUST never appear in tickets, comments or the audit trail. |
 | NFR-SEC-06 | Privileged administrative operations MUST be restricted to System Administrator and MUST be fully audited. |
-| NFR-SEC-07 | Personal data of players and officials MUST be limited to what is necessary for support, and MUST be subject to deletion/anonymization on a lawful request, without destroying the integrity of the audit trail (pseudonymization is acceptable). |
+| NFR-SEC-07 | Personal data of players and officials MUST be limited to what is necessary for support, and MUST be subject to deletion/anonymization on a lawful request, without destroying the integrity of the audit trail (pseudonymization is acceptable). Its minimization limb binds per §14.1; its erasure limb is **delivered by `FR-IAM-09`**. |
 
 ### 8.4 Auditability & compliance
 
@@ -679,7 +686,7 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 
 | # | Risk | Probability | Impact | Mitigation |
 | --- | --- | --- | --- | --- |
-| R1 | **Scope creep into sport operations** — stakeholders ask Sport ITSM to manage reschedules, disputes or rosters | High | High | Enforce the scope rule at intake (FR-INC-15); PO rejects/reframes such demand; publish deflection Knowledge Articles. |
+| R1 | **Scope creep into sport operations** — stakeholders ask Sport ITSM to manage reschedules, disputes or rosters | High | High | Enforce the scope rule at intake (**FR-INC-15 — `Must`, Phase 1/MVP**, §14.3); PO rejects/reframes such demand; publish deflection Knowledge Articles. R1 is the only risk in this register rated High probability **and** High impact; its system-side mitigation is therefore committed to the MVP rather than left to a later phase. |
 | R2 | **P1 targets unachievable outside business hours** — no on-call coverage underpins the published SLA | Medium | High | Confirm A4/A7 with the service organization; define OLAs before publishing SLA targets; degrade the declared support schedule transparently rather than breaching. |
 | R3 | **Change bypass** — engineering deploys without a Change record | Medium | High | 100% Change coverage KPI; unauthorized change rate with zero tolerance; deployment evidence reconciliation via CMDB. |
 | R4 | **CMDB decay** — configuration data becomes stale and impact analysis misleads triage | High | Medium | Keep the MVP CI model deliberately small; update CI versions on Release deployment (FR-REL-05); drift flagging (FR-CMD-07). |
@@ -691,6 +698,7 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | R10 | **Competition reference data unavailable from SCMS** — the affected subject cannot be selected from a controlled list | Medium | Low | Free-text capture of the affected competition instance as an MVP fallback; controlled lookup introduced later without changing the ticket model. |
 | R11 | **Time-zone and locale errors distort SLA measurement** | Medium | Medium | Explicit NFR-I18N-03; time-zone correctness treated as an acceptance criterion for SLA stories. |
 | R12 | **Personal data exposure across requesters** | Low | High | NFR-SEC-03/04 enforced server-side; tested explicitly as acceptance criteria. |
+| R13 | **Planned maintenance is announced nowhere, so users experience it as an unreported outage** — NFR-AVL-04 requires advance announcement through the portal and notification channels, but no functional requirement delivers that capability (§14.1, "unfunded"). Users meeting a planned stoppage have no way to know it was planned, so they log Incidents against it. | Medium | Low–Medium | **Accepted, with no mitigation requirement — deliberately.** Funding NFR-AVL-04 was considered in the same revision that funded NFR-SEC-07 (via FR-IAM-09) and was **declined**: unlike the erasure obligation, which constraint K9 makes a legal duty, no constraint in §11 makes maintenance announcement a legal or contractual obligation. This box is not empty because the risk was forgotten; it is empty of mitigations because the product chose to carry it. **Consequence if it materializes:** avoidable Incident volume inflates, and it inflates precisely the §9 measures used to judge the service — ticket volume, FCR, backlog and MTTR are all distorted by tickets that should never have existed. **It is watchable, and cheaply:** the signal is Incidents opened against a stoppage announced nowhere, which is visible in the data (a volume spike concentrated in a maintenance window, resolved with no platform defect) before it is visible in a complaint. Review at each phase exit; if the signal appears, the response is to fund NFR-AVL-04 with a functional requirement in §7, not to add a mitigation here. |
 
 ---
 
@@ -707,9 +715,41 @@ Backlog ordering uses **WSJF-style value/effort reasoning** (Cost of Delay = bus
 5. **Insight** — does it produce the KPIs required to steer the service?
 6. **Effort and dependency risk** — lower effort and fewer external dependencies break ties.
 
+#### Phasing of non-functional requirements
+
+§14.2 → §14.6 phase functional requirements individually. Non-functional requirements are **not** phased that way, and enumerating all of §8 across the phase lists would be both unreadable and wrong: an NFR is a constraint on behavior, not a deliverable that ships once. The rule below is therefore the phasing statement for the whole of §8, and it is normative: an NFR not named anywhere in §14 is governed by it and is **not** unphased.
+
+**Default rule.** _A non-functional requirement binds from the phase that first delivers a capability it constrains, and re-binds to every later capability of the same kind._ It is never "done" in a phase; it is satisfied continuously from that phase onward. Consequently NFR-PRF-02 binds from Phase 1 (the agent work list first exists there), NFR-AUD-04 binds progressively — Incidents in Phase 1, Changes and Releases in Phase 2 — and NFR-I18N-03 binds from Phase 1 with SLA measurement.
+
+**Three sets of exceptions**, because the default rule does not fit them:
+
+| Class | Requirements | Binds from | Why the default rule does not fit |
+| --- | --- | --- | --- |
+| **A — Service-level** | NFR-AVL-01, NFR-AVL-02, NFR-PRF-03, NFR-DAT-04, NFR-CFG-03 | **First production release (Phase 1)** | These constrain the *running service*, not any capability. There is no capability whose delivery triggers "99.5% monthly availability"; it is a property of the service existing in production at all. |
+| **B — Invariants from Phase 0** | NFR-SEC-02, NFR-SEC-05, NFR-AUD-01, NFR-AUD-02, NFR-I18N-01, NFR-DAT-01 | **Phase 0** | Phase 0 already produces the artifacts they constrain (operations, credentials, audit entries, user-facing strings, record references), and they apply to every artifact added in every later phase. Naming them once here prevents a later phase from treating them as new work. |
+| **C — Dormant** | NFR-DAT-05 | **When, and only if, its capability ships** | It constrains bulk operations by agents or administrators, and no functional requirement in §7 delivers bulk operations. It is dormant by design, not overlooked; it binds the moment such a capability is proposed. |
+
+**NFR-AVL-03 needs an explicit floor** rather than an exception: it binds from **Phase 1** (the first phase with an intake path and with optional subsystems that can fail) and re-binds on every optional subsystem added thereafter — notably knowledge, reporting and notification maturity in Phase 3. Each new optional subsystem must prove that intake survives its absence; that proof is part of delivering the subsystem, not a separate later exercise.
+
+**One non-functional requirement is currently _unfunded_, which is different from dormant, and must not be silently absorbed by the rule above:**
+
+- **NFR-AVL-04** — announcing planned maintenance through the portal and notification channels is behavior **no functional requirement delivers**. It binds from Phase 1 under the default rule, against nothing. Unlike the erasure obligation below, no constraint in §11 makes it a legal duty, so it is recorded as an accepted, named gap rather than funded: it produces no story until a funding requirement is added to §7. The consequence of carrying it — users logging Incidents against a stoppage announced nowhere, inflating the very §9 measures used to judge the service — is recorded as accepted risk **R13** in §13, together with the signal by which it can be watched.
+- **NFR-SEC-07 — resolved.** Its data-minimization limb binds from Phase 1 under the default rule. Its **deletion/anonymization on lawful request** limb was unfunded and, because constraint K9 makes it a legal obligation, could not be left dormant. It is now **funded by `FR-IAM-09`** (§7.10, `Must`, Phase 1), which also settles the precedence question against `FR-AUD-03` and `FR-AUD-06`.
+
+**Verifiability (this rule may not weaken §15).** "Binds from phase X" means **verifiable in phase X**. An NFR whose satisfaction cannot be demonstrated in the phase it binds from is mis-phased and must be re-phased — it is never waived. The mode of verification differs by class, and each is anchored in §15:
+
+| Class | How it is verified | Anchor |
+| --- | --- | --- |
+| Default rule | Per story: the story names the non-functional expectations that apply and does not pass without them. | §15.1 item 6 (Ready), §15.2 items 3 → 8 (Done) |
+| A — Service-level | At **phase exit**, over an observation period. A story can never be the unit of acceptance for a monthly availability target. | §14 phase exit criteria |
+| B — Invariants | On **every** story from Phase 0 onward, and regression-checked at each phase exit. | §15.2 items 3, 4, 5 |
+| C — Dormant / unfunded | Nothing to verify. Both must be re-stated at every phase exit so they stay visible rather than decaying into silence. | This subsection |
+
 ### 14.2 Phase 0 — Foundations (enabler, no standalone user value)
 
 Identity & Access (FR-IAM-01/02/03/05), core ticket record and reference numbering, categorization taxonomy, Resolver Groups, audit trail (FR-AUD-01/02/03/04), localization foundation (NFR-I18N-01/02).
+
+Phase 0 delivers **locally held accounts and roles** — the fallback stated in assumption A2 — deliberately without federation: FR-IAM-04 is phased to Phase 3 (§14.5, §14.8). The remaining Identity & Access requirements are phased as follows: **FR-IAM-06 and FR-IAM-08 in Phase 1** (§14.3), **FR-IAM-07 in Phase 2** (§14.4), **FR-IAM-04 in Phase 3** (§14.5). No Identity & Access requirement is unphased.
 
 _Exit criterion:_ an authenticated user with a role exists, and every action taken is auditable.
 
@@ -719,7 +759,7 @@ _Exit criterion:_ an authenticated user with a role exists, and every action tak
 
 | Capability | MVP inclusion |
 | --- | --- |
-| **Incident Management** | Full lifecycle FR-INC-01 → 13, FR-INC-18. Portal + agent-logged intake. |
+| **Incident Management** | Full lifecycle FR-INC-01 → 13, FR-INC-18. Portal + agent-logged intake. **FR-INC-15** — scope-rule enforcement at intake (see below). |
 | **Major Incident Management** | FR-MIM-01, 02, 03 (declaration, protocol, child linking). |
 | **Service Request Management** | FR-SRQ-01 → 09, 11, for the six MVP catalog offerings. |
 | **Service Catalog** | FR-CAT-01 → 05. |
@@ -728,9 +768,22 @@ _Exit criterion:_ an authenticated user with a role exists, and every action tak
 | **Knowledge & Portal** | FR-KNW-01 → 05, 08. |
 | **Workflow & Automation** | FR-WFL-01, 02, 03, 05, 06. |
 | **Assignment & Queues** | FR-QUE-01, 02, 03. |
-| **Notifications** | FR-NOT-01 → 05, 08 (in-app mandatory, email if available). |
+| **Notifications** | FR-NOT-01 → 05, 08, and **FR-NOT-06** for its in-app limb (mandatory). FR-NOT-06's email limb is MVP **if dependency D7 is available at MVP**, and otherwise moves to Phase 3 with the rest of email (§14.5); its push limb is Phase 4 (§14.6). |
+| **Omnichannel Intake** | **FR-OMN-02** (origin channel on every ticket) and **FR-OMN-04** (requester identity captured; no anonymous submission), for the MVP channels only — portal and agent-logged. The email and in-app channels of FR-OMN-01 remain Phase 3. |
 | **Reporting** | FR-RPT-01, 02, 05, 07. |
 | **Audit** | FR-AUD-01 → 05. |
+| **Identity & Access** | FR-IAM-06, FR-IAM-08 — inactivity termination, re-authentication at the moment of a privileged administrative action, and user-initiated sign-out. MVP is the first release with real requesters, real personal data (NFR-SEC-07) and shared service-desk workstations, so these protections ship with it. **FR-IAM-09** — lawful erasure of personal data (see below). FR-IAM-01/02/03/05 land in Phase 0. |
+
+**Why these four requirements are in the MVP and not later.** Each was previously unphased while something already committed to the MVP depended on it:
+
+- **FR-INC-15 — scope-rule enforcement at intake.** Raised to `Must` in §7.1 as part of this phasing decision (see the note below). The scope rule is what this product *is* (§1.3 principle 1, constraint K1), and R1 — the register's only High/High risk — names this requirement as its system-side mitigation. Its cost is not the argument: a mitigation that is in no phase is a mitigation nobody has committed to deliver, which turns the risk register into a statement of intent. It must bind in MVP because MVP is when user habits form and when the §9 baselines are first measured; every sport-decision ticket admitted in MVP both trains requesters to use Sport ITSM as a dispute channel and contaminates the category, volume and deflection baselines that A9 says are established in the first operating quarter. The correct paths it must offer — Knowledge Article and Service Catalog offering — are themselves MVP (FR-KNW-01 → 05, 08; FR-CAT-01 → 05), so the requirement is deliverable and verifiable in Phase 1.
+- **FR-OMN-02 — origin channel.** FR-RPT-02 is MVP and commits to "ticket volume by category/**channel**/service"; that figure cannot be produced without this, and FR-RPT-07 requires reported figures to be reproducible. Adding the channel later would leave every MVP-era ticket permanently unclassifiable and the §9 baseline irreparable, since A9 states there is no historical data to fall back on.
+- **FR-OMN-04 — requester identity at intake, no anonymous submission.** This is the intake-side form of an invariant the MVP already presumes everywhere: FR-IAM-01, NFR-SEC-01, FR-INC-03 and the entire audit chain (FR-AUD-02) are unsound if a ticket can exist without an identified requester. Phase 0 establishes it at the record level; Phase 1 is the first phase with an intake surface, and therefore the first phase in which it is observable and testable.
+- **FR-NOT-06 — notification channels.** §14.3 already promised "in-app mandatory, email if available" in prose without naming the requirement, which left an `M` requirement unphased. The in-app limb is MVP; the email limb is MVP only where D7 (email gateway) exists, otherwise Phase 3; push is Phase 4. FR-NOT-01 → 05 are meaningless without at least one delivery channel, so the in-app limb is a precondition of rows already in this table.
+
+**FR-IAM-09 is MVP, and the trade-off is explicit.** The obligation in constraint K9 binds from the moment the product holds the first real personal data, which is MVP — not from the phase in which it would be convenient to build it. There is no compliant way to process players' and officials' personal data in Phase 1 while the means to honor an erasure request arrives in Phase 2: a request received in the first weeks of production would have to be satisfied by someone mutating data directly, which `FR-AUD-03` forbids, `NFR-AUD-02` contradicts and which would leave no evidence that the request was honored. Yes, this adds MVP scope against constraint K8. The alternative is not "defer the requirement"; it is "do not process real personal data until it ships", and that is not an MVP. The records it must span — users, tickets, comments, audit history — are all MVP, so it is deliverable and verifiable in Phase 1.
+
+**Priority change recorded.** `FR-INC-15` moves from `Should` to **`Must`** (§7.1). This is a deliberate decision, not a side effect of phasing: a `Should` mitigation against the register's only High/High risk is incoherent, and the requirement's own wording ("the system MUST reject or flag…") was already stronger than its MoSCoW bucket. No ID, text or other priority was altered.
 
 **Explicitly excluded from MVP:** Problem, Change, Release, CMDB, email-to-ticket, skill-based assignment, delegation, deflection measurement, CSAT automation beyond basic capture.
 
@@ -739,33 +792,42 @@ _Exit criterion:_ an authenticated user with a role exists, and every action tak
 - A referee can report a scoring failure while officiating; an agent flags it as affecting a competition in progress with justification, the Impact × Urgency matrix yields P1, the P1 SLA targets are recalculated and start, the ticket escalates on the SLA warning, and the referee receives resolution and confirms it — end to end, audited.
 - A team manager can request organizer access, get it approved and fulfilled, and see the approval trail.
 - A service owner can read SLA Compliance, MTTA, MTTR, FCR, Reopen Rate and backlog for a period.
-- 100% of MVP tickets carry a category, affected subject, priority, SLA policy and complete history.
+- 100% of MVP tickets carry a category, affected subject, priority, SLA policy and complete history, **plus an origin channel and an identified requester** — no ticket exists without both.
+- A requester attempting to log an in-application sport decision (a reschedule, a result dispute, a roster change) is stopped or warned **before** submission and offered the Knowledge Article or catalog offering that is the correct path, and the outcome of that intervention is measurable — so R1 can be tracked rather than asserted.
+- An agent ending a shift can sign out of a shared service-desk workstation and the next agent works under their own identity, with every audit entry attributed correctly; a workstation left unattended stops granting access after the configured inactivity period; and a role grant cannot be performed on the strength of an earlier login alone.
 
 ### 14.4 Phase 2 — Platform evolution governance
 
 **Goal:** bring SCMS changes under control and stop change-induced Incidents.
 
-- **Change Management** (FR-CHG-01 → 06, 08 → 10, 12; FR-CHG-07 retired) including risk assessment, CAB authorization, the change schedule and CI-level conflict detection.
-- **Release & Deployment Management** (FR-REL-01 → 06).
+- **Change Management** (FR-CHG-01 → 06, 08 → **11**, 12; FR-CHG-07 retired) including risk assessment, CAB authorization, the change schedule and CI-level conflict detection.
+- **Release & Deployment Management** (FR-REL-01 → **08**).
 - **Asset & Configuration Management** (FR-CMD-01 → 06) with the minimum viable CI model and impact analysis.
 - **Problem Management** (FR-PRB-01 → 07) with RCA and KEDB.
 - Process dashboards (FR-RPT-03).
 - Approval delegation and reminders (FR-APR-04, 05).
+- **Audit retention (FR-AUD-06).** Retention becomes consequential only when the product holds evidence that must outlive operational access — Change and Release authorization records, which NFR-AUD-03 requires to be tamper-evident and retained and to which NFR-DAT-02 assigns a longer period than ordinary records. In Phase 1 no retention period can have elapsed and nothing is yet purgeable, so a retention rule would protect nothing; in Phase 2 it protects the authorization evidence this phase exists to create. Its interaction with lawful erasure is already settled in both requirement texts: retention never defers an erasure request (FR-IAM-09).
+- **Recording of denied privileged authorization decisions (FR-IAM-07).** Phase 2 is the accountability phase: it introduces Change authorization, emergency change and delegated approval, which multiply the privileged operations whose **refusals** are evidence. The audit trail already records privileged operations that succeed (FR-AUD-05, NFR-SEC-06); Phase 2 completes that record with the ones that were refused.
 
-_Exit criterion:_ no SCMS deployment reaches production without an authorized Change and a Release record; recurring Incidents converge on Problems.
+**Why FR-CHG-11, FR-REL-07 and FR-REL-08 are in this phase and were not before.** They were unphased while this phase's own exit depended on them, which is the same defect as FR-INC-15 one phase later. §14.7 makes **change-induced Incident rate** and **release lead time** Phase 2's tracked KPIs, and FR-RPT-03 — a Phase 2 deliverable — commits to "Change Success Rate, change-induced Incident rate, emergency change ratio, release frequency and lead time". Without **FR-CHG-11** (attribution of an Incident to a Change) and **FR-REL-08** (lead time from first linked Change authorization to successful deployment), Phase 2 cannot compute its own exit criteria, and a dashboard already scheduled in it reads from requirements no phase schedules. **FR-REL-07** joins them for a different reason: it is the closure gate on the Release lifecycle (FR-REL-03), and a lifecycle whose final state has no verification gate does not deliver the assurance this phase's exit criterion asserts. Risk R3 (change bypass) is also measured through FR-CHG-11.
+
+_Exit criterion:_ no SCMS deployment reaches production without an authorized Change and a Release record; recurring Incidents converge on Problems. Both stated Phase 2 KPIs are now computable from requirements scheduled in this phase.
 
 ### 14.5 Phase 3 — Scale, deflection & experience
 
-- Omnichannel expansion: email-to-ticket and in-app intake (FR-OMN-01 email/in-app, FR-OMN-03).
-- Knowledge maturity: deflection measurement, ratings, stale-article review, create-from-resolution (FR-KNW-06, 07, 10).
+- Omnichannel expansion: email-to-ticket and in-app intake (FR-OMN-01 email/in-app, FR-OMN-03), which also brings FR-OMN-02 and FR-OMN-04 to bear on the newly added channels — both bind to every channel, not only to the MVP ones. If dependency D7 was unavailable at MVP, the **email limb of FR-NOT-06** lands here with them.
+- Knowledge maturity: deflection measurement, ratings, stale-article review, create-from-resolution (FR-KNW-06, 07, 10), together with **knowledge suggestion at intake and the recording of suggestion-driven abandonment (FR-INC-16)**. FR-INC-16's second limb *is* the input FR-KNW-06 measures, so the two belong in the same phase. It is not MVP because in MVP the Knowledge Base is nearly empty: suggestions would be poor and the deflection figure they produce would be a meaningless baseline. Note that the MVP is not left unguarded at intake — FR-INC-15 already offers the correct path for the one case that matters most, an in-application sport decision.
+- Queue maturity: **category-entitlement guarding on assignment (FR-QUE-04)** and **group workload distribution with per-agent open-ticket counts (FR-QUE-05)**. Both scale with the size of the support organization, and neither is needed at MVP scale: under assumption A4 the MVP organization is one L1 function plus one L2/L3 group, where a mis-assignment is immediately visible and self-correcting, and where FR-RPT-01 already gives group managers queue depth and open tickets by priority and state. FR-QUE-04 becomes materially valuable exactly when FR-WFL-04 starts routing automatically — in this phase — because that is when assignments stop passing under human eyes. FR-QUE-05 is the per-agent refinement of an MVP view, and agent productivity is a stated KPI of this phase.
+- Catalog experience: **offering cost/effort metadata and expected fulfillment time shown to the requester (FR-CAT-06)**. Deliberately not MVP: an "expected fulfillment time" displayed before any fulfillment history exists is a guess presented as a commitment. By this phase the FR-SRQ-07 fulfillment-target data has accumulated enough for the displayed expectation to be truthful, and truthful expectations are what reduce status-chasing contacts — this phase's efficiency goal.
 - Automation depth: skill-based and round-robin assignment (FR-WFL-04), automated fulfillment (FR-SRQ-10), duplicate detection (FR-INC-17), recurrence-based Problem proposal (FR-PRB-08).
 - Domain KPI dashboards (FR-RPT-04), export (FR-RPT-06).
 - Major Incident maturity: communication cadence, post-review gate, portal status page (FR-MIM-04, 05, 06).
 - Ticket type conversion (FR-INC-14), OLAs and underpinning targets (FR-SLA-09), competition-scoped portal visibility (FR-KNW-09).
+- **Identity federation with the SCMS identity provider / SSO (FR-IAM-04).** Deferred deliberately: it changes *how* a user authenticates, not *what* the service can do, and it makes the only governed reporting channel depend on an externally owned component (D1) precisely in the scenarios — SCMS degraded — that generate most demand (NFR-AVL-02, NFR-AVL-03). Phase 0 therefore ships the locally held accounts that A2 already names as the fallback, and federation arrives once the role model (FR-IAM-02/05) is stable enough to map external profile attributes onto it without re-deciding entitlements.
 
 ### 14.6 Phase 4 — Continual Service Improvement (candidate, not committed)
 
-Proactive Problem Management (FR-PRB-09), configuration drift detection (FR-CMD-07), asset lifecycle (FR-CMD-08), CAB quorum rules (FR-APR-06), notification preferences (FR-NOT-07), CSAT/NPS programme, multi-tenant support.
+Proactive Problem Management (FR-PRB-09), configuration drift detection (FR-CMD-07), asset lifecycle (FR-CMD-08), CAB quorum rules (FR-APR-06), notification preferences (FR-NOT-07), the **push limb of FR-NOT-06** (`Could` — optional by its own wording), CSAT/NPS programme, multi-tenant support.
 
 ### 14.7 Traceability
 
@@ -775,6 +837,43 @@ Proactive Problem Management (FR-PRB-09), configuration drift detection (FR-CMD-
 | Phase 2 | Controlled platform evolution, repeat-failure elimination | Change Success Rate, change-induced Incident rate, unauthorized change rate, repeat Incident rate |
 | Phase 3 | Efficiency, deflection, experience at scale | Self-service deflection rate, agent productivity, CSAT, Major Incident rate |
 | Phase 4 | Continual Service Improvement | All trends; predictive risk reduction |
+
+### 14.8 Recorded decision — session security posture
+
+This subsection records a product decision that was previously left to interpretation. It is normative: FR-IAM-06 and FR-IAM-08 are to be read against it, and no downstream artifact may adopt a different reading.
+
+**The choice.** "Terminate sessions after a configurable inactivity period" admits two assurance levels:
+
+| Reading | What the user observes | What it protects against |
+| --- | --- | --- |
+| **Device-bounded termination** (chosen) | An unattended device stops granting access after the configured idle period; sign-out ends access on that device immediately; access stops being granted altogether once the maximum session lifetime elapses. | The unattended or handed-over shared device — the service-desk workstation left open on the ticket queue, the venue tablet passed between officials. |
+| **Centrally withdrawn access** (not chosen) | Every single request is admitted only after a central record confirms the session is still live, so access ends everywhere the instant the session ends. | Additionally, the replay of access material extracted from a device before its lifetime expires. |
+
+**Decision: device-bounded termination**, with a bounded maximum session lifetime, for all phases covered by this plan.
+
+**Rationale (product, not implementation).**
+
+1. **It covers the threat this product actually has.** The personas who hold elevated rights work on shared, physically accessible devices in a shift-based operation; that is the exposure FR-IAM-06 and FR-IAM-08 exist to close, and device-bounded termination closes it completely.
+2. **The residual exposure is proportionate.** Under the scope rule (§3) Sport ITSM holds support records and limited personal data of players and officials (NFR-SEC-07). It holds no payment instruments and can take no action inside SCMS — it cannot alter a fixture, a roster, a result or a standing. The damage achievable with replayed access before its lifetime expires does not warrant the assurance step.
+3. **The unchosen reading would put a dependency in front of the one thing that must never fail.** NFR-AVL-03 requires ticket intake to survive the failure of optional subsystems: no user may be prevented from logging an Incident. Making every request conditional on a central session check adds a component whose unavailability denies *all* access, including intake, during exactly the outages Sport ITSM exists to receive.
+4. **The high-value operations are protected directly instead.** FR-IAM-06 requires identity to be proven again **at the moment** of a privileged administrative action, so the operations that can do real damage are not defended by session duration at all.
+
+**What would reverse this decision.** Raise the posture to centrally withdrawn access, as a versioned change to FR-IAM-06 and FR-IAM-08 made in this PRD, if any of the following becomes true:
+
+- Sport ITSM begins to hold payment instruments or special-category personal data;
+- Sport ITSM gains the ability to execute an action with an effect inside SCMS (writing to a competition record, triggering a deployment);
+- a compliance obligation, a contractual commitment or a security review requires immediate, centrally enforced revocation of access;
+- an actual incident demonstrates replayed access as a realized threat.
+
+Until then, no artifact derived from this PRD may require access to be validated against a central session record on each request, and none may require a stored, per-request-updated record of live sessions — that behavior is not a requirement of this product.
+
+**Open by design.** Federation (FR-IAM-04, Phase 3) may transfer session lifetime governance to the SCMS identity provider. When it does, this subsection is revisited: the posture is then set jointly with the provider, and the assurance level may change without the product intent above changing.
+
+### 14.9 Phasing completeness
+
+**Every active functional requirement in §7 now carries a phase.** As of this revision §14.2 → §14.6 assign all **149 active** `FR-` IDs (150 declared, less the retired `FR-CHG-07`), and §8 is governed in full by the general rule in §14.1. No requirement is unphased, and none is phased implicitly through prose that does not name its ID — the failure mode that previously hid `FR-OMN-02`, `FR-OMN-04` and `FR-NOT-06` behind parenthetical descriptions in the MVP table while leaving them, formally, committed to nothing.
+
+This is a standing invariant, not a one-off clean-up. **Any requirement added to §7 must receive a phase in the same revision that creates it** — as `FR-IAM-08` and `FR-IAM-09` did — and any requirement whose phase is genuinely undecidable must be recorded here as an explicit open decision, with the reason, rather than left silently absent. An unphased requirement is not a gap in a list; it is a commitment nobody has made, and from downstream the two are indistinguishable.
 
 ---
 
@@ -806,6 +905,8 @@ Proactive Problem Management (FR-PRB-09), configuration drift detection (FR-CMD-
 9. Documentation is updated: capability spec, and Knowledge Article where the story changes user-visible behavior.
 10. The Product Owner has reviewed the behavior against the acceptance criteria and accepted it.
 
+> **Scope of this Definition of Done for non-functional requirements.** Items 3 → 8 verify the non-functional requirements that bind per story under the default rule and the Phase-0 invariants of §14.1. The **service-level** requirements of class A (NFR-AVL-01, NFR-AVL-02, NFR-PRF-03, NFR-DAT-04, NFR-CFG-03) are deliberately **not** in scope of story acceptance — no story can demonstrate a monthly availability target — and are accepted at **phase exit** instead. A story is therefore never blocked on them, and they are never considered satisfied by a story having passed.
+
 ---
 
 ## 16. Glossary
@@ -833,5 +934,6 @@ Proactive Problem Management (FR-PRB-09), configuration drift detection (FR-CMD-
 | **SCMS** | Sports Competition Management System — the supported service. |
 | **Service Offering** | A concrete, requestable variant of a Service published in the catalog. |
 | **Service Request** | A request for a standard, pre-approved, entitled platform service. |
+| **Session** | A continuous period of authenticated use by one user on one device. Bounded by an inactivity period and by a maximum lifetime (FR-IAM-06) and endable by the user at will (FR-IAM-08); its assurance level is fixed in §14.8. |
 | **SLA** | Service Level Agreement — response/resolution commitment. |
 | **SPOC** | Single Point of Contact — the Service Desk's role for platform users. |
