@@ -1,9 +1,11 @@
 # User Stories — C10 · Identity & Access Management
 
-> Source: `docs/backlog/epic-map.md` (generated 2026-09-06, HEAD `815672f`; repository HEAD at drill time `57b3837`, epic map unchanged since the stamp) · PRD §7.10, §4 · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §9
-> Scope: 7 requirements remaining · 16 stories · greenfield 16 · gap 0 · defect 0
-> Requirements skipped as already built: none — every `FR-IAM-*` is 🔴 Not built, so the epic map's build-state invariant (`remaining == total`) holds and no requirement is discarded.
-> `ReadTheCode()` was a no-op: no requirement is 🟡 / ⚫ / 🔍 and the workspace contains no `package.json`, no `apps/` and no `libs/`. No story carries a **Today:** line, because that field belongs exclusively to gap and defect stories.
+> Source: `docs/backlog/epic-map.md` (generated 2026-09-06, HEAD `815672f`; repository HEAD at drill time `57b3837`, epic map unchanged since the stamp) · PRD §7.10, §4, §14.2–§14.8 · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §9
+> Scope: 8 requirements remaining · 16 stories · greenfield 16 · gap 0 · defect 0
+> Requirements skipped as already built: none — every `FR-IAM-*` is 🔴 Not built (confirmed at this revision: no `identity-access` library, no auth module and no session code exist anywhere in `apps/` or `libs/`), so the epic map's build-state invariant (`remaining == total`) holds and no requirement is discarded.
+> `ReadTheCode()` was a no-op: the workspace still contains no `identity-access` code. No story carries a **Today:** line, because that field belongs exclusively to gap and defect stories.
+>
+> **Revision note (this pass).** The Product Owner resolved a previously open behavior question in the PRD: §14.8 ("Recorded decision: session security posture") now normatively adopts **device-bounded session termination** and expressly **prohibits** any downstream artifact from requiring per-request validation against a central session record, or a stored registry of live sessions updated on every request. `FR-IAM-06` was rewritten to add "prove identity again **at the moment of the action**" before any privileged administrative action, and a new requirement, `FR-IAM-08` (sign-out, M, Phase 1), was added. This revision updates `US-C10-03`, `US-C10-14` and `US-C10-15` to match, annotates the now-resolved phasing on `US-C10-09`, `US-C10-10`, `US-C10-14`, `US-C10-15` and `US-C10-16`, and closes the C10 portion of finding **F9**. No story ID was renumbered or reused; `FR-IAM-08` is traced from the already-existing `US-C10-03` rather than minting a new ID, per the Product Owner's own framing ("rewrite it, don't delete it").
 
 ---
 
@@ -61,26 +63,31 @@
 
 ---
 
-## US-C10-03 · Sign out and terminate the session
+## US-C10-03 · Sign out and end usable access on the device
 
 - **Shape:** greenfield
-- **Traces to:** `FR-IAM-01`, `FR-IAM-06` · Service Desk Agent (L1) · epic `C10`
+- **Traces to:** `FR-IAM-08` · Service Desk Agent (L1) · epic `C10`
+- **Phase:** 1 (MVP) — PRD §14.2, §14.3.
 
-**As a** Service Desk Agent (L1) **I want** to sign out explicitly **so that** my session cannot be reused on a shared service-desk workstation after I leave it.
+**As a** Service Desk Agent (L1) **I want** to end my session deliberately from wherever I am signed in **so that** the workstation I hand over grants no further access without the next person signing in under their own identity.
 
 ### Acceptance criteria
 
-**Given** an agent with an active session
+**Given** an agent with an active session on any authenticated surface of the product
 **When** they choose sign out
-**Then** the server-side session record is terminated, the client discards the token, and the shell navigates to the sign-in route.
+**Then** the device discards every credential and cached authenticated state it held, the shell navigates to the sign-in route, and this is reachable from any authenticated surface — not only one screen.
 
-**Given** a token belonging to a session that has been signed out
-**When** it is replayed on any protected route before its natural expiry
-**Then** the request is rejected with `401`, because the guard validates the session record and not only the token signature.
+**Given** a device on which sign-out has just completed
+**When** any further action is attempted on that device, whether through the UI or by replaying a request the browser had queued
+**Then** it requires a fresh authentication, because the device itself retains no usable access — sign-out is a property of the device, not a claim this story makes about material already extracted from the device or presented from a different device.
 
-**Given** a signed-out session
-**When** the user signs in again
-**Then** a new session record and a new token are issued; the previous ones are never revived.
+**Given** a signed-out device
+**When** anyone signs in on it afterward
+**Then** the action proceeds under the identity that just authenticated, so an audit entry recorded from that point on names the person who actually acted (`FR-AUD-02`), not whoever used the device before.
+
+**Given** this story's acceptance test
+**When** it is designed
+**Then** it proves the three criteria above on the signing-out device only; it does not assert anything about whether a token issued before sign-out still verifies if presented from a different device before its own natural expiry — PRD §14.8 deliberately leaves that outside this product's guarantees.
 
 ---
 
@@ -223,6 +230,7 @@
 
 - **Shape:** greenfield
 - **Traces to:** `FR-IAM-04`, `FR-IAM-01` · System Administrator · epic `C10`
+- **Phase:** `FR-IAM-04` is Phase 3 (PRD §14.5) — federation is deferred deliberately (§14.5, §14.8 "Open by design"). `FR-IAM-01` (the port existing at all, bound to a local-credential adapter) is Phase 0. This story is not part of the Phase 0/1 delivery cut; only the port-and-local-adapter shape it also traces to is.
 
 **As a** System Administrator **I want** authentication to be resolved through a port with a local-credential adapter behind it **so that** adding SCMS SSO later is an adapter swap in the composition root and not a redesign of the domain.
 
@@ -250,6 +258,7 @@
 
 - **Shape:** greenfield
 - **Traces to:** `FR-IAM-04` · Player / Competitor · epic `C10`
+- **Phase:** 3 (PRD §14.5) — deferred deliberately: federation changes *how* a user authenticates, not *what* the service can do, and Phase 0 ships the locally held accounts (`US-C10-01`, `US-C10-09`) as the fallback per assumption A2. This story is out of the Phase 0/1 delivery cut.
 
 **As a** Player / Competitor **I want** to sign in to Sport ITSM with my existing SCMS identity **so that** I do not maintain a second password to report a problem with the platform I already use.
 
@@ -356,57 +365,73 @@
 
 ---
 
-## US-C10-14 · Session terminates after a configurable inactivity period
+## US-C10-14 · Session terminates after a configurable inactivity period, on the device
 
 - **Shape:** greenfield
 - **Traces to:** `FR-IAM-06` · Service Desk Agent (L1) · epic `C10`
+- **Phase:** 1 (MVP) — PRD §14.3: "MVP is the first release with real requesters, real personal data (NFR-SEC-07) and shared service-desk workstations, so these protections ship with it."
 
-**As a** Service Desk Agent (L1) **I want** my session to end automatically after a configured period of inactivity **so that** an unattended service-desk workstation does not leave the ticket queue open.
+**As a** Service Desk Agent (L1) **I want** an unattended device to stop granting access on its own after a configured period of inactivity, and never to keep granting it past a bounded maximum lifetime **so that** a service-desk workstation left open does not leave the ticket queue reachable.
 
 ### Acceptance criteria
 
-**Given** an inactivity period defined in validated configuration
+**Given** an inactivity period and a maximum session lifetime defined in validated configuration
 **When** the application boots
-**Then** the value is read through `ConfigService` with a documented default, and boot fails fast if the value is missing or is not a positive duration.
+**Then** both values are read through `ConfigService` with a documented default, and boot fails fast if either is missing or is not a positive duration.
+
+**Given** an active session on a device
+**When** that device goes unused for longer than the configured inactivity period
+**Then** the device itself stops granting access from that point on — no further action succeeds without a fresh sign-in on that device — and the elapsed idle time is computed through `ClockPort`, never through `new Date()` in domain or application code. Per PRD §14.8, this enforcement is a property of the device: it is proven by tests that exercise the idle device itself, never by a test that asserts a central, per-request-checked record of the session's liveness.
 
 **Given** an active session
-**When** no request is made for longer than the configured period
-**Then** the next request is rejected with `401` and the session record is terminated; the elapsed time is computed through `ClockPort`, never through `new Date()` in domain or application code.
+**When** use of the device continues within the inactivity period
+**Then** the idle window keeps resetting and the device does not lose access on that account, up to the maximum session lifetime.
 
-**Given** an active session
-**When** requests continue within the period
-**Then** the inactivity window slides and the session is not terminated.
+**Given** a session that reaches the configured maximum lifetime
+**When** that lifetime elapses
+**Then** the device stops granting access even if it was in continuous use, because inactivity and maximum lifetime are two independent bounds and neither substitutes for the other.
 
-**Given** a session about to expire
+**Given** the same user signed in on a second, independent device
+**When** the first device's session ends through either bound
+**Then** the second device is unaffected — inactivity and lifetime termination are scoped to the device that went idle or aged out, not to every session the user holds, which is the device-bounded threat this requirement targets (the unattended or handed-over shared device) rather than centralized revocation.
+
+**Given** a session about to be ended by either bound
 **When** the remaining time crosses a warning threshold
 **Then** the web client shows a localized warning through Transloco with an explicit "stay signed in" action, and losing the session mid-form does not discard the entered data silently.
 
 ---
 
-## US-C10-15 · Step-up re-authentication for privileged administrative actions
+## US-C10-15 · Prove identity again at the moment of a privileged administrative action
 
 - **Shape:** greenfield
 - **Traces to:** `FR-IAM-06` · System Administrator · epic `C10`
+- **Phase:** 1 (MVP) — PRD §14.3, same clause as `US-C10-14`.
 
-**As a** System Administrator **I want** to re-enter my credentials before a privileged administrative action **so that** a hijacked or borrowed session cannot silently reconfigure the platform.
+**As a** System Administrator **I want** to be required to prove my identity again at the moment I perform a privileged administrative action **so that** a hijacked, borrowed or merely long-lived session cannot reconfigure the platform on the strength of a login that happened earlier.
 
 ### Acceptance criteria
 
-**Given** an operation declared privileged (at minimum: role assignment and revocation, and configuration of catalog, taxonomy, SLA policies, workflows and notification templates)
-**When** it is invoked with a session that has not been re-authenticated within the step-up validity window
-**Then** it is refused with a distinct, machine-readable "re-authentication required" outcome — not a generic `403` — and nothing is persisted.
+**Given** an operation declared privileged (at minimum: role assignment and revocation, and configuration of catalog, taxonomy, SLA policies, workflows and notification templates, and any operation `NFR-SEC-06` restricts)
+**When** it is invoked and the actor has not just proven their identity again for this action
+**Then** it is refused with a distinct, machine-readable "re-authentication required" outcome — not a generic `403` — nothing is persisted, and the refusal holds regardless of how recently the actor originally signed in or how active their session has been, because `FR-IAM-06` states plainly that an earlier successful authentication is not sufficient on its own.
 
 **Given** that refusal
-**When** the administrator re-enters valid credentials
-**Then** the session is marked step-up-verified for the configured window and the original operation can be retried and succeeds.
+**When** the administrator proves their identity again as part of retrying that same privileged action
+**Then** the action is authorized for this attempt and succeeds.
 
-**Given** invalid credentials at the step-up prompt
+**Given** a privileged action just authorized this way
+**When** the administrator attempts a second, later privileged action
+**Then** that second action is evaluated on its own — proof given for the first action does not stand in for proof of the second, because the requirement is proof "at the moment of the action", not proof for a stretch of time that follows it.
+
+**Given** invalid credentials supplied when proving identity for a privileged action
 **When** they are submitted
-**Then** the session keeps its existing privileges but gains no step-up mark, and the attempt is logged.
+**Then** the actor's ordinary session and its non-privileged access are unaffected, the privileged action is not authorized, and the attempt is logged.
 
 **Given** the set of privileged operations
 **When** a new one is added
 **Then** it is declared through the same explicit marker used by the operations above, so the requirement is satisfied by declaration rather than by remembering to add a check.
+
+> **Note on scope.** This story deliberately does not name how "at the moment of the action" is implemented — no guard, token claim or stored flag is specified here, per the skill's "don't invent the how." What it does rule out, per PRD §14.8, is any design whose *observable* behavior is proof-once-then-trusted for a configured window tracked in a central, per-request-checked session record; that reading was the defect in this story's previous revision.
 
 ---
 
@@ -414,6 +439,7 @@
 
 - **Shape:** greenfield
 - **Traces to:** `FR-IAM-07` · System Administrator · epic `C10`
+- **Phase:** 2 (PRD §14.4) — "Phase 2 is the accountability phase: it introduces Change authorization, emergency change and delegated approval, which multiply the privileged operations whose refusals are evidence." This story does **not** belong in any Phase 0/1 sequencing alongside `US-C10-14`/`US-C10-15`; it follows once Phase 2 opens.
 
 **As a** System Administrator **I want** every denied authorization on a privileged operation to be recorded **so that** attempts to exceed entitlements are visible after the fact instead of vanishing into a `403`.
 
@@ -444,9 +470,11 @@ Observations raised while writing these stories. The first two are carried over 
 | ID | Source | Finding | Effect on this backlog |
 | --- | --- | --- | --- |
 | **F5** | Epic map (carried) | **Mutual reference at phase 0.** `FR-IAM-05` requires role assignment and revocation to be "fully audited", which needs `C18`; `FR-AUD-02` requires every audit entry to carry an actor, which needs `C10`. | `C10` and `C18` are one phase-0 increment, not two sequenced epics. `US-C10-13` stops at publishing the domain events; the audit entry itself is `C18` (`FR-AUD-01`, `FR-AUD-02`) and **no `C18` story is written here**. |
-| **F9** | Epic map (carried) | **`FR-IAM-04`, `FR-IAM-06` and `FR-IAM-07` are assigned to no phase in PRD §14**, even though `FR-IAM-06` (inactivity timeout, step-up re-authentication) is a security control. | Stories `US-C10-09`, `US-C10-10` and `US-C10-14` → `US-C10-16` exist and are traced, but their phase is undecided. Whoever sequences these must resolve the phasing; a security control landing "sometime after MVP" is a decision, not an omission. |
+| **F9** | Epic map (carried) — **closed for C10, this revision** | **`FR-IAM-04`, `FR-IAM-06` and `FR-IAM-07` were assigned to no phase in PRD §14.** The Product Owner has since resolved this for every C10 requirement: PRD §14.2 now states explicitly "No Identity & Access requirement is unphased" — `FR-IAM-06` and `FR-IAM-08` are Phase 1 (§14.3), `FR-IAM-07` is Phase 2 (§14.4), `FR-IAM-04` is Phase 3 (§14.5). This backlog reflects that on `US-C10-09`, `US-C10-10`, `US-C10-14`, `US-C10-15` and `US-C10-16` with a **Phase** line. **Not closed beyond C10:** F9's original list also named `FR-INC-15`, `FR-INC-16`, `FR-CAT-06`, `FR-OMN-02`, `FR-OMN-04`, `FR-QUE-04`, `FR-QUE-05` and `FR-AUD-06`, which belong to other epics and remain unphased as far as this document can tell — that portion of F9 is not this epic's to close and is carried forward for whichever epic owns those requirements. | The record that F9 existed is kept (this row) rather than deleted, per instruction; its C10 scope is resolved and no longer open work for this backlog. |
 | **F13** | New | **The PRD has no persona identifiers.** §4.1 and §4.2 name personas in tables with no `PER-n` column, so the skill's `PER-n` trace field cannot be honoured without inventing PRD IDs. | Every story traces to the persona's **exact PRD name** instead. Stated once, here. If `PER-` IDs are wanted, the Product Owner must add them to PRD §4 and this file must be re-traced — they are not minted here. |
 | **F14** | New | **`C10` carries foundation work that is not user stories.** The epic map prices the whole workspace foundation into `C10`: Nx bootstrap with pnpm, ESLint 9 flat config with `@nx/enforce-module-boundaries`, Prettier, the three-axis tag scheme, the four applications (`api`, `api-e2e`, `web`, `web-e2e`), `libs/shared/{contracts,domain,ui,util}` including the in-house design system, and the PostgreSQL base schema with its TypeORM migration chain. | Deliberately **not** written as user stories — scaffolding has no persona and no user-observable behavior. It is enabling technical work, belongs in `T-C10-nn` tickets and must be sequenced before `US-C10-01`. It is also why the epic is sized XL while holding only 7 requirements: the 16 stories above do not represent the epic's full cost. |
 | **F15** | New | **`FR-IAM-03` is observable only through a record that `C10` does not own.** Requester-scoped and competition-scoped visibility are `identity-access` domain predicates (`ARCHITECTURE.md` §9), but the tickets they filter belong to `C1` and `C2`. | `US-C10-06` → `US-C10-08` are written against the **predicate and the scope restriction it yields**, verifiable by Jest unit tests with no ticket aggregate present. End-to-end proof over real tickets lands with `C1` / `C2` and must not be expected of `C10`'s acceptance run. |
-| **F16** | New | **Neither the PRD nor the architecture defines which operations are "privileged".** `FR-IAM-06` requires re-authentication for "privileged administrative actions" and `FR-IAM-07` requires recording denials "when it concerns privileged operations", but the set is never enumerated. | `US-C10-15` proposes the set — role assignment and revocation plus Admin Console configuration of catalog, taxonomy, SLA policies, workflows and notification templates — as an explicit, extensible declaration, and `US-C10-16` reuses it. **This is an assumption made by this backlog and needs Product Owner confirmation**; neither requirement is testable until the set is agreed. |
+| **F16** | Carried, **partially resolved this revision** | **Neither the PRD nor the architecture defined which operations are "privileged".** `FR-IAM-06` requires re-authentication for "privileged administrative actions" and `FR-IAM-07` requires recording denials "when it concerns privileged operations". The rewritten `FR-IAM-06` now names, in the requirement text itself, "role grant or revocation, reference-data and policy configuration, and every operation restricted by `NFR-SEC-06`" — which is this backlog's previously assumed list, now stated in the PRD rather than assumed by this document. | `US-C10-15` and `US-C10-16` now quote the PRD's own list instead of proposing one. **Still open:** `NFR-SEC-06` says such operations "MUST be restricted to System Administrator", which is a criterion, not a closed enumeration — whether every System-Administrator-only screen in the eventual Admin Console counts is a judgment call at ticketing time, not settled by this wording alone. |
 | **F17** | New | **`FR-IAM-07`'s recording destination is unspecified.** A denied authorization is not a change to a record, so it does not fit the `AuditEntry` shape of `FR-AUD-02` (previous value / new value) and it has no natural record reference. | `US-C10-16` specifies the content of the denial record but deliberately not its store. Choosing between a `C18` audit entry and a dedicated security log is an architecture decision that must be made before `US-C10-16` is ticketed. |
+| **F18** | New | **This document's own scope header disagrees with `docs/backlog/epic-map.md`.** The epic map's `C10` row (and §"Foundation ownership") still counts **7** `FR-IAM-*` requirements; the PRD now has **8** (`FR-IAM-01` → `FR-IAM-08`, the new sign-out requirement). The epic map is the Business Analyst's upstream input and is explicitly not this role's to edit. | This file's header now says "8 requirements remaining" to stay accurate about its own content, but `docs/backlog/epic-map.md` itself is stale and should be regenerated by `sport-itsm-product-owner` (Mode 2) so the summary table, the "Foundation ownership" §, and the C10 detail section all count 8. Reported, not fixed here. |
+| **F19** | New | **`US-C10-09` (`IdentityProviderPort` anti-corruption boundary) may be worth building ahead of its own Phase-3 trigger (`FR-IAM-04`).** The port-and-local-adapter shape is also required by `FR-IAM-01` (Phase 0) on its own terms — a local-credential authentication use case needs a port whether or not SSO ever arrives — so the seam could be cut once, during Phase 0/1 delivery, rather than retrofitted in Phase 3 onto an authentication use case that by then already has direct callers depending on its concrete shape. | This is an **architectural sequencing observation, not a Business Analyst decision** — raised here per instruction so the Architect / Tech Lead can decide whether `T-C10-nn` for `US-C10-09` is scheduled with the Phase 0/1 tickets even though the story's own phase (via `FR-IAM-04`) is Phase 3. The story itself is left phased at 3, matching its trace. |
