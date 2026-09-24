@@ -1,11 +1,13 @@
 # User Stories — C10 · Identity & Access Management
 
-> Source: `docs/backlog/epic-map.md` (generated 2026-09-06, HEAD `815672f`; repository HEAD at drill time `57b3837`, epic map unchanged since the stamp) · PRD §7.10, §4, §14.2–§14.8 · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §9
-> Scope: 8 requirements remaining · 16 stories · greenfield 16 · gap 0 · defect 0
+> Source: `docs/backlog/epic-map.md` (generated 2026-09-06, HEAD `815672f`; repository HEAD at drill time `57b3837`, epic map unchanged since the stamp; **re-consulted 2026-09-24 against the `epic-map.md` refresh at HEAD `d5d16bc`, repository HEAD at this pass `9acde6b`, for `FR-IAM-09` only** — see the second revision note below) · PRD §7.10, §7.17, §4, §8.3–§8.4, §9, §14.2–§14.9 · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §9
+> Scope: 9 requirements remaining · 19 stories · greenfield 19 · gap 0 · defect 0
 > Requirements skipped as already built: none — every `FR-IAM-*` is 🔴 Not built (confirmed at this revision: no `identity-access` library, no auth module and no session code exist anywhere in `apps/` or `libs/`), so the epic map's build-state invariant (`remaining == total`) holds and no requirement is discarded.
 > `ReadTheCode()` was a no-op: the workspace still contains no `identity-access` code. No story carries a **Today:** line, because that field belongs exclusively to gap and defect stories.
 >
 > **Revision note (this pass).** The Product Owner resolved a previously open behavior question in the PRD: §14.8 ("Recorded decision: session security posture") now normatively adopts **device-bounded session termination** and expressly **prohibits** any downstream artifact from requiring per-request validation against a central session record, or a stored registry of live sessions updated on every request. `FR-IAM-06` was rewritten to add "prove identity again **at the moment of the action**" before any privileged administrative action, and a new requirement, `FR-IAM-08` (sign-out, M, Phase 1), was added. This revision updates `US-C10-03`, `US-C10-14` and `US-C10-15` to match, annotates the now-resolved phasing on `US-C10-09`, `US-C10-10`, `US-C10-14`, `US-C10-15` and `US-C10-16`, and closes the C10 portion of finding **F9**. No story ID was renumbered or reused; `FR-IAM-08` is traced from the already-existing `US-C10-03` rather than minting a new ID, per the Product Owner's own framing ("rewrite it, don't delete it").
+>
+> **Revision note (2026-09-24 pass — `FR-IAM-09`, lawful erasure).** The Product Owner added `FR-IAM-09` (lawful erasure / anonymization of personal data, `M`, Phase 1) to close the previously unfunded erasure limb of `NFR-SEC-07`, and in the same pass amended `FR-AUD-03` (audit immutability) and `FR-AUD-06` (audit retention) so all three agree instead of contradicting: anonymization is the **single authorized exception** to audit immutability, is **never** deferred by retention, and is itself recorded as a new immutable entry that names who/when/lawful basis and never what was removed. `FR-IAM-09` is the widest-reaching requirement in this epic — it spans users, tickets, comments, notifications, exports, work lists, reports and audit history — so it is written below as **three stories, not one**: the operation itself (`US-C10-17`), its scope over free text specifically, which is a materially different substitution than a structured field (`US-C10-18`), and what must remain true afterward — evidence, reconstructability, retention precedence and irreversibility (`US-C10-19`). All three are shaped **greenfield**, matching the epic map's 🔴 for `FR-IAM-09`; `ReadTheCode()` was, again, a no-op. Per `docs/backlog/epic-map.md`'s `C10` section ("Drill it late within the epic, after the audit discipline exists, and do not let it be reduced to 'delete the user row'"), these three stories are written now but must not be **ticketed** ahead of the `C18` audit discipline they read and write — `US-C10-19` says so explicitly.
 
 ---
 
@@ -463,6 +465,111 @@
 
 ---
 
+## US-C10-17 · Anonymize a person's identity across every surface, in one operation
+
+- **Shape:** greenfield
+- **Traces to:** `FR-IAM-09` · System Administrator · epic `C10`
+- **Phase:** 1 (MVP) — PRD §14.3, §14.9. Per `docs/backlog/epic-map.md`'s `C10` section, drill this story **last** within the `C10`/`C18` phase-0/1 increment, after the audit discipline (`C18`) exists — never first, and never reduced to deleting the user's row.
+
+**As a** System Administrator **I want** to render an identified person's personal data non-identifying across every surface of the product in a single operation **so that** I can honor a lawful erasure request completely, without deleting or rewriting a single record.
+
+### Acceptance criteria
+
+**Given** an authorized System Administrator and a lawful erasure request naming one identified person
+**When** they execute the anonymization operation for that person
+**Then** every surface across the product where that person is named as an identifying value — user profile, ticket requester/actor fields, comments, notifications, exports, work lists, reports and audit entries — no longer shows an identifying value for them, replaced by the same stable non-identifying surrogate everywhere they were named, in one operation rather than one pass per surface.
+
+**Given** that same operation
+**When** it completes
+**Then** no record and no audit entry is deleted, and no field other than the identifying value itself changes — timestamps, actions, roles, sequence, state, previous/new values, SLA timers, breach records and approval decisions are exactly what they were immediately before the operation.
+
+**Given** a ticket, comment or audit entry that never named the anonymized person, including every record belonging to a different, unrelated identified person
+**When** the operation completes
+**Then** it is untouched — a second person's identifying data is unaffected by anonymizing the first, exactly as a second signed-in device is unaffected by another device's sign-out (`US-C10-03`).
+
+**Given** the anonymization operation invoked by an actor without the System Administrator role, or without having just proven their identity again for this action
+**When** the invocation is attempted
+**Then** it is denied under the same authorization predicate and step-up re-authentication requirement as any other privileged operation (`US-C10-05`, `US-C10-15`), and nothing is anonymized.
+
+**Given** a person already anonymized
+**When** the operation is invoked again for that same person
+**Then** it is idempotent: no error is raised over data that is already anonymized, and no second, different surrogate is introduced for the same person.
+
+---
+
+## US-C10-18 · Personal data embedded in free text is replaced by a marker, not carried forward
+
+- **Shape:** greenfield
+- **Traces to:** `FR-IAM-09` · System Administrator · epic `C10`
+- **Phase:** 1 (MVP) — PRD §14.3, §14.9. Same drill-order caveat as `US-C10-17`.
+
+**As a** System Administrator **I want** personal data typed into a comment, work note or any other free-text field to be replaced by a marker rather than left standing **so that** a lawful erasure request is honored even where the person's name or contact details were typed as prose instead of held in a structured field.
+
+### Acceptance criteria
+
+**Given** a comment or internal work note that contains the anonymized person's name, contact details or any other personal data typed as free text — whether written by that person or by someone else about them
+**When** the anonymization operation for that person completes
+**Then** every occurrence of that personal data inside the text is replaced by a marker, and the rest of the text — the part that is not personal data — is left exactly as written.
+
+**Given** that same free-text field
+**When** it is displayed afterward, whether to a requester, to an agent, or inside an export
+**Then** the marker reads unambiguously as personal data having been removed, never as blank space, a broken token, or a placeholder that could be mistaken for original content.
+
+**Given** a free-text field that also mentions a different person who is not the subject of this erasure request
+**When** the operation completes
+**Then** that other person's mention is left untouched — the substitution is scoped to exactly the requested person, never to every name a comment happens to contain.
+
+**Given** a free-text field that contained no personal data belonging to the anonymized person in the first place
+**When** the operation completes
+**Then** it is not altered at all, so a marker never appears where nothing needed removing.
+
+**Given** a comment already replaced by markers
+**When** its authorship, timestamp, thread position and the requester-visible vs. internal split (`FR-AUD-04`, `FR-INC-11`) are inspected afterward
+**Then** all of them are exactly what they were before the operation — only the personal-data span inside the text changed.
+
+---
+
+## US-C10-19 · The anonymized history stays evidenced, reconstructable and irreversible
+
+- **Shape:** greenfield
+- **Traces to:** `FR-IAM-09`, `FR-AUD-03`, `FR-AUD-06` · Service Owner / Service Manager · epic `C10`
+- **Phase:** 1 (MVP) — PRD §14.3, §14.9.
+- **Dependency:** this story's acceptance criteria are stated against audit entries that `C18` owns (`FR-AUD-01` → `FR-AUD-06`) and are only end-to-end testable once `C18`'s append-only `AuditEntry` exists. It is written now, per instruction, but per `docs/backlog/epic-map.md`'s `C10` section it must not be **ticketed** ahead of that discipline — see finding **F5**.
+
+**As a** Service Owner / Service Manager **I want** an anonymization operation to leave every record's history fully reconstructable, leave proof that the erasure itself happened, and leave no way to undo it **so that** I can keep trusting the audit trail and the KPI figures it produces even after a person's identity has been removed from them.
+
+### Acceptance criteria
+
+**Given** a completed anonymization operation
+**When** the transaction commits
+**Then** exactly one new immutable audit entry is created recording who performed the operation, when, and under what lawful basis it was performed — and that entry never states which data was removed or who the anonymized person was.
+
+**Given** a System Administrator who needs to evidence that a specific lawful erasure request was acted upon and completed
+**When** they inspect the audit trail
+**Then** the entry above is sufficient evidence of that, on its own, without inspecting or reconstructing any of the data that was anonymized.
+
+**Given** a record or audit entry that named the person before anonymization
+**When** it is inspected afterward
+**Then** it still satisfies full reconstructability (`NFR-AUD-01`) — what happened, when, by whom (by role, even where the name is now a surrogate), and in what order — exactly as `FR-AUD-03` requires of every audit entry except this one narrow, named exception.
+
+**Given** a period computation over a §9 metric (for example SLA Compliance Rate, MTTR, Reopen Rate or CSAT) that includes a ticket touched by this operation
+**When** the same filters are re-run after the operation
+**Then** the figures are unchanged from what they were immediately before it and remain reproducible (`FR-RPT-07`) — anonymization removes identifiability, never a timestamp, a state, a duration or a score that a KPI is computed from.
+
+**Given** a record subject to a retention period that has not yet elapsed at the time of anonymization
+**When** that period continues to run
+**Then** the record, now anonymized, is retained for the remainder of its full term — `FR-AUD-06` is never invoked to shorten, defer or exempt it because it was anonymized.
+
+**Given** a completed anonymization operation
+**When** any attempt is made, by any role including System Administrator, to reverse the substitution or to re-identify the person from any surviving record
+**Then** no means to do so exists anywhere in the system — the operation is irreversible by construction, not by policy alone.
+
+**Given** the exception this operation exercises
+**When** any other role or any other operation attempts to edit, delete or re-word an existing audit entry for a reason other than this anonymization
+**Then** it is refused — `FR-AUD-03`'s immutability holds for every other case, and this operation is the sole authorized exception and does not widen it.
+
+---
+
 ## Findings
 
 Observations raised while writing these stories. The first two are carried over from `docs/backlog/epic-map.md`; the rest are new.
@@ -478,3 +585,6 @@ Observations raised while writing these stories. The first two are carried over 
 | **F17** | New | **`FR-IAM-07`'s recording destination is unspecified.** A denied authorization is not a change to a record, so it does not fit the `AuditEntry` shape of `FR-AUD-02` (previous value / new value) and it has no natural record reference. | `US-C10-16` specifies the content of the denial record but deliberately not its store. Choosing between a `C18` audit entry and a dedicated security log is an architecture decision that must be made before `US-C10-16` is ticketed. |
 | **F18** | New | **This document's own scope header disagrees with `docs/backlog/epic-map.md`.** The epic map's `C10` row (and §"Foundation ownership") still counts **7** `FR-IAM-*` requirements; the PRD now has **8** (`FR-IAM-01` → `FR-IAM-08`, the new sign-out requirement). The epic map is the Business Analyst's upstream input and is explicitly not this role's to edit. | This file's header now says "8 requirements remaining" to stay accurate about its own content, but `docs/backlog/epic-map.md` itself is stale and should be regenerated by `sport-itsm-product-owner` (Mode 2) so the summary table, the "Foundation ownership" §, and the C10 detail section all count 8. Reported, not fixed here. |
 | **F19** | New | **`US-C10-09` (`IdentityProviderPort` anti-corruption boundary) may be worth building ahead of its own Phase-3 trigger (`FR-IAM-04`).** The port-and-local-adapter shape is also required by `FR-IAM-01` (Phase 0) on its own terms — a local-credential authentication use case needs a port whether or not SSO ever arrives — so the seam could be cut once, during Phase 0/1 delivery, rather than retrofitted in Phase 3 onto an authentication use case that by then already has direct callers depending on its concrete shape. | This is an **architectural sequencing observation, not a Business Analyst decision** — raised here per instruction so the Architect / Tech Lead can decide whether `T-C10-nn` for `US-C10-09` is scheduled with the Phase 0/1 tickets even though the story's own phase (via `FR-IAM-04`) is Phase 3. The story itself is left phased at 3, matching its trace. |
+| **F20** | New — from writing `US-C10-17`/`18`/`19` (`FR-IAM-09`) | **No requirement defines an intake for a lawful erasure request, or who determines it is lawful before a System Administrator acts on it.** `FR-IAM-09` requires the System Administrator to "evidence that the request was received, acted upon and completed" — three distinct milestones — but nothing in §7 creates a request/ticket type to capture "received": `FR-SRQ-09`'s six MVP catalog offerings (account creation, role/organizer-access provisioning, password reset, data export, billing & registration-payment support, reactivation) do not include a data-erasure request, and no `FR-` states who assesses that a request is lawful (versus, say, someone impersonating the data subject) before the operation is authorized. | `US-C10-17`/`18`/`19` deliberately cover only what the operation itself must prove — that it was **acted upon and completed**, via the new immutable entry in `US-C10-19` — and do not invent an intake workflow, a "received" milestone, or a legitimacy check. Neither is filled in here; both need a Product Owner decision in the PRD before an Architect/Tech Lead can ticket them. |
+| **F21** | New — from writing `US-C10-17` (`FR-IAM-09`) | **No stated behavior for the erased person's own ability to authenticate afterward.** `FR-IAM-09` requires personal data to become non-identifying "across every surface", and a `User`'s own account attributes (name, contact identifiers used to sign in) are personal data — but neither `FR-IAM-09` nor `FR-IAM-01` says whether that account is deactivated, kept but no longer reachable under the old identity, or still usable for sign-in once its identifying attributes are surrogated. This sits exactly at the boundary between this new requirement and this epic's own `FR-IAM-01`. | Not written into `US-C10-17` as a criterion, because neither requirement states it — inventing one would be exactly the "don't invent the how" (and here, the "what") the skill warns against. Reported for the Product Owner to resolve in the PRD; until then, an Architect/Tech Lead ticketing `US-C10-17` should treat the erased person's post-erasure sign-in capability as an open design question, not a settled one. |
+| **F22** | New — from writing `US-C10-17` (`FR-IAM-09`) | **Open tickets, pending approvals or active fulfillment tasks awaiting the person's own input are not addressed.** `FR-IAM-09` states the System Administrator "MUST be able to" anonymize on request, without qualification — nothing says whether an erasure must wait for a record to close first, proceeds regardless of open state, or is refused while something is pending on that person. `US-C10-17`'s criteria therefore assume, but do not find stated, that the operation is available regardless of a record's open/closed state. | Flagged rather than assumed silently. If refusal-while-open or a different behavior is intended, that is a Product Owner decision for the PRD, and `US-C10-17` would need a new criterion once it is made. |
