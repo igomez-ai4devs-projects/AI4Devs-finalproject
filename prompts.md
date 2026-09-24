@@ -1381,6 +1381,7 @@ Implementado ticket T-C10-06
 Agent: Claude Code - Sonnet 4.6
 
 ### Request:
+
 Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-07.md ·
 `libs/shared/util` — librería de helpers puros
 Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
@@ -1424,5 +1425,190 @@ es vinculante. Lee además, y no de memoria:
 ### Response:
 
 Implementado ticket T-C10-07
+
+</br>
+
+**Prompt 8:**
+
+Agent: Claude Code - Sonnet 4.6
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-08.md ·
+`libs/shared/domain` — primitivas de identidad y de ticket del kernel compartido
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero igual que en T-C10-07 **aquí no se escribe una línea de NestJS**:
+es `platform:shared`, `type:domain`, código puro. Manda `sport-itsm-engineering-principles`
+(inmutabilidad, errores tipados, hacer irrepresentables los estados ilegales, YAGNI), con
+`sport-itsm-architecture` para la fila `domain` de la matriz y `sport-itsm-workflow` para el cierre.
+No apliques idiomas de `sport-itsm-backend`.
+
+#### Precondición
+T-C10-01 … T-C10-07 deben estar hechos. Compruébalo antes de tocar nada:
+
+    node -v                                  # v22.x
+    pnpm nx show projects                    # EXACTAMENTE: shared-util, api-e2e, web-e2e, api, web
+    pnpm nx test shared-util                 # 3 suites, 19 tests, exit 0
+    node -e "console.log(Object.keys(require('./tsconfig.base.json').compilerOptions.paths))"
+                                             # exactamente ['@sport-itsm/shared-util']
+    pnpm verify:boundaries                   # 10/10, exit 0
+    git status --porcelain                   # limpio antes de empezar
+
+**El arnés de sondas es de un solo proceso a la vez.** `libs/__boundary-probe` funciona como lock:
+si ves el mensaje "another run is in flight", **espera** — no borres el directorio, hay otra
+ejecución viva y borrarlo le destruye el andamiaje y deja `tsconfig.base.json` contaminado.
+
+#### El ticket es el contrato
+Lee docs/backlog/C10/tickets/T-C10-08.md entero: su `## Scope` es exhaustivo y su "Out of scope"
+es vinculante. Lee además, y no de memoria:
+
+- **`ARCHITECTURE.md` §5.5** — el comando exacto (ya está transcrito en el Scope del ticket) **y
+  los dos pasos que el generador no sabe hacer**: poner `"types": []` en `tsconfig.lib.json` y
+  borrar la unidad de ejemplo. Ambos son obligatorios antes de dar la librería por andamiada.
+- **`ARCHITECTURE.md` §5.3** — fila `domain`: solo puede depender de `domain` y `util`. Y §5.4,
+  la regla de plataforma: `platform:shared` solo alcanza `platform:shared`.
+- **`DATA-MODEL.md` §3.1** (tabla de value objects inline) y **§3.1.1** — de ahí salen la forma y
+  las reglas de tres de las seis primitivas. No las deduzcas del nombre.
+- **`PRD.md` FR-INC-04, FR-INC-05 y NFR-CFG-01** — para entender qué **no** es de esta librería.
+- `libs/shared/util/src/index.ts` — lo que ya existe y puedes usar.
+
+#### Dónde vive la verdad de cada primitiva — y dónde NO está
+Esto es el 70% del riesgo del ticket. Tres de las seis se pueden implementar "razonablemente" y
+quedar mal, porque su regla está escrita en otro documento.
+
+- **`Identity` NO genera identificadores.** `DATA-MODEL.md` §3.1 es explícito: UUID **v7**, generado
+  por el **puerto de repositorio** (`nextIdentity()`), no por la base de datos y no por el value
+  object — para que el agregado esté completo y válido en código de dominio puro antes de cualquier
+  I/O (ADR-005). Un `Identity.generate()` con `crypto.randomUUID()` rompe eso, y además no compila
+  con `"types": []`, que es exactamente la señal que esa política existe para dar. El VO **valida y
+  envuelve**. Decide y justifica si además exige la **versión 7** o acepta cualquier UUID: §3.1.1
+  argumenta por qué hasta la red de seguridad de la base de datos es v7, y ese argumento aplica
+  aquí igual. Ninguna de las dos respuestas es obviamente errónea; la que no argumentes, sí.
+- **`TicketReference` NO genera referencias.** Formato real, de `DATA-MODEL.md`: `INC0000123`,
+  `SRQ0000045` — `varchar(20)`, único, **nunca reutilizado**, servido por una `SEQUENCE` de
+  PostgreSQL que lee el adaptador de repositorio (`nextReference()`). El VO valida el formato y
+  nada más. No inventes un contador, ni un prefijo que no esté en el documento.
+- **`Priority` NO deriva de nada.** FR-INC-04 exige que la Prioridad salga de una matriz
+  **Impacto × Urgencia configurable**, y NFR-CFG-01 exige que un administrador pueda cambiarla sin
+  release; el esquema llega a tener columna `priority_matrix_id`. Codificar aquí una matriz 5×5
+  congelaría en el kernel una regla que es configuración, y además metería vocabulario de
+  `incident` en `shared`. `Priority` es un valor validado — **P1…P4**, según `DATA-MODEL.md` — y la
+  derivación es de otro ticket y de otro contexto. Si te parece que el ticket debería incluirla,
+  **repórtalo, no la escribas**.
+- **`ImpactLevel` y `UrgencyLevel`**: escala **1–5** (`impact_enum`/`urgency_enum`). Son los únicos
+  valores legales; cualquier otro es un error de construcción.
+- **`DateTimeRange` no conoce el reloj.** Nada de `new Date()` como valor por defecto ni como
+  validación contra "ahora": `ClockPort` es **T-C10-09** y el AC2 prohíbe `new Date()` en el
+  código fuente. El rango recibe sus dos instantes y valida su relación (inicio ≤ fin, y decide y
+  documenta si el fin es inclusivo). Su uso conocido es la ventana de calendario de SLA.
+
+#### Errores: se lanzan, no se devuelven
+El AC3 es literal: construir con entrada inválida **lanza un error tipado de dominio** y nunca
+devuelve una instancia a medio construir. Sé que `@sport-itsm/shared-util` exporta `Result`/`ok`/
+`err` desde T-C10-07 y la tentación de "mejorar" el AC devolviendo un `Result` es real: **no lo
+hagas**. `Result` es para fallos esperados que el llamante debe tratar; una invariante de value
+object rota es un error de programación en el borde. Si crees que el AC está mal, es un hallazgo
+que se reporta, no se reinterpreta mientras implementas.
+
+Diseña la jerarquía de errores con criterio: una clase base de error de dominio con nombre propio y
+subtipos por invariante, o un tipo discriminado — lo que elijas, que permita a un llamante
+distinguir **qué** invariante falló sin parsear el mensaje. Preserva el contexto (valor ofensivo).
+
+#### Esta es la primera arista del grafo — si la hay
+Hoy `pnpm nx graph` tiene 5 nodos y **cero aristas**: `shared-util` existe pero nadie la importa.
+`ARCHITECTURE.md` §12.3 dice que la inspección del grafo se vuelve una comprobación real con el
+primer ticket que **consuma** una librería. Este puede serlo: el AC2 permite explícitamente que
+`shared-domain` importe `libs/shared/util` y nada más.
+
+- Si `assertNever` te sirve de verdad para un `switch` exhaustivo sobre una escala cerrada, o
+  `isNonEmptyString` para una validación, **úsalos por el barrel** `@sport-itsm/shared-util` —
+  nunca por ruta profunda — y entonces verifica la arista: `pnpm nx graph --file=tmp/graph.json` debe
+  mostrar `shared-domain -> shared-util` **y ninguna otra**, y `pnpm nx lint shared-domain` debe
+  pasar (es la dirección legal de la matriz, hoy sin probar sobre proyectos reales).
+- **Si ninguno encaja, no fuerces un import para dibujar la arista.** Un helper usado por decoración
+  es peor que un grafo vacío. Dilo en el informe y ya está.
+
+#### Trampas ya pagadas — no las redescubras
+- **`--name=` como flag.** El comando del Scope ya lo lleva. Con el posicional, el proyecto se
+  llamaría `domain` y el AC1 (`pnpm nx test shared-domain`) fallaría contra un proyecto inexistente.
+- **Jest 30.** Tras generar, `git diff package.json`: si el generador ha tocado `jest`, `ts-jest`,
+  `@types/jest` o `jest-environment-node`, restaura los pines (29.7.0 / 29.4.12 / 29.5.14) y
+  reinstala. Lo ideal es que `git diff package.json pnpm-lock.yaml` quede **vacío**: esta librería
+  no añade ni una dependencia.
+- **`tsconfig.base.json`** pasa de una entrada a exactamente **dos**. Ni una más, y no toques nada
+  más del fichero.
+- **`jest.config.ts`** con `displayName: 'shared-domain'`, `preset` y `coverageDirectory` a tres
+  niveles. **No declares un target `test` en `project.json`** (lo infiere `@nx/jest`) y **no pongas
+  `passWithNoTests`**.
+- **`eslint.config.mjs` de proyecto**: las dos líneas que reexportan el raíz, igual que en
+  `shared-util` y `apps/api`. Ni una regla añadida ni relajada.
+- **Prettier en Windows.** `pnpm prettier --check .` marca ~50 ficheros que no has tocado: es
+  `core.autocrlf=true` dejando CRLF en el árbol, condición preexistente que CI no ve. Comprueba
+  **solo lo tuyo**: `pnpm prettier --check libs/shared/domain tsconfig.base.json`. No reformatees
+  el repositorio.
+
+#### Lo que NO debes tocar
+- **`libs/shared/util`.** Si necesitas un helper que no existe, **no lo añadas ahí**: ese es otro
+  ticket y otro Scope. Resuélvelo dentro de `shared-domain` o repórtalo.
+- **`DomainEvent`, `EventPublisherPort`, `ClockPort`** (T-C10-09) y **`StateModel`** (T-C10-10).
+  Están en el "Out of scope" del ticket con nombre y número. Ni un esqueleto, ni un `TODO`.
+- **Cualquier agregado de contexto** (`Incident`, `User`, `Session`…), **`libs/shared/contracts`**
+  (T-C10-11) y cualquier otra librería.
+- **`eslint.config.mjs` raíz, `nx.json`, `tools/boundary-probes/`, `.github/workflows/`, `CLAUDE.md`
+  y todo `docs/`.** El ticket no se edita ni se marca como hecho.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — `pnpm nx test shared-domain`: pega el resumen de Jest con el número de specs. Cada
+   primitiva con sus cuatro casos del Scope: construcción válida, rechazo de entrada inválida,
+   igualdad e inmutabilidad. Un "No tests found" no cumple.
+2. **AC2 — pureza.** Pega la salida de
+   `grep -rnE "from '(@nestjs|@angular|typeorm|rxjs|express|node:|fs|path|crypto)|new Date\(" libs/shared/domain/src`
+   — debe estar vacía. Confirma que el único import externo, si lo hay, es
+   `@sport-itsm/shared-util`. Y enseña `libs/shared/domain/tsconfig.lib.json` con `"types": []`.
+3. **AC3** — demuestra con un test por primitiva que la construcción inválida **lanza**, y que el
+   error es distinguible por tipo, no por mensaje.
+4. **AC4 — tags y lint.** `pnpm nx show project shared-domain --json`: exactamente tres tags,
+   `projectType: library`, targets `lint` y `test` (sin `build`: `--bundler=none`). Y
+   `pnpm nx lint shared-domain` en verde.
+5. **El grafo.** `pnpm nx graph --file=tmp/graph.json`, inspecciona nodos y aristas, borra el
+   fichero, y di si este ticket ha dibujado la primera arista del workspace o si el grafo sigue
+   vacío y por qué.
+6. `pnpm nx show projects` → exactamente `shared-domain`, `shared-util`, `api-e2e`, `web-e2e`,
+   `api`, `web`.
+7. `pnpm verify:boundaries` → **10/10**, exit 0, y después `git diff tsconfig.base.json` muestra
+   solo los dos alias. Ejecútalo **solo**, sin otro proceso corriéndolo a la vez.
+8. `pnpm nx run-many -t lint test build` en verde — es lo que corre CI — con `shared-domain` en
+   `lint` y en `test`.
+9. `pnpm prettier --check libs/shared/domain tsconfig.base.json` pasa.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Si no cabe en la estimación
+El ticket dice 3h para seis value objects con sus invariantes. Si al llegar al final ves que no
+cabe, **no recortes los tests**: entrega las primitivas completas que quepan, di exactamente cuáles
+faltan y por qué, y déjalo como hallazgo de estimación. Media docena de VOs sin cobertura de
+invariantes es peor que cuatro bien cerrados.
+
+#### Restricciones
+- No modifiques nada bajo `docs/` ni `.claude/`. No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar
+- Ficheros creados y el comando generador exacto; qué borraste de la salida del generador.
+- **Cada value object con su decisión de diseño**: cómo garantizas la inmutabilidad (`readonly`,
+  constructor privado + factoría estática, `Object.freeze`… y por qué esa), cómo implementas
+  `equals`, y las dos decisiones que el ticket deja abiertas — si `Identity` exige v7, y si el fin
+  de `DateTimeRange` es inclusivo.
+- Si usaste algo de `@sport-itsm/shared-util` y, si no, por qué no encajaba.
+- La salida de las nueve verificaciones.
+- Qué notas de estado quedan obsoletas (`ARCHITECTURE.md` §12.3 sobre el grafo y las suites,
+  `readme.md` §2.3.6, la nota final de `PROJECT-STRUCTURE.md`): **repórtalas, no las corrijas**.
+- Cualquier regla que hayas necesitado y no estuviera en PRD, DATA-MODEL ni ARCHITECTURE: dila como
+  hallazgo para el Product Owner o el arquitecto, no la inventes dentro del código.
+
+### Response:
+
+Implementado ticket T-C10-08
 
 </br>
