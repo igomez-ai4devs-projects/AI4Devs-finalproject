@@ -174,7 +174,7 @@ flowchart TB
 |---|---|
 | Transport | HTTPS, JSON, REST. Route prefix `/api`; health endpoints **not** prefixed. |
 | Typing | Request and response shapes are declared once in `libs/shared/contracts` and imported by both platforms — the only permitted FE/BE coupling. |
-| AuthN | `Authorization: Bearer <JWT>` issued after Passport JWT verification; `bcrypt` for local credentials until SSO federation lands (FR-IAM-04 is **Should**, phase 2+). |
+| AuthN | `Authorization: Bearer <JWT>` issued after Passport JWT verification; `bcrypt` for local credentials until SSO federation lands (FR-IAM-04 is **Should**, phase 2+). The token is the whole of the MVP's session state: **no server-side session record exists**, a scope decision owned by DATA-MODEL §6.4 / M11 that `FR-IAM-06` may reverse. This row has been cited as the authority for "stateless JWT"; it is not — it fixes the credential format only. "Stateless" elsewhere in this document (ADR-004) means horizontally scalable API *instances*, which says nothing about where session state may live. |
 | i18n | Client sets `Accept-Language`; `nestjs-i18n` localizes API error messages and email templates (NFR-I18N-01/02/04). |
 | Errors | Domain errors are mapped by a NestJS exception filter to a stable, contract-declared error-code envelope; the client maps codes to Transloco keys. Error codes are part of the contract, error **text** is not. |
 | Time | All instants persisted and computed in UTC; the client renders in the user's locale and time zone (NFR-I18N-03). |
@@ -191,7 +191,7 @@ Ten baseline capability contexts from the architecture standard, plus a shared k
 |---|---|---|---|---|
 | `incident` | Core | C1, C13 | `Incident` (root), `MajorIncident` declaration on the Incident root | 1 |
 | `service-request` | Core | C2 | `ServiceRequest` (root) with `FulfillmentTask` entities | 1 |
-| `sla` | Core | C7 | `SlaPolicy`, `SlaInstance` (timer state) | 1 |
+| `sla` | Core | C7 | `SlaPolicy`, `SlaInstance` (timer state), `SupportSchedule` (owns its wall-clock `OpeningWindow` and `HolidayDate` values, DATA-MODEL §20.5) | 1 |
 | `service-catalog` | Supporting | C8 | `Service`, `ServiceOffering` | 1 |
 | `knowledge` | Supporting | C9 | `KnowledgeArticle` | 1 |
 | `identity-access` | Generic | C10, C14 | `User`, `Role`, `ResolverGroup` | 0 / 1 |
@@ -215,7 +215,7 @@ Two PRD cross-cutting capabilities deliberately get **no context of their own**:
 ```mermaid
 flowchart TB
     subgraph kernel["Shared kernel - scope:shared"]
-        SK["shared/domain<br/>Identity, TicketReference, ImpactLevel,<br/>UrgencyLevel, Priority, DomainEvent,<br/>StateModel, DateTimeRange"]
+        SK["shared/domain<br/>Identity, TicketReference, ImpactLevel,<br/>UrgencyLevel, Priority, DomainEvent,<br/>StateModel, DateTimeRange (UTC instants)"]
         CT["shared/contracts<br/>DTOs, enums, error codes<br/>published language, FE and BE"]
         UT["shared/util<br/>pure helpers"]
         SUI["shared/ui<br/>in-house design system: primitives,<br/>design tokens, a11y directives<br/>platform:frontend"]
@@ -296,6 +296,8 @@ flowchart TB
 
 **Legend.** Solid arrows are **synchronous** collaborations expressed as an outbound port owned by the upstream consumer. Dashed arrows are **asynchronous** collaborations carried by **domain events** published in-process. In both cases the arrow is a *conceptual* dependency: at the Nx level neither context imports the other (see §5.4).
 
+**Shared-kernel temporal primitives.** `DateTimeRange` is a **half-open interval of UTC instants** — `[startsAt, endsAt)`, lower bound mandatory, upper bound **optional** (absent means open-ended), empty ranges rejected. It earns its place in the kernel because three contexts repeat the same temporal-validity shape — each with a **strict** `to > from` check in the schema: `identity-access` (competition-scope grants), `approval` (approver delegation) and `sla` (policy-version effective range). Those three clear the "used by three or more contexts" bar of the §12.2 checklist (item 6) on their own. Instant pairs whose schema check is deliberately **non-strict** — `iam_user_role` (`granted_at` / `revoked_at`) and `sla_pause_period` (`paused_at` / `resumed_at`), where `FixedClock` can legitimately place both instants on the same tick — are **not** `DateTimeRange`: they stay as two columns on their own aggregate rather than force the kernel to admit the empty range (DATA-MODEL §2). It is **not** a wall-clock type. A naive local time or date interpreted in some *other* calendar and zone — the `sla` support-schedule opening windows and holidays (DATA-MODEL §3.3, §20.5) — is not a `DateTimeRange`, cannot be expressed as one without inventing a date, and is never promoted into `shared/domain`: it is vocabulary of the support-schedule aggregate and stays in `sla`. The kernel holds UTC instants only, and `ClockPort` (ADR-009) remains the only source of "now".
+
 ### 4.3 Integration patterns applied
 
 | Relationship | Pattern | Rationale |
@@ -306,8 +308,10 @@ flowchart TB
 | Everything → `audit` | **Published Language over domain events** | Audit consumes a normalized `AuditEntry` shape (actor, timestamp, record reference, action, previous value, new value — FR-AUD-02). Contexts never call audit; they publish events and audit subscribes. This is what makes FR-AUD-03 immutability structurally true: **no context is given a handle to mutate audit.** |
 | Everything → `notification` | **Published Language over domain events** | Guarantees NFR-AVL-03: a failing notification adapter cannot fail a ticket transaction, because dispatch happens after commit. |
 | Everything → `reporting` | **Open Host / read models** | Reporting reads its own denormalized projections; it never joins into another context's tables at will. Guarantees reproducibility (FR-RPT-07). |
-| Sport ITSM → SCMS reference data | **Anticorruption Layer** | A `CompetitionSubjectLookupPort` in `shared/domain` with an SCMS gateway adapter and a free-text fallback adapter (R10). SCMS vocabulary never leaks into the ticket model. |
+| Sport ITSM → SCMS reference data | **Anticorruption Layer** | Each consuming context declares its **own** `CompetitionSubjectLookupPort` in its own domain — `incident`, `service-request` and `identity-access` each do — and a single SCMS gateway adapter plus a free-text fallback adapter (R10) implements them, wired at the composition root (ADR-003), exactly as `SlaPolicyPort` is (§6.2). The port is **not** in `shared/domain` and `CompetitionSubject` is **not** a kernel primitive; see the note below. SCMS vocabulary never leaks into the ticket model. |
 | Sport ITSM → SSO | **Anticorruption Layer** | An `IdentityProviderPort` in `identity-access` isolates the platform from the SCMS identity model (A2, FR-IAM-04). |
+
+**Why `CompetitionSubject` is not a shared-kernel primitive.** The `(subject type, opaque external id, free-text label)` shape recurs in three contexts — the affected subject of a ticket in `incident` and `service-request`, the target of a visibility grant in `identity-access` — so by headcount alone it appears to clear the "three or more contexts" bar of §12.2 (item 6). It does not, because **a shared shape is not a shared meaning**: these are different concepts that happen to look alike, and the data model already refuses to unify them. Each schema declares its *own* `competition_subject_enum` with its own value set — `iam`'s three values (`tournament`, `league`, `group_division`) are narrower than `incident`'s twelve **by design**, and `reporting` mirrors the values rather than importing them precisely so that a projection takes no type dependency on another context (DATA-MODEL §20.1, §20.3, §20.10). A kernel `CompetitionSubject` would have to carry the union of those sets and hand every context a vocabulary it deliberately does not speak: coupling by coincidence, and the god-kernel the shared-library guardrails exist to prevent. Promoting the *port* has the same defect applied to an **external** system's vocabulary — which is the one thing an anticorruption layer exists to keep per-consumer. `CompetitionSubject` therefore stays a value object of each consuming context's own domain, as §6.2 already draws it for `incident`; what the contexts share is the *pattern*, not the type.
 
 ---
 
@@ -698,7 +702,8 @@ classDiagram
     class CompetitionSubject {
         <<ValueObject>>
         +SubjectType type
-        +string instanceIdOrLabel
+        +string externalId
+        +string label
     }
     class WorkNote {
         <<Entity>>

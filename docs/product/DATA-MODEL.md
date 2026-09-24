@@ -86,7 +86,11 @@ Consequences that shape every table below:
 | `ResolverAssignment` | `assigned_group_id`, `assigned_user_id`, `assigned_at` (history in `incident_assignment_history`) | `incident_ticket`, `sr_request` |
 | `SlaCommitment` | `target_at`, `response_target_at` on `sla_instance` | `sla_instance` |
 | `NoteVisibility` | `visibility` (PG enum) | `incident_work_note`, `sr_comment` |
-| `DateTimeRange` (schedule window) | `start_time` / `end_time` pair | `sla_schedule_window` |
+| `DateTimeRange` (temporal validity, UTC instants) | `valid_from` / `valid_to`; open-ended while `valid_to IS NULL` | `iam_competition_scope`, `apr_delegation` |
+| `DateTimeRange` (version effective range) | `effective_from` / `effective_to` | `sla_policy` |
+| `OpeningWindow` (`sla`-local wall clock — **not** a kernel VO) | `day_of_week` + `start_time` / `end_time` | `sla_schedule_window` |
+
+The last row is where this list deliberately stops at a context boundary. `sla_schedule_window` stores a weekly opening window as a **wall-clock** pair interpreted in the parent schedule's `time_zone` (§3.3), keyed by `(schedule_id, day_of_week, start_time)` — a time of day per day of week, not an interval of instants, and therefore **not** the shared kernel's `DateTimeRange` (ARCHITECTURE §4.2). `OpeningWindow`, and the `HolidayDate` behind `sla_holiday.holiday_date`, are value objects of the **`sla` domain**: one context speaks them, so item 6 of the §12.2 architectural checklist keeps them out of `shared/domain`. Two further pairs *are* intervals of instants and are still **not** `DateTimeRange`: `sla_pause_period` (`paused_at` / `resumed_at`) and `iam_user_role` (`granted_at` / `revoked_at`). Both carry a deliberately **non-strict** check — `ck_sla_pause_order` and `ck_iam_user_role_revocation` tolerate `to = from`, which `FixedClock`-driven tests can legitimately produce — while `DateTimeRange` rejects the empty range, so each stays as two columns on its own aggregate. **The dividing line is the strictness of the check, not the column names:** the `DateTimeRange` rows above are exactly the pairs whose check reads `to IS NULL OR to > from` (`ck_iam_competition_scope_validity`, `ck_apr_delegation_period`, `ck_sla_policy_effective_range`).
 
 3. **The ORM never dictates the domain.** No table below exists because TypeORM makes it convenient; where the relational shape and the aggregate shape diverge (for example `incident_state_transition`, which is a projection of the aggregate's lifecycle, not a domain entity), the mapper absorbs the difference.
 
@@ -146,7 +150,7 @@ Every table carries:
 | `updated_by` | `uuid` | Nullable, soft reference to `iam.iam_user` |
 | `version` | `integer` | TypeORM `@VersionColumn` for optimistic locking on aggregate roots only (`incident_ticket`, `sr_request`, `apr_request`, `sla_instance`, `kb_article`) — concurrent triage by two agents must not silently overwrite |
 
-**All instants are `timestamptz` stored in UTC** (ARCHITECTURE §3.2, NFR-I18N-03). The Angular client renders in the user's locale and time zone; the database and the domain only ever see UTC. `date` and `time` are used **only** in `sla_holiday` and `sla_schedule_window`, which are intentionally wall-clock values interpreted in the support schedule's own `time_zone` column — that is the one place where a naive local time is the correct model.
+**All instants are `timestamptz` stored in UTC** (ARCHITECTURE §3.2, NFR-I18N-03). The Angular client renders in the user's locale and time zone; the database and the domain only ever see UTC. `date` and `time` are used **only** in `sla_holiday` and `sla_schedule_window`, which are intentionally wall-clock values interpreted in the support schedule's own `time_zone` column — that is the one place where a naive local time is the correct model. Because they are not instants, those columns do **not** map to the shared kernel's `DateTimeRange` value object (§2, ARCHITECTURE §4.2) — they map to `sla`-owned value objects, and no wall-clock type is ever promoted into `shared/domain`.
 
 `created_by` / `updated_by` are **denormalized convenience columns**, not the audit trail. The audit trail is `audit.audit_entry` (§14) and it is the only authority for "who changed what" (FR-AUD-01/02).
 
@@ -438,15 +442,23 @@ erDiagram
 
 Role grants are **temporal rows, not a deleted association** (FR-IAM-05, FR-AUD-05): revocation sets `revoked_at`, so "who could do what on 3 May" remains answerable.
 
-**Constraints.** `uq_iam_user_role_active` — unique `(user_id, role_id)` **partial** `WHERE revoked_at IS NULL`; `ix_iam_user_role_user` on `(user_id)` `WHERE revoked_at IS NULL` (read on every authorization check).
+**Constraints.** `uq_iam_user_role_active` — unique `(user_id, role_id)` **partial** `WHERE revoked_at IS NULL`; `ix_iam_user_role_active` on `(user_id)` `WHERE revoked_at IS NULL` (read on every authorization check).
 
 ### 6.3 `iam_competition_scope`
 
 The table that makes "an Organizer sees tickets affecting **their** competitions" a server-side predicate rather than a UI filter. It holds **opaque SCMS identifiers with a free-text label fallback** — the same rule as the ticket's competition subject (§8.3). There is no FK, no import and no calendar.
 
+Grants are **append-only and temporal**, like role grants (§6.2): a grant is retired by setting `valid_to` and superseded by inserting a new row, never updated in place and never deleted, so "who could see what on 3 May" stays answerable. **At most one grant per user, subject and `scope_kind` may be live at any instant** — enforced by the partial unique `uq_iam_competition_scope_active` (§20.1). Without it, revoking one of two duplicate rows would leave the visibility intact and the revocation silently ineffective; declared *without* its `WHERE`, it would instead make retire-and-reissue impossible.
+
 ### 6.4 What is deliberately absent
 
-No `iam_session` and no `iam_refresh_token` table: the MVP uses **stateless JWT** (ARCHITECTURE §3.2), and inactivity timeout (FR-IAM-06) is a token-lifetime concern, not a stored one. Introducing refresh-token rotation later is an additive migration confined to this schema.
+No `iam_session` and no `iam_refresh_token` table **in the MVP as currently scoped**. The reason is **scope**, not a claim that server-side session state is unnecessary in general — an earlier wording of this section rested the case on "stateless JWT (ARCHITECTURE §3.2)", which §3.2 does not actually say (see §18 M11).
+
+`FR-IAM-06` — terminate sessions after a configurable inactivity period, and re-authenticate for privileged administrative actions — is priority **Should** and is assigned to **no phase**: PRD §14.2 scopes Phase 0 Identity & Access to `FR-IAM-01/02/03/05`, and the §14.3 MVP table does not list it either. **No requirement in the PRD asks for explicit sign-out, for token revocation, or for a token to stop being accepted before its natural expiry** — `FR-IAM-01` requires authentication, not termination. Nothing in Phase 0 or Phase 1 therefore reads a session record, and the bearer JWT is the whole of the MVP's session state.
+
+**What would overturn this, stated so it need not be re-derived.** `FR-IAM-06` does not say *how* a session terminates, and the two readings differ in cost. Under the weaker reading a client-side idle timer that discards the token satisfies the stated intent — an unattended workstation stops showing the queue — and the timeout stays a token-lifetime concern. Under the stronger reading the server must refuse a token whose session has ended, which is **not implementable without a stored record consulted on every request**. Choosing between them is a **Product Owner decision about security posture**, not a schema decision. If the stronger reading is chosen, or if any requirement for explicit sign-out or token revocation is added to the PRD, this section is wrong and `iam.iam_session` must be declared here **before** it is built.
+
+Introducing refresh-token rotation later is an additive migration confined to this schema.
 
 ---
 
@@ -1192,7 +1204,7 @@ erDiagram
 | `response_target_minutes` / `resolution_target_minutes` | `integer` | no | no | Minutes of **schedule time**, not wall time |
 | `effective_from` / `effective_to` | `timestamptz` | — | no | Policies are versioned, never edited in place |
 
-**Constraints.** `uq_sla_policy_scope` on `(record_type, service_id, offering_id, priority, major_incident_only, version_no)`; `ck_sla_targets_positive` — both targets `> 0`; `ck_sla_target_order` — `response_target_minutes <= resolution_target_minutes`.
+**Constraints.** `uq_sla_policy_scope` — `UNIQUE NULLS NOT DISTINCT (record_type, service_id, offering_id, priority, major_incident_only, version_no)`. The `NULLS NOT DISTINCT` is **load-bearing, not a detail of the full dictionary** (§20.5): `service_id`, `offering_id` and `priority` use `NULL` to mean "any" — a real value here, not an unknown — so under PostgreSQL's default the constraint would permit unlimited duplicate *default* policies and enforce nothing where resolution is most ambiguous (FR-SLA-01/02). Also `ck_sla_targets_positive` — both targets `> 0`; `ck_sla_target_order` — `response_target_minutes <= resolution_target_minutes`.
 
 ### 10.2 `sla_instance`
 
@@ -1750,6 +1762,7 @@ The union of both ticket types in a single fact table is deliberate: every manag
 | `ix_audit_record` | `audit_entry` | `(record_type, record_id, occurred_at DESC)` | FR-AUD-04 activity history |
 | `ix_audit_actor` | `audit_entry` | `(actor_user_id, occurred_at DESC)` | FR-AUD-05 administrative review |
 | `ix_iam_user_role_active` | `iam_user_role` | `(user_id)` partial `WHERE revoked_at IS NULL` | Read on **every** authorization check (NFR-SEC-02) |
+| `uq_iam_competition_scope_active` | `iam_competition_scope` | unique `(user_id, subject_type, scope_kind, COALESCE(subject_external_id, subject_label))` **partial** `WHERE valid_to IS NULL` | FR-IAM-03, NFR-SEC-02 — at most one live grant per user, subject and justification, so a revocation cannot leave a live twin behind |
 | `ix_offering_published` | `catalog_service_offering` | `(publication_status, category_id, sort_order)` | FR-CAT-03/05 catalog browsing |
 
 Two deliberate omissions: **no index is created speculatively**, and `EXPLAIN (ANALYZE, BUFFERS)` evidence for each of the above is a scaffolding task, not a claim this document is entitled to make.
@@ -1787,7 +1800,7 @@ Recorded honestly, because a reader should know which parts are traceable and wh
 | M8 | **Form answers are rows (`sr_field_value`), not a `jsonb` document** | FR-RPT-05 filtering and operational search across offering-specific fields | Medium |
 | M9 | **`audit_entry` is range-partitioned monthly** | NFR-DAT-02 retention must not be a mass `DELETE` against an append-only table | Medium — repartitioning is an offline migration |
 | M10 | **A single `rpt_ticket_fact` for both Incidents and Service Requests** | Every management KPI in FR-RPT-02 is asked across "tickets"; a union view would be re-derived on every query | High — projections are rebuildable by definition |
-| M11 | **No `iam_session` / refresh-token table** | Stateless JWT in the MVP (ARCHITECTURE §3.2); FR-IAM-06 inactivity is a token-lifetime concern | High — additive, confined to `iam` |
+| M11 | **No `iam_session` / refresh-token table** | **Scope, not statelessness.** `FR-IAM-06` is a **Should** assigned to no phase (PRD §14.2 scopes Phase 0 to `FR-IAM-01/02/03/05`) and no PRD requirement asks for sign-out or token revocation, so nothing in Phase 0 or Phase 1 reads a session record (§6.4). **Correction to this row's former rationale:** ARCHITECTURE §3.2 does not claim statelessness — it specifies a bearer JWT and nothing about session storage; the word "stateless" in that document (ADR-004) means horizontally scalable API *instances*, which a PostgreSQL-backed session table would not contradict, since the state would be in the shared database and not in an instance | High **for the MVP as scoped** — additive and confined to `iam`. The confidence is in the *scope*, not in the design: a Product Owner ruling that `FR-IAM-06` means server-side termination reverses it (§6.4) |
 | M12 | **Attachments store an object-storage key, not the bytes** | Keeping binaries out of PostgreSQL protects backup/restore times and the SLA sweep's working set. The storage adapter itself is not designed here | Medium — the column is a key either way |
 | M13 | **`csat_score` on the ticket instead of a `csat_survey` table** | The MVP explicitly limits CSAT to *basic capture* (PRD §14.3); a survey aggregate would be speculative | High — extractable later |
 
@@ -2084,7 +2097,8 @@ Append-only grant record, part of the `User` aggregate: it turns "an Organizer s
 | `fk_iam_competition_scope_user_id` | FK | → `iam.iam_user.id` `ON DELETE RESTRICT` — users are never hard-deleted (§3.6) |
 | `ck_iam_competition_scope_subject` | CHECK | `subject_external_id IS NOT NULL OR subject_label IS NOT NULL` — mirrors `ck_incident_subject` (§8.1) |
 | `ck_iam_competition_scope_validity` | CHECK | `valid_to IS NULL OR valid_to > valid_from` — structural safety net; DATA-MODEL.md §6.3 does not state it |
-| `ix_iam_competition_scope_user` | INDEX (partial) | `(user_id, subject_type, subject_external_id) WHERE valid_to IS NULL` — evaluated on every scoped list query (FR-IAM-03, NFR-SEC-02) |
+| `uq_iam_competition_scope_active` | UNIQUE (partial) | `UNIQUE (user_id, subject_type, scope_kind, COALESCE(subject_external_id, subject_label)) WHERE valid_to IS NULL` — at most one **live** grant per user, subject and justification, while every retired row is preserved. The `WHERE` is what lets uniqueness and the append-only rule coexist (retire by setting `valid_to`, supersede by inserting a new row), exactly as `uq_iam_user_role_active` does for role grants (§6.2); declared absolute it would make retire-and-reissue impossible. `scope_kind` **is** in the key because each justification is granted and revoked independently — ceasing to own a tournament while remaining its approver is an ordinary transition, and a key without `scope_kind` would reject that legitimate state. The subject term is the `COALESCE`, not the raw column pair: `subject_external_id` is nullable — `ck_iam_competition_scope_subject` guarantees only that *one* of the two is present — so keying on the column alone would make every label-only grant distinct under PostgreSQL's `NULLS DISTINCT` default and let a revoked grant survive as an unnoticed live twin (FR-IAM-03, NFR-SEC-02). |
+| `ix_iam_competition_scope_user` | INDEX (partial) | `(user_id, subject_type, subject_external_id) WHERE valid_to IS NULL` — evaluated on every scoped list query (FR-IAM-03, NFR-SEC-02). Its leading columns overlap `uq_iam_competition_scope_active`; both are declared deliberately — the unique index is the correctness constraint, this one is the declared read shape — and whether the read index survives is an `EXPLAIN` question at scaffolding time (§16), not a paper one. |
 
 **Relationships.**
 
@@ -3454,7 +3468,7 @@ Configuration-as-data lookup and aggregate root of the support-schedule aggregat
 
 #### `sla_schedule_window`
 
-Part of the support-schedule aggregate: one weekly opening window. `start_time` / `end_time` are **wall-clock `time` values interpreted in the parent schedule's `time_zone`**, not UTC instants — the deliberate exception to the "everything is `timestamptz` in UTC" rule (§3.3). The pair persists the inlined `DateTimeRange` value object (§2).
+Part of the support-schedule aggregate: one weekly opening window. `start_time` / `end_time` are **wall-clock `time` values interpreted in the parent schedule's `time_zone`**, not UTC instants — the deliberate exception to the "everything is `timestamptz` in UTC" rule (§3.3). The pair persists the inlined **`OpeningWindow`** value object of the `sla` domain — together with `day_of_week`, which `uq_sla_schedule_window` shows is part of the same value. It is explicitly **not** the shared kernel's `DateTimeRange` (§2, ARCHITECTURE §4.2): that primitive is an interval of UTC *instants*, and no instant pair can express "09:00–17:00 every Tuesday in `Europe/Madrid`" without inventing a date.
 
 | Attribute | Type | Null | Key | Default | Description |
 |---|---|---|---|---|---|
@@ -3482,7 +3496,7 @@ Part of the support-schedule aggregate: one weekly opening window. `start_time` 
 
 #### `sla_holiday`
 
-Part of the support-schedule aggregate: a non-working date excluded from SLA elapsed time. `holiday_date` is a **wall-clock `date` interpreted in the parent schedule's `time_zone`**, for the same reason as the windows (§3.3, FR-SLA-03).
+Part of the support-schedule aggregate: a non-working date excluded from SLA elapsed time. `holiday_date` is a **wall-clock `date` interpreted in the parent schedule's `time_zone`**, for the same reason as the windows (§3.3, FR-SLA-03). Like them it is an `sla`-owned value object (`HolidayDate`), never a kernel instant type (§2).
 
 | Attribute | Type | Null | Key | Default | Description |
 |---|---|---|---|---|---|
@@ -3536,7 +3550,7 @@ Aggregate root of the SLA-policy aggregate and configuration-as-data: a versione
 |---|---|---|
 | `pk_sla_policy` | PK | `PRIMARY KEY (id)` |
 | `uq_sla_policy_code` | UK | `UNIQUE (code, version_no)` — the code is stable across versions, the pair is unique |
-| `uq_sla_policy_scope` | UK | `UNIQUE (record_type, service_id, offering_id, priority, major_incident_only, version_no)` |
+| `uq_sla_policy_scope` | UK | `UNIQUE NULLS NOT DISTINCT (record_type, service_id, offering_id, priority, major_incident_only, version_no)` — `NULLS NOT DISTINCT` is load-bearing, not decoration: `service_id`, `offering_id` and `priority` use `NULL` to **mean "any"** (a real value in this model, not an unknown), so under PostgreSQL's default `NULLS DISTINCT` this constraint would permit unlimited duplicate *default* policies and enforce nothing precisely where policy resolution is most ambiguous (FR-SLA-01/02). Available since PostgreSQL 15, well inside the PostgreSQL 18 floor of §3.1.1. |
 | `fk_sla_policy_support_schedule_id` | FK | `REFERENCES sla.sla_support_schedule (id) ON DELETE RESTRICT` |
 | `ck_sla_targets_positive` | CHECK | `response_target_minutes > 0 AND resolution_target_minutes > 0` |
 | `ck_sla_target_order` | CHECK | `response_target_minutes <= resolution_target_minutes` |
