@@ -479,7 +479,29 @@ flowchart TB
 3. `apps/api` — the composition root, tagged `scope:shared`, `type:app` — provides an **adapter class** implementing `SlaPolicyPort` by delegating to `libs/sla/application`. Only the app sees both contexts.
 4. The Nx graph therefore shows `apps/api → incident/*` and `apps/api → sla/*`, and **never** `incident → sla`.
 
-The same technique carries `approval`, `notification`, `audit` and the SCMS anti-corruption layer. This is the single most important structural rule in this document.
+The same technique carries `approval` and the SCMS anti-corruption layer. It does **not** carry `notification` and `audit`: those are asynchronous subscribers, so the publishing context holds **no port for them at all** — see *Where a port is declared* below. This is the single most important structural rule in this document.
+
+#### Where a port is declared
+
+The rule above says *which* context owns a cross-context port. It does not, on its own, say where **every** port goes — `ClockPort` lives in `shared/domain` (ADR-009) while `SlaPolicyPort` lives in `incident/domain`, and the difference has to be stated or the next port is placed by eye.
+
+**First, does a port belong here at all?** The three tests below decide *where* a port lives; they presuppose one is warranted, and that prior question is separate. ADR-003's second clause and ADR-008 answer it: **a collaboration is a port when the calling use case needs a result back, or must not proceed unless the other side has acted; it is a domain event when the caller must be able to succeed whether or not the other side ever runs.** Applied honestly this test *removes* ports more often than it places them — see the note on `audit` and `notification` below. A port that fails it is not misplaced, it is unwarranted, and no library is the right home for it.
+
+**Then, where does it go?** **A port is declared in the domain of the context that needs it — unless it cannot be phrased in any context's ubiquitous language, in which case it belongs in `shared/domain`.** Applied as three tests, in order:
+
+1. **Does the signature name a type owned by a bounded context?** → that context's domain. `IncidentRepositoryPort` names `Incident`; `SlaPolicyPort` names `SlaCommitment`.
+2. **Is the counterparty another bounded context, or an external system with its own vocabulary?** → the **consuming** context's domain, per ADR-003 and the anticorruption rule of §4.3. Identical signatures across contexts do **not** merge here: each consumer owns its own translation, which is why `CompetitionSubjectLookupPort` is declared three times rather than once.
+3. **Otherwise** — the counterparty is the runtime or the process itself, and every type in the signature is a shared-kernel type → **`shared/domain`**. `ClockPort` (`now()`) and `EventPublisherPort` (`publish(DomainEvent[])`) are the only two, and the list is meant to stay short.
+
+**Test 2 dominates test 3:** sameness of shape never promotes a port whose counterparty is a context or an external system.
+
+**Why `approval` has a port and `audit` and `notification` do not.** The first worked application of the tests above, on a pair that predates them. All three are cross-context, so tests 1–3 would happily place a port for each in the consuming context — which is precisely why the prior question exists and comes first.
+
+- **`approval` → port.** A Service Request cannot proceed to fulfilment until an approval decision exists (FR-SRQ-04, FR-APR-03). The use case needs a result back, so the collaboration is synchronous and `ApprovalPort` is declared by each consuming context in its own language (§4.3, Customer-Supplier via Open Host Service).
+- **`audit` → no port.** §4.3 is explicit — *"Contexts never call audit; they publish events and audit subscribes"* — and that is what makes FR-AUD-03 immutability structural: **no context is given a handle to mutate audit.** A `AuditPort` in `incident/domain` would hand it exactly that handle, in the one context the guarantee is aimed at. **State the cost plainly:** with no port, the audit write is not in the ticket transaction (ADR-008), so audit completeness rests on the in-process dispatcher, its retry, and the acceptance assertions — not on a database transaction. That trade is deliberate and already recorded; the compensation is that a failing audit write cannot block ticket intake (NFR-AVL-03).
+- **`notification` → no port.** Checked against the PRD rather than assumed: **NFR-AVL-03 names notifications as an optional subsystem whose unavailability must not prevent anyone logging an Incident**, and FR-NOT-01 → 04 are all "notify X when Y happened" — event-shaped by construction, with FR-NOT-08 recording dispatch as after-the-fact evidence. **No requirement anywhere asks a user to be notified before a response returns.** The creation acknowledgment of FR-NOT-01 carries the reference number, but the reference reaches the requester in the API response as part of the created resource, not through the notification context; the in-app channel (FR-NOT-06) is a bell reading dispatched records. The nearest candidates for synchronous user-facing warnings are domain rules of their own context, not notifications: the overlapping-release warning (FR-REL-04) is `release` logic, the assignment-entitlement warning (FR-QUE-04) is ticket-context validation, and the intake intervention of PRD §6 is a `knowledge` suggestion (FR-INC-16). **If a genuinely synchronous notification requirement is ever added to the PRD, the exception belongs in ADR-008 and §4.3 — not in a diagram that contradicts them in silence.**
+
+**Why test 3 does not leak coupling.** A kernel port adds no dependency that its own signature has not already added. `EventPublisherPort` mentions nothing but `DomainEvent`, which is a kernel type every context already imports — so the port cannot couple anything the type has not coupled first. The converse is the real guard: a port that *could* be phrased in a context's language **must** be, because that phrasing is the translation boundary ADR-003 exists to preserve. `publish(events): void` has no such phrasing to preserve; ADR-003 itself separates the two mechanisms in one sentence — outbound ports in the consumer's language for synchronous collaboration, and *"asynchronous collaborations use domain events dispatched in-process"*. The publisher names no counterparty, which is exactly the decoupling ADR-008 buys.
 
 ### 5.5 Scaffolding commands
 
@@ -598,7 +620,7 @@ flowchart LR
             VO["Value objects<br/>TicketReference, Impact, Urgency,<br/>Priority, Category, OriginChannel,<br/>CompetitionSubject"]
             DS["Domain services<br/>PriorityCalculator over the<br/>configurable Impact x Urgency matrix"]
             DE["Domain events<br/>IncidentLogged, PriorityChanged,<br/>MajorIncidentDeclared, IncidentResolved"]
-            OP["Outbound ports - interfaces<br/>IncidentRepositoryPort, SlaPolicyPort,<br/>NotificationPort, AuditPort,<br/>EventPublisherPort, ClockPort"]
+            OP["Outbound ports - interfaces<br/>owned by incident: IncidentRepositoryPort,<br/>SlaPolicyPort<br/>consumed from shared/domain:<br/>ClockPort, EventPublisherPort<br/>no audit or notification port - they subscribe"]
         end
     end
 
@@ -726,10 +748,6 @@ classDiagram
         +reevaluate(snapshot) SlaCommitment
         +pause(ticketId) void
         +resume(ticketId) void
-    }
-    class EventPublisherPort {
-        <<Port>>
-        +publish(events) void
     }
 
     Incident *-- TicketReference
@@ -924,7 +942,7 @@ sequenceDiagram
 | **Authorization** | Enforced in `type:application` use cases, expressed in domain terms (`actor may triage`, `requester may view own ticket`), not as controller decorators alone. Ownership and competition-scoped visibility rules (FR-IAM-03, FR-KNW-09) are domain predicates, testable without HTTP. |
 | **Audit trail** | Append-only `audit` context fed exclusively by domain events. No update or delete method exists on `AuditRepositoryPort` — immutability by absence of capability, not by convention (FR-AUD-03). |
 | **Configuration as data** | Taxonomy, Impact x Urgency matrix, SLA policies, state models, approval chains and notification templates are persisted aggregates owned by their contexts and edited through the Admin Console. In-flight records keep the configuration version they were created under (NFR-CFG-02). |
-| **Domain events** | `DomainEvent` base type in `shared/domain`; `EventPublisherPort` in each context's domain; a single in-process dispatcher in `apps/api`. No broker in the MVP; the port makes an out-of-process broker a later adapter swap, not a redesign. |
+| **Domain events** | `DomainEvent` base type **and `EventPublisherPort`** in `shared/domain` — the port's whole signature is `publish(DomainEvent[]): void`, which names no context's vocabulary and therefore fails the phrasing test of §5.4; a single in-process dispatcher in `apps/api` implements it. No broker in the MVP; the port makes an out-of-process broker a later adapter swap, not a redesign. |
 | **Time** | `ClockPort` in `shared/domain`. Domain and application layers never call `new Date()`. This is what makes SLA pause/resume and business-hours schedules unit-testable and NFR-AVL-05 provable. |
 | **i18n** | Transloco (client) + `nestjs-i18n` (API) joined by the `Accept-Language` header. Reference data carries stable identifiers with translatable labels (NFR-I18N-05). |
 | **Observability** | `nestjs-pino` structured logs with request correlation; `@nestjs/terminus` liveness and readiness probes (NFR-CFG-03). |
@@ -1100,6 +1118,7 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 6. Does it grow `shared/domain` beyond primitives genuinely used by three or more contexts? If yes, push it down into the owning context.
 7. Is it a presentational component library? Domain-agnostic primitives belong in `libs/shared/ui` (`platform:frontend`, `scope:shared`, `type:ui`, ADR-010); anything that names an ITSM concept belongs in its context's own `type:ui` lib.
 8. Does it warrant an ADR — new context, tag-scheme change, new cross-context integration, new external dependency?
+9. Does it declare a **port**? Place it with the three tests of §5.4 (*Where a port is declared*) before writing the interface — a port in the wrong library is a boundary violation that compiles.
 
 ### 12.3 Current verification status
 
