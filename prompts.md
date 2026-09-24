@@ -1612,3 +1612,152 @@ invariantes es peor que cuatro bien cerrados.
 Implementado ticket T-C10-08
 
 </br>
+
+**Prompt 9:**
+
+Agent: Claude Code - Opus 5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-09.md ·
+`libs/shared/domain` — `DomainEvent`, `EventPublisherPort` y `ClockPort`
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, y de nuevo **sin una línea de NestJS**: `platform:shared`, `type:domain`,
+código puro. Manda `sport-itsm-engineering-principles` (inmutabilidad, ISP — puertos pequeños y
+específicos, YAGNI), con `sport-itsm-architecture` para la regla de puertos y `sport-itsm-workflow`
+para el cierre.
+
+#### Precondición
+T-C10-01 … T-C10-08 hechos y commiteados. Compruébalo antes de tocar nada:
+
+    git log --oneline -1                 # 6ce1b5e o posterior
+    git status --porcelain               # limpio
+    pnpm nx show projects                # shared-domain, shared-util, api-e2e, web-e2e, api, web
+    pnpm nx test shared-domain           # 5 suites, 66 tests, exit 0
+    node -e "console.log(Object.keys(require('./tsconfig.base.json').compilerOptions.paths))"
+                                         # exactamente dos alias
+
+**`verify:boundaries` es de un solo proceso a la vez** (`libs/__boundary-probe` hace de lock). Este
+ticket no crea proyecto ni toca tags, así que **no necesitas ejecutarlo**; si lo ejecutas, que no
+haya nadie más corriéndolo, y si ves "another run is in flight", **espera** — no borres el
+directorio.
+
+#### Lo primero que tienes que entender: aquí NO se crea ninguna librería
+A diferencia de T-C10-07 y T-C10-08, este ticket **añade a `libs/shared/domain`, que ya existe**.
+No hay generador, no hay `project.json` nuevo, no hay alias nuevo en `tsconfig.base.json`, y
+`pnpm nx show projects` debe seguir devolviendo **seis** proyectos al terminar. Si te descubres
+ejecutando `nx g`, párate: te has equivocado de ticket.
+
+Lo que ya existe y debes leer antes de escribir — `libs/shared/domain/src/index.ts`:
+`DomainError`, `Identity`, `TicketReference`, `ImpactLevel`, `UrgencyLevel`, `Priority`,
+`DateTimeRange` y sus errores tipados. Convenciones vigentes en esa librería, síguelas: constructor
+privado + factoría estática, `readonly` + `Object.freeze(this)`, `equals`, errores que **se lanzan**
+y se distinguen por `instanceof`, y ficheros nombrados según `PROJECT-STRUCTURE.md`
+(`domain-event.ts`, `clock.port.ts`, y por extensión `event-publisher.port.ts`).
+
+#### La contradicción que debes REPORTAR, no resolver
+El `## Scope` del ticket pide `EventPublisherPort` en `libs/shared/domain`. **`ARCHITECTURE.md` §9
+dice lo contrario**, con todas las letras:
+
+> `DomainEvent` base type in `shared/domain`; **`EventPublisherPort` in each context's domain**; a
+> single in-process dispatcher in `apps/api`.
+
+Y el diagrama de clases de §6.2 lo dibuja **dentro del contexto `incident`**, no en el kernel.
+
+La doctrina del repositorio zanja quién manda: `CLAUDE.md` §4.3 — *"The backlog is derived, never a
+source"* —, y hoy mismo se aplicó ese criterio para corregir tickets contra `DATA-MODEL.md`. Pero
+el caso tiene dos lados y quiero que los expongas antes de que nadie decida:
+
+- **A favor del kernel** (lo que pide el ticket): la firma es `publish(events): void`, idéntica en
+  todos los contextos y sin una palabra de vocabulario de ninguno — N copias idénticas es
+  duplicación, no lenguaje ubicuo. Y el kernel **ya alberga un puerto**: `ClockPort` vive ahí por
+  §9 y ADR-009, así que "el kernel no tiene puertos" no es una regla de este proyecto.
+- **A favor de cada contexto** (lo que dice §9 y dibuja §6.2): es el patrón de ADR-003 — el
+  contexto consumidor declara su puerto de salida en su propio dominio, como `SlaPolicyPort` —, y
+  un puerto en el kernel lo convierte en dependencia de todos.
+
+**Qué hacer:** implementa `DomainEvent`, `ClockPort` y `FixedClock`, que no están en disputa, y
+**no coloques `EventPublisherPort` en ningún sitio hasta que se decida**. Repórtalo como hallazgo
+con las dos citas (§9 línea 927 y el diagrama de §6.2), tu recomendación argumentada, y déjalo
+fuera de la entrega. Entregar tres cuartos con el conflicto a la vista es mejor que entregar cuatro
+cuartos habiendo elegido en silencio. Si al leerlo concluyes que el ticket tiene razón y §9 está
+mal, esa es exactamente la misma respuesta: **repórtalo**, no lo escribas.
+
+#### Diseño de cada pieza
+- **`DomainEvent`** — nombre del evento, instante de ocurrencia, identidad del actor, identificador
+  de correlación y payload inmutable.
+  - **El instante se lo pasa el llamante; el evento NO lee el reloj.** Ese es el sentido entero de
+    ADR-009, y el AC2 lo comprueba.
+  - **El actor es `Identity`**, la primitiva que ya existe en esta misma librería. Sería la primera
+    composición interna del kernel: úsala, no declares un `string`.
+  - **El identificador de correlación: decide y justifica.** `DATA-MODEL.md` lo modela de dos
+    formas distintas según la tabla — `correlation_event_id uuid` en `ntf_dispatch`, y un
+    `correlation_id` de petición que viene de pino en otra. No son lo mismo. Di cuál modelas y por
+    qué, y si tu respuesta es "hacen falta los dos", dilo en vez de fundirlos.
+  - **Payload inmutable de verdad.** `readonly` no impide `event.payload.x = 1`, y `Object.freeze`
+    es superficial. Decide hasta dónde llegas —congelación profunda, o una firma de tipo que lo
+    haga irrepresentable— y **escribe el test que lo demuestra**, que es literalmente el AC1.
+  - Tipado del payload: genérico o `Record<string, unknown>`. Elige pensando en quién lo consume
+    (`RoleAssigned`/`RoleRevoked` de `US-C10-13`), y no construyas una jerarquía de eventos
+    concretos: eso es de sus tickets.
+- **`ClockPort`** — interfaz que devuelve un instante UTC. **Decide el tipo de retorno y
+  justifícalo**: `DateTimeRange` (T-C10-08) recibe `Date` en su factoría, así que un `ClockPort`
+  que devuelva `Date` compone sin conversión, y el AC2 presupone justamente eso al hablar del
+  `new Date(` dentro del doble de test. Si prefieres milisegundos epoch, tendrás que decir cómo
+  encaja con lo ya construido.
+- **`FixedClock`** — doble determinista, **exportado desde el barrel** porque el ticket lo pide
+  para tests de otros. Consecuencia que debes nombrar en el informe: eso lo convierte en superficie
+  pública de producción. Y decide si además avanza (`advanceBy`) o solo devuelve un instante fijo —
+  YAGNI dice lo segundo hasta que algo lo necesite; si añades lo primero, justifícalo.
+
+#### Una trampa en el propio AC2 — no la resuelvas rompiendo tests
+El AC2 dice: *"grepped for `new Date(` → the only matches are inside the ClockPort test double"*.
+**Eso hoy ya es falso**, y no por tu culpa: `date-time-range.spec.ts` de T-C10-08 usa `new Date(...)`
+para construir sus fixtures, que es la única forma de pasarle instantes a un VO que recibe `Date`.
+
+Ejecuta el grep, **pega la salida completa** y desglósala honestamente: cuántas coincidencias en
+código de producción (deben ser cero salvo el doble), cuántas en specs y por qué son legítimas.
+**No borres ni reescribas los tests de T-C10-08 para que un grep salga verde** — eso sería degradar
+cobertura para maquillar un criterio. Repórtalo como hallazgo sobre la redacción del AC, que
+tendría que decir "fuera de los specs".
+
+#### Lo que NO debes tocar
+- **Ningún dispatcher, ningún suscriptor, ninguna persistencia.** El dispatcher in-process es de
+  `apps/api` (**T-C10-55**) y persistir eventos como entradas de auditoría es de **C18**.
+- **`StateModel`** es T-C10-10. Ni un esqueleto.
+- **`libs/shared/util`**: si necesitas un helper que no existe, resuélvelo aquí o repórtalo.
+- **`tsconfig.base.json`, `nx.json`, `eslint.config.mjs`, `tools/`, `docs/`, `.claude/`.** El ticket
+  no se edita ni se marca como hecho.
+- Ni una dependencia nueva: `git diff package.json pnpm-lock.yaml` debe quedar vacío.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — test que demuestra que el payload no se puede mutar; pega el resumen de Jest con el
+   número total de tests (hoy son 66; debe subir).
+2. **AC2** — `grep -rn "new Date(" libs/shared/domain/src` con el desglose honesto descrito arriba.
+   Y el de framework:
+   `grep -rnE "from '(@nestjs|@angular|typeorm|rxjs|express|node:|fs|path|crypto)" libs/shared/domain/src`
+   debe estar vacío.
+3. **AC3** — enseña que `ClockPort` (y `EventPublisherPort` si finalmente se coloca) son interfaces
+   sin implementación: no `class`, no `abstract class` con cuerpo, cero imports de framework.
+4. **AC4** — `pnpm nx test shared-domain` y `pnpm nx lint shared-domain`, ambos en verde.
+5. `pnpm nx show projects` sigue devolviendo **seis**, y `git diff tsconfig.base.json` está vacío.
+6. `pnpm nx run-many -t lint test build` en verde — es lo que corre CI.
+7. `pnpm prettier --check libs/shared/domain` pasa. **No** ejecutes `prettier --check .`: marca ~50
+   ficheros por CRLF (`core.autocrlf`), condición preexistente que CI no ve.
+8. El barrel: enseña `src/index.ts` final y confirma que cada export nuevo es intencionado.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Informa al terminar
+- Ficheros creados y modificados; qué queda fuera y por qué.
+- **El hallazgo de `EventPublisherPort`** con las dos citas y tu recomendación argumentada.
+- **El hallazgo sobre la redacción del AC2** y el desglose real del grep.
+- Tus cuatro decisiones de diseño: tipo de retorno de `ClockPort`, forma del identificador de
+  correlación, hasta dónde llega la inmutabilidad del payload, y si `FixedClock` avanza o no.
+- La salida de las ocho verificaciones.
+- Qué notas de estado quedan obsoletas: **repórtalas, no las corrijas**.
+
+### Response:
+

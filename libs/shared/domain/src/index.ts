@@ -29,3 +29,7 @@ export {
   DateTimeRange,
   InvalidDateTimeRangeError,
 } from './lib/date-time-range.vo';
+export { DomainEvent, InvalidDomainEventError } from './lib/domain-event';
+export type { DomainEventInput } from './lib/domain-event';
+export type { ClockPort } from './lib/clock.port';
+export { FixedClock } from './lib/fixed-clock';
