@@ -9,7 +9,12 @@
     "pnpm": ">=10.0.0"
   },
   "scripts": {
-    "verify:boundaries": "node tools/boundary-probes/verify.mjs"
+    "verify:boundaries": "node tools/boundary-probes/verify.mjs",
+    "typeorm": "node --env-file-if-exists=.env tools/typeorm.cjs",
+    "migration:generate": "pnpm typeorm migration:generate -d apps/api/src/data-source.ts",
+    "migration:run": "pnpm typeorm migration:run -d apps/api/src/data-source.ts",
+    "migration:revert": "pnpm typeorm migration:revert -d apps/api/src/data-source.ts",
+    "migration:show": "pnpm typeorm migration:show -d apps/api/src/data-source.ts"
   },
   "dependencies": {
     "@angular/common": "20.3.30",
@@ -25,9 +30,11 @@
     "@nestjs/platform-express": "11.2.3",
     "class-transformer": "0.5.1",
     "class-validator": "0.14.2",
+    "pg": "8.23.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "tslib": "2.8.1",
+    "typeorm": "1.1.1",
     "zone.js": "0.15.1"
   },
   "devDependencies": {

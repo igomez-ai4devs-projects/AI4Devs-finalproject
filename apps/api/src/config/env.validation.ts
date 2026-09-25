@@ -1,5 +1,13 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsInt, Max, Min, validateSync } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
 
 /**
  * The deployment environments the API recognises. Declared as an enum rather
@@ -34,6 +42,33 @@ export class EnvironmentVariables {
   @Min(1, { message: 'PORT must be a valid TCP port (1-65535)' })
   @Max(65535, { message: 'PORT must be a valid TCP port (1-65535)' })
   PORT!: number;
+
+  /**
+   * The database connection. The key names mirror the `POSTGRES_*` variables
+   * the `postgres` service already declares in `docker/docker-compose.dev.yml`,
+   * so a developer sets the same names on both sides of the connection instead
+   * of translating between two vocabularies.
+   */
+  @IsNotEmpty({ message: 'POSTGRES_HOST is required' })
+  @IsString({ message: 'POSTGRES_HOST must be a string' })
+  POSTGRES_HOST!: string;
+
+  @IsInt({ message: 'POSTGRES_PORT must be an integer' })
+  @Min(1, { message: 'POSTGRES_PORT must be a valid TCP port (1-65535)' })
+  @Max(65535, { message: 'POSTGRES_PORT must be a valid TCP port (1-65535)' })
+  POSTGRES_PORT!: number;
+
+  @IsNotEmpty({ message: 'POSTGRES_DB is required' })
+  @IsString({ message: 'POSTGRES_DB must be a string' })
+  POSTGRES_DB!: string;
+
+  @IsNotEmpty({ message: 'POSTGRES_USER is required' })
+  @IsString({ message: 'POSTGRES_USER must be a string' })
+  POSTGRES_USER!: string;
+
+  @IsNotEmpty({ message: 'POSTGRES_PASSWORD is required' })
+  @IsString({ message: 'POSTGRES_PASSWORD must be a string' })
+  POSTGRES_PASSWORD!: string;
 }
 
 /**

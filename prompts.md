@@ -1764,3 +1764,125 @@ Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasad
 Implementado ticket T-C10-09
 
 </br>
+
+**Prompt 10:**
+
+Agent: Claude Code - Opus 5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-16.md ·
+El data source de TypeORM y la configuración de su conexión
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, y este sí es backend de verdad: `apps/api`, `@nestjs/config`, TypeORM.
+Aplica **`sport-itsm-backend`** (es el primer ticket de la rebanada donde manda), con
+`sport-itsm-workflow` para el cierre. Es infraestructura, no dominio: aquí no se modela nada.
+
+#### Por qué este ticket y por qué ahora
+Es el **primero de la rebanada 1**, "un requester registra una incidencia y la ve" — 18 tickets, 41h,
+que el Product Owner cortó verticalmente y el usuario aprobó. Los README de `C10` y `C1` llevan la
+sección `## Delivery slices` con la secuencia completa. Lo que viene detrás de ti es `T-C10-17`
+(cadena de migraciones), y la razón de que estén separados es que esta ficha hace la base de datos
+**alcanzable** y la siguiente hace el esquema **reproducible**.
+
+#### Precondición
+    git log --oneline -1
+    git status --porcelain      # limpio
+    pnpm nx show projects       # seis proyectos
+    pnpm nx test shared-domain  # 8 suites, 85 tests
+    docker --version            # necesitas Docker corriendo para los AC
+
+#### El ticket es el contrato
+Léelo entero: su Scope es exhaustivo y trae tres notas de contexto que **no** son decorativas —
+el servicio `postgres` ya existe y está fuera de alcance, el entrypoint del contenedor no puede
+ganar un paso de migración, y la mitad desplegable es `T-C10-69`. Lee además:
+
+- **`CLAUDE.md` §2, fila Database/ORM**: PostgreSQL 18, **TypeORM 1.1**, driver `pg` ^8,
+  `synchronize` siempre `false`, cambios de esquema **solo** por migración. Y §3, la lista de
+  comandos `pnpm typeorm`.
+- **`CLAUDE.md` §3, "What NOT to do"**, backend: *no `synchronize: true`; no unconditional migration
+  auto-run in staging/prod; no raw `process.env` in feature code*.
+- `docker/docker-compose.dev.yml` — el servicio real, con `postgres:18.6`, `POSTGRES_DB:
+  sport_itsm_dev`, `POSTGRES_USER`/`POSTGRES_PASSWORD`. **No lo toques**: es de `ci-cd-expert`.
+- `apps/api/src/config/env.validation.ts` y `.env.example` — el patrón que tienes que extender, no
+  reinventar: claves obligatorias, sin default en código, con mensaje que nombra la clave que falta.
+
+#### Trampa 1 — las primeras dependencias nuevas desde el bootstrap
+Verificado: **`typeorm` y `pg` no están instalados**. Serán las primeras dependencias de runtime que
+entran desde `T-C10-01`, así que:
+
+- **`package.json` no tiene un solo rango `^` ni `~`. Mantenlo así**: versiones exactas, incluidas
+  las nuevas. CLAUDE.md pinea `major.minor` y el patch lo decide `package.json`, que es la única
+  autoridad de lo instalado.
+- Instala **solo** lo que el Scope pide. En particular, **no instales `@nestjs/typeorm`**: este
+  ticket no registra ningún módulo de Nest para la base de datos, solo crea un data source y valida
+  su configuración. Si crees que hace falta, párate y repórtalo.
+- Ejecuta `pnpm why typeorm` y `pnpm why pg` al terminar y pega la salida: una sola copia de cada.
+- `CLAUDE.md` §2 dice que TypeORM **requiere Node ≥ 22.13**, y `engines.node` de este repositorio
+  dice `>=22.0.0 <23.0.0` — es **más laxo que el suelo real**. No lo cambies: tocar un pin es un
+  cambio aprobado. **Repórtalo como hallazgo** para el arquitecto.
+
+#### Trampa 2 — la que rompe CI y no se ve hasta que rompe
+El AC te pide claves de conexión **obligatorias y sin default en código**: si falta una, el boot
+aborta. Perfecto. Pero `apps/api-e2e` **arranca la API sin fichero `.env`**: su target suministra
+él mismo `NODE_ENV` y `PORT` (mira `apps/api-e2e/project.json`), y ese comportamiento es un criterio
+de aceptación de `T-C10-06` — *"Given a checkout with no `.env` file … Then it boots, because the
+target supplies `NODE_ENV` and `PORT` itself"*.
+
+En cuanto añadas claves obligatorias de base de datos, **ese arnés deja de arrancar**, y con él el
+job `acceptance` de `.github/workflows/deploy-stage.yml`. Decide cómo lo resuelves —suministrarlas
+también desde el target, o cualquier otra vía que no rompa la propiedad de "arranca sin `.env`"— y
+**demuéstralo ejecutando `pnpm nx e2e api-e2e`**, no razonándolo. Si tu solución implica levantar
+Postgres para los E2E, dilo explícitamente: eso cambia lo que CI necesita y es información que el
+`ci-cd-expert` tiene que conocer.
+
+#### Trampa 3 — el problema de diseño real: `ConfigService` vs la CLI de TypeORM
+El Scope dice que los valores de conexión se resuelven **solo** a través de `ConfigService`, y el
+AC7 exige que `process.env` aparezca únicamente dentro del módulo de configuración. Pero
+`apps/api/src/data-source.ts` lo carga **la CLI de TypeORM fuera de Nest**, sin contenedor de DI y
+sin aplicación arrancada — que es justo lo que el AC3 te hace ejecutar
+(`pnpm typeorm migration:show -d apps/api/src/data-source.ts`).
+
+Ahí está la tensión entera de este ticket, y tiene dos formas fáciles de resolverse mal: un data
+source que lee `process.env` a pelo (viola el AC7) o uno que depende del contexto de Nest y **no se
+puede cargar desde la CLI** (viola el AC3). Encuentra la forma que satisface ambos —reutilizar la
+misma validación que ya existe, sin duplicar el esquema de claves— y **explica en el informe por qué
+tu solución no es ninguna de las dos malas**.
+
+#### Lo que NO debes tocar
+- **`docker/**`** — ni el compose, ni el Dockerfile, ni el entrypoint. Son de `ci-cd-expert`, y el
+  entrypoint tiene una nota explícita de que **no** puede ganar un paso de migración incondicional.
+- **Ninguna migración** (`T-C10-17`), **ninguna entidad** (`T-C10-21` en adelante), ningún módulo
+  de base de datos en Nest.
+- `libs/**`, `docs/**`, `.claude/**`, `nx.json`, `eslint.config.mjs`. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `docker compose -f docker/docker-compose.dev.yml up -d postgres` y comprueba que acepta
+   conexiones; pega la versión que reporta el servidor (debe ser PostgreSQL 18).
+2. `pnpm typeorm migration:show -d apps/api/src/data-source.ts` → conecta y lista vacío, sin error.
+3. `grep -rn "process.env" apps/api/src` → solo dentro del módulo de configuración. Pega la salida.
+4. `grep -rn "synchronize" apps/api/src` → solo `false`, sin ninguna ruta que lo ponga a `true`.
+5. **Fail-fast**: quita una de las claves nuevas del entorno y arranca; pega el mensaje, que debe
+   nombrar la clave que falta, igual que hace hoy con `NODE_ENV`.
+6. **`pnpm nx e2e api-e2e` en verde** — la trampa 2. Si has tenido que tocar
+   `apps/api-e2e/project.json`, dilo y explica por qué era la vía correcta.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde.
+8. `pnpm why typeorm` y `pnpm why pg`; `git diff package.json` sin un solo `^`.
+9. `pnpm prettier --check apps/api` pasa. **No** ejecutes `prettier --check .`.
+10. Los cuatro scripts `pnpm typeorm migration:generate|run|revert|show` declarados y ejecutables.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Informa al terminar
+- Ficheros creados y modificados, y las dependencias añadidas con su versión exacta.
+- **Cómo resolviste la tensión `ConfigService` / CLI de TypeORM**, y por qué no es ninguna de las
+  dos soluciones malas.
+- **Qué hiciste con `api-e2e`** y la salida real de su ejecución.
+- La salida de las diez verificaciones.
+- El hallazgo del suelo de Node (`engines` más laxo que el requisito de TypeORM) y cualquier otro
+  que encuentres: **repórtalos, no los corrijas**.
+
+### Response:
+
