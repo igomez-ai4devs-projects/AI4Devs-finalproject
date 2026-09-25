@@ -49,20 +49,34 @@ From `CLAUDE.md` §3 and `ARCHITECTURE.md` §6.3, and non-negotiable:
 The four scripts `T-C10-16` delivers: `migration:generate`, `migration:run`, `migration:revert`,
 `migration:show` — all with `-d apps/api/src/data-source.ts`.
 
-## Ephemeral database for acceptance runs
+## Ephemeral database for acceptance runs — built for `apps/api-e2e`
 
-Once `apps/api-e2e` exists (`T-C10-06`) and the API talks to a database, acceptance runs need their
-own instance. The shape that works:
+`apps/api-e2e` now drives its own disposable PostgreSQL through Nx targets, so `pnpm nx e2e api-e2e`
+alone reproduces the shape below — no separate script to run by hand, no workflow step to add:
 
-1. Start a disposable PostgreSQL 18 (a service container, or the same compose file with a distinct
-   volume and port).
-2. Wait with `pg_isready`, not a fixed sleep.
-3. Run the migration chain against it — the same chain production uses, never `synchronize`.
-4. Run the suite.
-5. Discard the volume.
+1. `api-e2e:e2e-db-up` runs `docker compose -f docker/docker-compose.e2e.yml up -d --wait` — the
+   ephemeral `postgres-e2e` service (port `5499`, database `sport_itsm_e2e`, no volume). `--wait`
+   blocks on the compose file's own `pg_isready` healthcheck; never a fixed sleep.
+2. `api-e2e:e2e-migrate` (`dependsOn: [e2e-db-up]`) runs the existing `pnpm migration:run` script
+   against it — the same script and the same chain a real deploy would use, never `synchronize`.
+   Today the chain is empty (**`T-C10-17`** still owns the first migration), so this step only
+   creates TypeORM's own `migrations` bookkeeping table and reports "No migrations are pending" — but
+   the step is real and already wired, not a placeholder.
+3. `api-e2e:serve-under-test` (`dependsOn: [api:build, e2e-migrate]`) boots the API against that
+   database only once the chain above has run.
+4. `api-e2e:e2e`'s own command is wrapped by `tools/e2e/teardown-after.mjs`, which runs the suite
+   (`assert-under-test.mjs` + `cypress run`) and **always** runs `docker compose … down -v` afterwards
+   — a passing suite and a failing one tear the stack down the same way, because Nx's `run-commands`
+   executor has no native "finally" step.
 
-Never point an acceptance run at a shared or long-lived database. The suites assert on state, and a
-suite that depends on leftover rows is a suite that passes for the wrong reason.
+All five `POSTGRES_*` values are supplied directly in each target's own `env` block (never `.env`,
+which stays absent for this target on purpose) and take precedence over whatever the host shell
+already exports — verified on a machine with an unrelated project's own global `POSTGRES_*` variables
+still set.
+
+Never point an acceptance run at a shared or long-lived database — this is why `apps/api-e2e` never
+reuses `docker-compose.dev.yml`'s `sport_itsm_dev`. The suites assert on state, and a suite that
+depends on leftover rows is a suite that passes for the wrong reason.
 
 ## Backups and resets
 

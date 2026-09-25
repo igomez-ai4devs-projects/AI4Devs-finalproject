@@ -6,14 +6,22 @@
 # email/notification feature this product's Mailpit service supported does not
 # exist in Sport ITSM.
 #
-# `apps/api-e2e` and `apps/web-e2e` do not exist yet (T-C10-06); until they do,
-# this file has nothing to be exercised against — it exists ahead of that
-# ticket only as the ephemeral-database shape it will need, per
-# `.claude/skills/ci-cd/references/database.md`.
+# `apps/api-e2e` and `apps/web-e2e` both exist (T-C10-06 is closed). This stack
+# is exercised by `apps/api-e2e`'s Nx targets only — `pnpm nx e2e api-e2e`
+# brings it up (`e2e-db-up`), runs the real migration chain against it
+# (`e2e-migrate`, `pnpm migration:run` — a no-op today, until T-C10-17 adds the
+# first migration), serves the API under test against it, and always tears it
+# down afterwards (`tools/e2e/teardown-after.mjs`), success or failure. See
+# `apps/api-e2e/project.json` and
+# `.claude/skills/ci-cd/references/database.md`. `apps/web-e2e` does not use a
+# database directly — it drives the web client, not the API — so it never
+# touches this stack.
 #
-# Usage:
-#   Up:   docker compose -f docker/docker-compose.e2e.yml up -d
-#   Down: docker compose -f docker/docker-compose.e2e.yml down
+# Usage (manual, for local debugging only — `pnpm nx e2e api-e2e` manages this
+# stack's full lifecycle on its own and needs neither of these commands run by
+# hand):
+#   Up:   docker compose -f docker/docker-compose.e2e.yml up -d --wait
+#   Down: docker compose -f docker/docker-compose.e2e.yml down -v
 #
 # Port 5499 is deliberately offset from the dev stack's 5432 so both can run
 # at the same time.

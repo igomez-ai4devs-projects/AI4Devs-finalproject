@@ -8,7 +8,15 @@
 #                    T-C10-06 (`apps/api-e2e`, `apps/web-e2e`), driven by
 #                    `nx:run-commands` — not `@nx/cypress`, which is not
 #                    installed (ADR-011). Runs on every push and pull
-#                    request, after `verify`.
+#                    request, after `verify`. `pnpm nx e2e api-e2e` now owns
+#                    its own ephemeral PostgreSQL 18.6 (docker compose,
+#                    `docker/docker-compose.e2e.yml`), entirely inside the Nx
+#                    target graph of `apps/api-e2e` (`e2e-db-up`,
+#                    `e2e-migrate`, `serve-under-test`, `e2e` — see that
+#                    project's `project.json` and
+#                    `.claude/skills/ci-cd/references/database.md`), so this
+#                    job needs no extra step for it — only a runner with
+#                    Docker, which `ubuntu-latest` already ships.
 #   deploy-stage   — builds both images from docker/docker-compose.stage.yml,
 #                    pushes them to ghcr.io, then calls both Render deploy
 #                    hooks (ADR-013, docs/product/ARCHITECTURE.md §10). Runs
@@ -18,9 +26,15 @@
 #                    `acceptance` so a broken smoke suite blocks the deploy
 #                    the same way a broken build does.
 #
-# What this workflow deliberately does not do: run any `typeorm migration:*`
-# command (no data source — T-C10-16). Adding one ahead of that ticket would
-# be inventing a gate this repository cannot pass.
+# What this workflow deliberately does not do: run a `typeorm migration:*`
+# command of its own. `apps/api-e2e:e2e-migrate` already runs
+# `pnpm migration:run` against the ephemeral acceptance database as part of
+# `pnpm nx e2e api-e2e` (a no-op today — there is no migration yet, only the
+# chain itself, T-C10-17). Staging and production still apply migrations as
+# their own separate, controlled deploy step (CLAUDE.md §3) — this workflow
+# does not add one ahead of that step existing, because Render's deploy is
+# triggered by a hook call (ADR-013), not by anything this workflow runs
+# after the image push.
 name: Pipeline
 
 on:
@@ -132,10 +146,19 @@ jobs:
 
       # `api-e2e:e2e` depends on `api:build` and its own `serve-under-test`
       # target (continuous), which supplies NODE_ENV=test and PORT=3333 —
-      # apps/api needs no `.env` and no database to boot. `assert-under-test`
-      # refuses to run the suite if the app under test is not the process
-      # this run started (see tools/e2e/*.mjs) rather than risk a false
-      # green against a stale server.
+      # apps/api needs no `.env` file, since every value comes from this
+      # target's own `env` block, never a developer's local copy.
+      # `serve-under-test` itself depends on `e2e-migrate`, which depends on
+      # `e2e-db-up`: a disposable PostgreSQL 18.6 (docker compose,
+      # `docker/docker-compose.e2e.yml`) is started and waited on
+      # (`docker compose up --wait`, its own `pg_isready` healthcheck — never
+      # a fixed sleep) before the API boots, `pnpm migration:run` is applied
+      # against it, then the API is served. `assert-under-test` refuses to
+      # run the suite if the app under test is not the process this run
+      # started (see tools/e2e/*.mjs) rather than risk a false green against a
+      # stale server, and `tools/e2e/teardown-after.mjs` always tears the
+      # database stack back down afterwards, pass or fail — never a database
+      # shared with, or left over for, another run.
       - name: Run API acceptance suite
         run: pnpm nx e2e api-e2e
 

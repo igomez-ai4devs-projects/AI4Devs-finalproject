@@ -6,6 +6,27 @@ Verify the current state in the code before trusting any specific detail.
 
 ---
 
+## `pnpm migration:run|revert|show` already carries `-d` — do not add it again — **Applies now**
+
+`package.json`'s `migration:run` / `migration:revert` / `migration:show` scripts are already
+`pnpm typeorm <cmd> -d apps/api/src/data-source.ts`. Calling `pnpm migration:run -d
+apps/api/src/data-source.ts` (mirroring the raw `pnpm typeorm migration:run -d …` form
+`CLAUDE.md` §3 documents for the *`typeorm`* script) appends a second `-d
+apps/api/src/data-source.ts`, and the CLI's own argument parser silently folds the duplicate flag's
+values into an array. The failure surfaces two layers away from the real cause:
+`TypeError: The "paths[1]" argument must be of type string. Received an instance of Array` inside
+`typeorm`'s `MigrationRunCommand`, which reads as a Node internals bug rather than a duplicated CLI
+flag.
+
+- **Rule:** the wrapped scripts (`migration:run`, `migration:revert`, `migration:show`) take no `-d`
+  — call them bare, or with their other own flags only. Only the raw `typeorm` script
+  (`pnpm typeorm <cmd> -d apps/api/src/data-source.ts …`) needs `-d` supplied by the caller, exactly
+  as `CLAUDE.md` §3 documents it.
+- Verified empirically against the ephemeral acceptance database while wiring
+  `apps/api-e2e:e2e-migrate`: `pnpm migration:run` (no extra flag) connects and reports "No
+  migrations are pending"; `pnpm migration:run -d apps/api/src/data-source.ts` reproduces the crash
+  above every time.
+
 ## `TS_NODE_PROJECT=X`, never `ts-node --project X` — **Applies now**
 
 **This repository has no root `tsconfig.json`** — only `tsconfig.base.json`. That single fact breaks
@@ -58,6 +79,23 @@ bytes stored, no failure — which reads exactly like a cache that is working.
 - **Rule:** if something outside the workspace must persist between jobs, copy it in first
   (`cp -r <external> ./.cache-dir`) and cache the relative path, or accept the re-download and say
   so.
+
+## `nx:run-commands` has no `finally` — **Applies now**
+
+A `commands` array (`parallel:false`) stops at the first failure; it does not run whatever comes
+after a red command. For an ephemeral resource brought up by an earlier task in the graph — the
+`apps/api-e2e` acceptance database is the first case — that gap leaves the resource behind on every
+red suite, which is exactly what `database.md`'s *"never point an acceptance run at a shared or
+long-lived database"* rule exists to prevent.
+
+- **Rule:** wrap the resource-owning command in a small Node script that runs the real command with
+  `spawnSync`, tears the resource down inside a `finally`, and re-exits with the real command's own
+  status code — see `tools/e2e/teardown-after.mjs`. A plain shell `; cleanup` (POSIX) has no single
+  cross-platform equivalent Nx's default Windows shell (`cmd.exe`) shares, which is why this is a
+  script and not a shell one-liner, the same reasoning behind the existing `tools/e2e/*.mjs` scripts.
+- Bringing the resource **up** is a different problem and does not need this pattern: make it its own
+  Nx target and put it in `dependsOn` of whatever needs it running first — Nx already runs a
+  non-continuous dependency to completion before a continuous one that depends on it starts.
 
 ## `nx affected` needs history — **Applies now**
 
