@@ -1,2 +1,2 @@
 - [Cypress/Nx e2e local verification](feedback_cypress_local_verification.md) — `unset ELECTRON_RUN_AS_NODE` in the same Bash call to actually run `cypress run`/`nx e2e` here; never dismiss a failure as environmental without checking.
-- [No `.gitattributes`, CRLF drift on Windows](project_no_gitattributes_crlf_drift.md) — a local `prettier --check` failure on an untouched-looking file is probably CRLF-from-checkout, not a real diff; verify against the `git show HEAD:` blob before trusting either result.
+- [`.gitattributes` added 2026-09-25](project_no_gitattributes_crlf_drift.md) — fixes future checkouts, not files already CRLF on disk; a `git status` "M" after a line-ending-only rewrite is stat-dirty, not a real diff — check `git diff --raw`.

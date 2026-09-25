@@ -64,7 +64,12 @@ archived; copy it into the workspace first, then cache the relative path.
 
 1. **`verify`** — runs on every push and pull request: checkout with full history, pnpm before Node
    (`.nvmrc`), `pnpm install --frozen-lockfile`, `prettier --check`, `nx run-many -t lint test build`,
-   `verify:boundaries`, then uploads `dist/` as an artifact so `deploy-stage` never rebuilds it.
+   `pnpm nx run api:build-migrations` (T-C10-69 — compiles `data-source.ts` + `migrations/*.ts` into
+   the same `dist/apps/api` directory `main.js` already landed in, and patches its generated
+   `package.json` to add `pg`; see `database.md` and the step's own comment in the workflow file),
+   `verify:boundaries`, then uploads `dist/` as an artifact so `deploy-stage` never rebuilds it. This
+   is the only place that artifact's `data-source.js` and `migrations/` come from — `nx run-many -t
+   build` alone only produces `main.js`.
 2. **`acceptance`** — `needs: verify`, runs on every push and pull request (shallow checkout — no
    `nx affected` here, so full history is not needed). pnpm before Node, `pnpm install
    --frozen-lockfile`, then `pnpm nx e2e api-e2e` and `pnpm nx e2e web-e2e` for real: `T-C10-06` is

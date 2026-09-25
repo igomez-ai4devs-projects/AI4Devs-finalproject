@@ -1,0 +1,57 @@
+# Sport ITSM — line-ending and binary policy for git.
+#
+# Why this file exists: until now this repository had no `.gitattributes`,
+# and on this Windows workstation `core.autocrlf=true` silently checks text
+# files out as CRLF even though every committed blob is LF. Two concrete
+# failures this caused, both recorded in
+# `.claude/skills/ci-cd/references/gotchas.md`:
+#   - `pnpm prettier --check` false-positives on Windows for files that are
+#     perfectly clean in the git blob and on the Linux GitHub Actions runner
+#     (the blob is LF, prettier compares against the CRLF working copy).
+#   - A Windows edit to a `#!/bin/sh` shebang script (e.g.
+#     docker/backend/docker-entrypoint.sh) can silently flip back to CRLF;
+#     a Linux container then fails with
+#     `exec .../docker-entrypoint.sh: no such file or directory` because the
+#     kernel reads the interpreter path as `/bin/sh\r`, not a missing file.
+#
+# Policy: normalize every text file to LF on checkout, on every platform.
+# This does not rewrite what is already committed — every tracked text blob
+# in this repository is already LF (`git ls-files --eol` shows 0 files with
+# `i/crlf`), so adding this file only fixes the *working-tree* checkout; it
+# does not, by itself, mark any file as modified.
+
+# Let git auto-detect text vs binary per file and normalize whatever it
+# classifies as text to LF on checkout — the general default that covers
+# every extension not called out explicitly below (*.ts, *.md, *.json,
+# *.yml/*.yaml, *.scss, *.html, …).
+* text=auto eol=lf
+
+# Shell scripts are executed directly by a Linux container entrypoint (see
+# docker/backend/docker-entrypoint.sh, run as ENTRYPOINT by
+# docker/backend/Dockerfile). A CRLF shebang there is a hard runtime failure,
+# not a cosmetic diff — force LF explicitly instead of relying on
+# `text=auto`'s heuristic detection.
+*.sh text eol=lf
+
+# Dockerfiles are parsed by the Docker daemon (Linux, even when the client is
+# Windows Docker Desktop) and are hand-edited on this Windows workstation —
+# pin LF for the same reason as *.sh. Matches `Dockerfile`, `Dockerfile.dev`,
+# etc. under docker/backend/ and docker/frontend/.
+Dockerfile* text eol=lf
+
+# Binary assets — never let git attempt line-ending or diff normalization on
+# these; doing so corrupts the file the moment git misclassifies it as text.
+# Only apps/web/public/favicon.ico is tracked today; the rest are listed so
+# the next icon/font asset this workspace adds is covered without a second
+# change to this file.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary

@@ -3,7 +3,13 @@
 # Three jobs:
 #   verify        — the gates this workspace actually has (CLAUDE.md §3,
 #                    .claude/skills/ci-cd/references/pipeline.md). Runs on
-#                    every push and pull request.
+#                    every push and pull request. Also compiles
+#                    `api:build-migrations` (T-C10-69) into the same `dist/`
+#                    it uploads, so the artifact `deploy-stage` builds its
+#                    image from carries `data-source.js` and `migrations/`,
+#                    not only the webpack `main.js` bundle — see that step's
+#                    own comment and
+#                    .claude/skills/ci-cd/references/database.md.
 #   acceptance    — Cypress smoke suites for both harnesses built by
 #                    T-C10-06 (`apps/api-e2e`, `apps/web-e2e`), driven by
 #                    `nx:run-commands` — not `@nx/cypress`, which is not
@@ -97,6 +103,27 @@ jobs:
       - name: Lint, test and build every project
         run: pnpm nx run-many -t lint test build
 
+      # `api:build-migrations` (apps/api/project.json, `dependsOn: ["build"]`,
+      # T-C10-69) is a separate Nx target, not part of the `build` target run
+      # above — `nx run-many -t build` alone produces `dist/apps/api/main.js`
+      # only. It compiles `data-source.ts` + `config/` + `migrations/*.ts` to
+      # plain CommonJS straight into `dist/apps/api` (the same directory
+      # `main.js` already landed in — no separate upload path) and patches
+      # that directory's generated `package.json` to add `pg`, which Nx's
+      # `generatePackageJson` misses because TypeORM's PostgresDriver only
+      # `require()`s it lazily (.claude/skills/ci-cd/references/gotchas.md).
+      # Without this step the `dist` artifact uploaded below has no
+      # `data-source.js` and no `migrations/`, and Render's pre-deploy command
+      # (`node_modules/.bin/typeorm migration:run -d data-source.js`,
+      # ADR-013) would have nothing to run against.
+      # No `--configuration` flag: `build-migrations` declares no
+      # `configurations` of its own, and its `build` dependency already ran
+      # above with the base (production-shaped) args from the step before —
+      # Nx resolves it from cache rather than rebuilding, so this step only
+      # adds the ~1s `tsc` compile, not a second webpack build.
+      - name: Compile API migration runtime (data-source.js + migrations)
+        run: pnpm nx run api:build-migrations
+
       # The gate lint alone cannot provide: proves a deliberate boundary
       # violation is still rejected, not only that legal code lints clean.
       - name: Verify module boundaries still bite
@@ -104,7 +131,8 @@ jobs:
 
       # Handed to deploy-stage so it does not have to rebuild `api` and
       # `web` a second time. Both Dockerfiles are runtime-only and expect
-      # these paths to already exist in the build context.
+      # these paths — including `api:build-migrations`'s output — to already
+      # exist in the build context.
       - name: Upload production build output
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

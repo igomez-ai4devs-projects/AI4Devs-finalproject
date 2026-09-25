@@ -230,23 +230,37 @@ peerDependency and is pinned in the root `package.json`. Confirmed for `pg`: `ty
   context module wires `TypeOrmModule` into `app.module.ts` — reported as a finding, not fixed
   generally, since that is a different artifact than any ticket has touched so far.
 
-## An editor on Windows can silently turn a shebang script's LF into CRLF — **Applies now**
+## A `.gitattributes` now exists — mitigated, but still verify after an edit — **Applies now**
 
-There is no `.gitattributes` in this repository (see the Prettier/CRLF note the orchestrator already
-carries), and on Windows a text edit to an already-LF file can come back out with CRLF line endings
-without the editing tool saying so. For most committed files that is only a noisy `git diff`. For a
-shell script with a `#!/bin/sh` shebang that a Linux container executes, it is a hard failure: the
-kernel reads the interpreter path as `/bin/sh\r`, which does not exist, so `docker run` fails with
+A root `.gitattributes` (`* text=auto eol=lf`, plus explicit `*.sh text eol=lf` and
+`Dockerfile* text eol=lf`) was added to close this class of failure. On Windows, before this file
+existed, `core.autocrlf=true` silently checked text files out as CRLF even though every committed
+blob is LF; a further edit on top of that could come back out with CRLF line endings without the
+editing tool saying so. For most committed files that was only a noisy `git diff`. For a shell script
+with a `#!/bin/sh` shebang that a Linux container executes, it was a hard failure: the kernel reads
+the interpreter path as `/bin/sh\r`, which does not exist, so `docker run` fails with
 `exec /usr/local/bin/docker-entrypoint.sh: no such file or directory` — a message that reads like a
 missing `COPY`, not a line-ending problem. Hit while editing `docker/backend/docker-entrypoint.sh` for
 `T-C10-69`; `git show HEAD:<path> | file -` on the pre-edit version confirmed it was LF before the
 edit and CRLF after.
 
+`.gitattributes` fixes the *checkout* going forward (verified: `git check-attr -a -- docker/backend/
+docker-entrypoint.sh` resolves `text: set`, `eol: lf`), but it does not retroactively rewrite files
+already sitting CRLF in the working tree from before it existed, and a tool that writes bytes
+directly (rather than going through a fresh git checkout) can still ignore it.
+
 - **Rule:** after editing any file a Linux container executes directly (an entrypoint, any script
   with a shebang), run `file <path>` and confirm it still says plain `... text executable`, not `...
   with CRLF line terminators`, before trusting a container run against it. If it flipped, normalize
   it back (`content.replace(/\r\n/g, '\n')`) rather than assuming the edit tool preserved the original
-  line ending.
+  line ending, `.gitattributes` notwithstanding.
+- A file already CRLF-on-disk from a checkout that predates `.gitattributes` does not self-heal by
+  itself: `git checkout HEAD -- <path>` / `git checkout-index --force -- <path>` do **not** reliably
+  rewrite an unchanged path's line endings (confirmed empirically — both left `apps/api/src/main.ts`
+  CRLF on disk). What works is reading the file, replacing `\r\n` with `\n`, and writing it back
+  directly; git then reports the path "modified" in `git status --short` (a stat-dirty artifact —
+  `git diff --raw` on it is empty, same blob SHA as HEAD) even though nothing about its committed
+  content changed.
 
 ---
 

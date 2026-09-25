@@ -62,6 +62,15 @@ locally, but the production image (`docker/backend/Dockerfile`) ships no `ts-nod
   emitting straight into `dist/apps/api` — the same directory `main.js` lands in, so the existing
   `COPY dist/apps/api …` in the Dockerfile already carries the compiled artifact into the image; no
   second `COPY`.
+- `.github/workflows/deploy-stage.yml`'s `verify` job runs this target explicitly (`pnpm nx run
+  api:build-migrations`, right after `nx run-many -t lint test build` and before
+  `verify:boundaries`) so the `dist/` artifact it uploads — the one `deploy-stage` builds both images
+  from — actually contains `data-source.js` and `migrations/`, not only the webpack `main.js` bundle
+  that a plain `nx run-many -t build` produces. No `--configuration` flag: the target declares no
+  `configurations` of its own, and its `build` dependency already ran with the base (production-shaped)
+  args in the step before, so Nx serves it from cache rather than rebuilding. Without this step the
+  artifact `deploy-stage` downloads would build an image with nothing for Render's pre-deploy command
+  (`node_modules/.bin/typeorm migration:run -d data-source.js`, ADR-013) to run against.
 - The root script for the compiled artifact, run from the repository root (local sanity-check, not
   inside the image): `pnpm migration:run:deploy` → `typeorm migration:run -d
   dist/apps/api/data-source.js`. No `ts-node`, no `TS_NODE_PROJECT`.

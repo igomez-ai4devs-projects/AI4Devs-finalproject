@@ -1,38 +1,43 @@
 ---
 name: project-no-gitattributes-crlf-drift
-description: No .gitattributes exists — Windows checkouts silently drift to CRLF for most text files while the git-committed content (and Linux CI) stays LF, producing false-positive local `prettier --check` failures
+description: A root .gitattributes now exists (added 2026-09-25) fixing checkout-time CRLF drift on Windows going forward; it does not retroactively fix files already CRLF on disk from before it existed
 metadata:
   type: project
 ---
 
-The repository has no `.gitattributes`. With the local Windows machine's `core.autocrlf=true`,
-git checks most text files (`.ts`, `.yml`, `.md`, `.mjs`) out as CRLF even though every file's
-git-committed blob is LF (confirmed via `git show HEAD:<path>`, which always returns LF and
-always passes `pnpm prettier --check`). `*.json` files are the one visible exception — they
-stay LF on disk too, most likely because Nx generators and the `Write`/`Edit` tools create or
-rewrite them with plain Node `fs` calls (always LF) rather than by a fresh `git checkout`.
+**Superseded finding, kept for history:** this memory used to record that the repository had **no**
+`.gitattributes`, causing Windows checkouts (`core.autocrlf=true`) to silently drift most text files
+to CRLF on disk while every git-committed blob (and Linux GitHub Actions) stayed LF — a recurring
+source of false-positive local `pnpm prettier --check` failures and, once, a CRLF shebang that broke
+`docker/backend/docker-entrypoint.sh` inside a Linux container (`T-C10-69`).
 
-**Why this matters:** on 2026-09-25, editing `apps/api-e2e/project.json`,
-`docker/docker-compose.e2e.yml` and `.github/workflows/deploy-stage.yml` (while wiring the
-ephemeral acceptance database for `apps/api-e2e`, documented in
-`.claude/skills/ci-cd/references/database.md`) preserved each file's pre-edit on-disk line
-ending, which for the two non-JSON files was already CRLF from checkout. That made
-`pnpm prettier --check` fail locally on files whose actual committed content — and whatever a
-Linux GitHub Actions runner will check out — is perfectly fine. Diagnosed by extracting each
-file's `HEAD` blob with `git show` and confirming it parses LF and passes prettier cleanly,
-then normalizing the three working-tree files back to LF (`content.replace(/\r\n/g, '\n')`) so
-the local check result actually matches what CI will see. `git diff` on the normalized files
-then warned `LF will be replaced by CRLF the next time Git touches it` — harmless; `autocrlf`
-reconverts on the *next* checkout of that file, but the git object it stores on commit is
-still LF, which is the only copy that matters.
+**That gap is closed.** A root `.gitattributes` was added 2026-09-25 (`* text=auto eol=lf`, plus
+explicit `*.sh text eol=lf` and `Dockerfile* text eol=lf`, plus a `binary` block for image/font
+extensions). Verified before adding it: `git ls-files --eol` showed **0 files with `i/crlf`** — every
+tracked text blob was already LF in the index, only the *working-tree* checkout (`w/crlf` on 409 of
+450 tracked files) was wrong — so adding the file did not retroactively mark anything as modified;
+`git status --short` right after creating it showed only the new `.gitattributes` itself as
+untracked. `git check-attr -a -- docker/backend/docker-entrypoint.sh package.json
+apps/api/src/main.ts` confirms attributes resolve (`eol: lf` on all three).
 
-**How to apply:** when `pnpm prettier --check <files I touched>` fails locally on this machine
-for a file I did not intentionally reformat, suspect CRLF-from-checkout before suspecting a
-real formatting issue — verify with `git show HEAD:<path> | git hash-object --stdin -w` style
-comparison, or simpler, `file <path>` (look for "with CRLF line terminators") plus
-`git diff --stat` (a `git diff` full-file rewrite with `warning: ... LF will be replaced by
-CRLF` on the next `git add` is the tell). Normalize back to LF before reporting a formatting
-check as green, rather than either declaring a false failure or silently trusting a red result.
-A `.gitattributes` with `* text=auto eol=lf` (or per-extension) would remove this whole class of
-noise, but adding one is an infrastructure decision beyond any single ticket's scope — report it
-as a finding, do not add it as a side effect of an unrelated change.
+**What it does and does not fix:**
+- Fixes: any **future** checkout (fresh clone, `git clone`, a file `git rm`'d and re-checked-out) —
+  those will land as LF regardless of `core.autocrlf`.
+- Does **not** fix: a file already sitting CRLF on disk in an existing working tree from before
+  `.gitattributes` existed. Neither `git checkout HEAD -- <path>` nor `git checkout-index --force --
+  <path>` reliably rewrites an unchanged path's line endings on this machine — confirmed empirically,
+  both left `apps/api/src/main.ts` CRLF on disk. What works: read the file, `content.replace(/\r\n/g,
+  '\n')`, write it back directly. After that, `git status --short` reports the path "modified" — this
+  is a harmless stat-dirty artifact, not a real content change: `git diff --raw` on it is empty (same
+  blob SHA as `HEAD`), and `pnpm prettier --check` on it goes green.
+
+**How to apply:** [[feedback_cypress_local_verification]]-style — do not assume a green or red
+`prettier --check` locally reflects CI; a file reported "modified" by `git status` after a
+line-ending-only rewrite is not a real diff (check `git diff --raw`, not `git status`, to tell the
+two apart) before reporting a formatting check as green or asking the user to review a spurious
+change. Normalizing the **whole** working copy at once (so every one of the 409 CRLF-on-disk files
+matches its LF blob) is a decision for the repo owner, not a side effect of an unrelated task — the
+non-destructive path is `git add --renormalize .` after committing pending work (stages the
+line-ending fix as its own commit, nothing is discarded); `git rm --cached -r . && git reset --hard`
+also works but is destructive (discards anything uncommitted) and should only be offered with an
+explicit warning.
