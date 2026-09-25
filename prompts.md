@@ -2170,3 +2170,153 @@ No instales dependencias. No hagas commit ni push.
 
 ### Response:
 
+Implementado ticket T-C10-11
+
+</br>
+
+**Prompt 13:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-73.md ·
+Dispatcher genérico de eventos post-commit, extraído de `T-C10-55`
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (NestJS 11, DI por tokens, Logger),
+`sport-itsm-architecture` (ADR-003, ADR-008, §5.4 y §6.3: `apps/api` es la raíz de composición) y
+`sport-itsm-engineering-principles` (errores tipados, YAGNI). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el cuarto de la rebanada 1 ("un requester registra una incidencia y la ve"). `T-C1-07`
+(`LogIncidentUseCase`) tiene un AC que exige que un suscriptor que lanza al manejar
+`IncidentLogged` no afecte a la incidencia ya persistida: necesita **este** mecanismo, y no puede
+sacarlo de `T-C10-55`, que está escrito contra eventos de roles. Aquí se construye el mecanismo
+**genérico**; cada consumidor cablea sus propios eventos en su propio ticket.
+
+#### Precondición
+    git status --porcelain                 # limpio
+    pnpm nx show projects                  # 7: shared-contracts, shared-domain, shared-util, api-e2e, web-e2e, api, web
+    pnpm nx test shared-domain             # verde
+    pnpm verify:boundaries                 # todas las sondas en verde — anota el número
+
+Este ticket no necesita la base de datos.
+
+#### El ticket es el contrato
+Léelo entero; su "Out of scope" es vinculante. Lee además, y no de memoria:
+
+- `libs/shared/domain/src/lib/event-publisher.port.ts` — el puerto **ya existe** (`T-C10-09`):
+  `publish(events: readonly DomainEvent<object>[]): void`. Su comentario dice que publicar después
+  del commit es **responsabilidad del caso de uso, no del puerto**, y que el dispatcher vive en
+  `apps/api`.
+- `libs/shared/domain/src/lib/domain-event.ts` — `DomainEvent` lleva `name`, `occurredAtEpochMs`,
+  `actor`, **`correlationId`** y `payload`, congelado. El identificador de correlación que el AC2
+  pide loguear **ya viaja en el evento**.
+- `ARCHITECTURE.md` **ADR-008** y §5.4 (el bloque sobre por qué `audit` y `notification` no tienen
+  puerto) y §6.3 (raíz de composición).
+- `apps/api/src/app/app.module.ts`, `apps/api/src/main.ts`, y el arnés `apps/api-e2e` (su
+  `project.json`, `harness-smoke.feature` y sus step definitions).
+
+#### Trampa 1 — no hay transacción todavía, y el AC habla de commit y rollback
+Hoy no existe ningún `TypeOrmModule`, ningún repositorio y ninguna unidad de trabajo: el primer
+commit real llega con `T-C1-06`/`T-C1-07`. Los AC1 y AC3 (despachado "strictly after the commit";
+con rollback, "no event reaches any subscriber") hay que demostrarlos sin esa infraestructura.
+
+- **No inventes** un `UnitOfWorkPort` en `libs/shared/domain`, ni un módulo de TypeORM, ni un
+  decorador `@Transactional`. Eso es diseño de otro ticket y cambiaría el kernel compartido.
+- El puerto ya fija el reparto: el caso de uso hace commit y **después** llama a `publish`. Demuestra
+  AC1/AC3 con un **caso de uso de prueba genérico** (solo en código de test) que modela commit y
+  rollback, y comprueba el orden y la ausencia de despacho tras el rollback.
+- Decide y justifica si `publish` despacha **en el acto** (síncrono, dentro de la llamada) o lo
+  **difiere** (microtask/`setImmediate`). Las dos tienen consecuencias: diferir aleja el despacho
+  del commit pero hace que el AC2 ("the caller receives success") y los tests dependan del
+  scheduling. Elige una y di por qué.
+- **Repórtalo como hallazgo**: la frontera de commit real la pondrá `T-C1-07`, y ese ticket tendrá
+  que garantizar que `publish` se llama fuera de la transacción.
+
+#### Trampa 2 — `publish(): void` y suscriptores asíncronos
+La firma es síncrona y devuelve `void`. Un suscriptor `async` que **rechaza** su promesa no lanza
+dentro de tu `try/catch`: acaba como *unhandled rejection*, y en **Node 22 eso tumba el proceso**.
+El aislamiento del AC2 tiene que cubrir **las dos** formas de fallo (throw síncrono y promesa
+rechazada), y un suscriptor que falla **no** puede impedir que los demás suscriptores del mismo
+evento lo reciban. Demuéstralo con tests de ambos casos y de varios suscriptores.
+
+No cambies la firma de `EventPublisherPort` ni toques `libs/shared/domain`. Si crees que la firma
+debe cambiar, **para y repórtalo**.
+
+#### Trampa 3 — el escenario API-E2E necesita algo que lo dispare
+El Scope pide un escenario API-E2E con un evento de prueba genérico y un suscriptor que falla. Hoy la
+API no tiene ninguna ruta, y `harness-smoke.feature` recuerda que `T-C10-06` prohíbe añadir rutas
+para "poner verde" ese smoke. Para disparar el dispatcher por HTTP necesitas algo que **no puede
+existir en producción**.
+
+Decide y justifica la vía. Si es un módulo/ruta solo de test:
+- se registra **únicamente** con `NODE_ENV=test` (el que ya pone el target de `api-e2e`), decidido
+  en la raíz de composición, sin `process.env` fuera del módulo de configuración (usa
+  `ConfigService`/el entorno validado);
+- **demuestra** que con `NODE_ENV=development` y `production` la ruta responde **404**;
+- vive claramente marcado como test harness, no mezclado con código de producción.
+
+Si concluyes que la vía correcta es otra (p. ej. un test de integración de Nest con
+`@nestjs/testing` en vez de Cypress), justifícalo contra `CLAUDE.md` §2 (E2E con
+Cypress/Cucumber) y **repórtalo como desviación**, no la escondas. Recuerda que el aislamiento de
+Cypress en esta máquina exige `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+
+#### Trampa 4 — genérico de verdad
+- La costura de registro se indexa por **nombre de evento** (`DomainEvent.name` es un `string`; no
+  hay subclases por evento). Tipa el payload genéricamente para que un consumidor futuro registre
+  `IncidentLogged` con su payload sin que este código lo conozca.
+- El token de inyección para `EventPublisherPort` (una interfaz no puede ser token) y la costura de
+  registro viven en `apps/api`. **No generes ninguna librería nueva** para esto; si crees que hace
+  falta, para y repórtalo.
+- AC4: ni `identity`, ni `role`, ni `Role`, ni `incident`, ni `Incident` en el código del
+  dispatcher. Nombres de test: `TestEvent`, `FailingTestSubscriber`, o similares.
+- **Nada de reintentos**: ADR-008 menciona "retry" como mitigación de audit, pero el ticket no lo
+  pide. No lo implementes; menciónalo como hallazgo si lo ves necesario para `C18`.
+
+#### Logging
+`nestjs-pino` **no está instalado** (llega con `T-C10-28`). Usa el `Logger` de `@nestjs/common`,
+nunca `console.log`. El log del fallo incluye el `correlationId` del evento, el nombre del evento y
+el error, y nunca el `payload` completo (puede contener datos personales). No instales dependencias.
+
+#### Lo que NO debes tocar
+- `libs/**` (incluido `EventPublisherPort` y `DomainEvent`), `docker/**`, `.github/**`, `docs/**`,
+  `.claude/**`, `prompts.md`, `package.json`. El ticket no se edita.
+- Ningún evento concreto, ningún caso de uso real, nada de `incident` ni de roles.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api` — pega el resumen: tests de despacho único, orden tras commit, nada tras
+   rollback, suscriptor que lanza (síncrono), suscriptor que rechaza (asíncrono), varios suscriptores
+   con uno que falla, y el log con `correlationId`. Ya no puede pasar por `passWithNoTests`.
+2. **AC4**: `grep -rniE "identity|role|incident" <ficheros del dispatcher>` → vacío. Pega la salida.
+3. **Trampa 3**: `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde con el escenario nuevo
+   y el smoke existente. Y la prueba de que la ruta de test responde 404 fuera de `NODE_ENV=test`.
+4. Ninguna *unhandled rejection* en la salida de los tests (búscala explícitamente).
+5. `grep -rn "process.env" apps/api/src` → solo dentro de `apps/api/src/config`.
+6. `grep -rn "console.log" apps/api/src` → vacío.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde.
+8. `pnpm verify:boundaries` → mismo número de sondas que en la precondición, en verde.
+9. `pnpm prettier --check` sobre los ficheros que has creado o tocado (no `prettier --check .`).
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- El diseño: token, costura de registro, dispatcher, y cómo los usará `T-C1-07` (un ejemplo de
+  registro de dos líneas, sin escribirlo en código).
+- Tus decisiones de las trampas 1, 2 y 3, con su porqué.
+- La salida de las nueve verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, la frontera de commit que hereda
+  `T-C1-07`, la cuestión del reintento de ADR-008, y qué debe ajustar `T-C10-55` ahora que el
+  mecanismo existe.
+
+### Response:
+
+Implementado ticket T-C10-73
+
+</br>
