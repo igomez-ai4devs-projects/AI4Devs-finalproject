@@ -1,13 +1,11 @@
 import { Controller, Inject, OnModuleInit, Post } from '@nestjs/common';
 import {
   DomainEvent,
+  EVENT_PUBLISHER,
   Identity,
   type EventPublisherPort,
 } from '@sport-itsm/shared-domain';
-import {
-  EVENT_PUBLISHER,
-  EVENT_SUBSCRIPTION_REGISTRY,
-} from '../event-dispatch/event-dispatch.tokens';
+import { EVENT_SUBSCRIPTION_REGISTRY } from '../event-dispatch/event-dispatch.tokens';
 import type { EventSubscriptionRegistry } from '../event-dispatch/event-subscription-registry';
 
 /**

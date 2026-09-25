@@ -1,5 +1,6 @@
 import { DomainEvent } from './domain-event';
-import { EventPublisherPort } from './event-publisher.port';
+import { EVENT_PUBLISHER, EventPublisherPort } from './event-publisher.port';
+import { EVENT_PUBLISHER as BARREL_EVENT_PUBLISHER } from '../index';
 import { FixedClock } from './fixed-clock';
 import { Identity } from './identity';
 
@@ -57,5 +58,10 @@ describe('EventPublisherPort', () => {
     ]);
 
     expect(publisher.published).toHaveLength(2);
+  });
+
+  it('exports a Symbol injection token beside the port, reachable from the barrel', () => {
+    expect(typeof EVENT_PUBLISHER).toBe('symbol');
+    expect(EVENT_PUBLISHER).toBe(BARREL_EVENT_PUBLISHER);
   });
 });

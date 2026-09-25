@@ -21,3 +21,15 @@ import { DomainEvent } from './domain-event';
 export interface EventPublisherPort {
   publish(events: readonly DomainEvent<object>[]): void;
 }
+
+/**
+ * The injection token for `EventPublisherPort` — the interface is erased at
+ * runtime, so a wiring container needs a value to key the binding on.
+ *
+ * It sits beside the port, per `ARCHITECTURE.md` §6.3 ("a matching `Symbol`
+ * injection token exported from the domain lib"), so a `type:application` use
+ * case can declare the dependency without reaching into `apps/api`, which no
+ * library may depend on (§5.3). A `Symbol` is plain JavaScript: it names the
+ * dependency without importing any framework into the kernel.
+ */
+export const EVENT_PUBLISHER = Symbol('EventPublisherPort');

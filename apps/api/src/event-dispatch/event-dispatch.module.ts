@@ -1,8 +1,6 @@
 import { Global, Module } from '@nestjs/common';
-import {
-  EVENT_PUBLISHER,
-  EVENT_SUBSCRIPTION_REGISTRY,
-} from './event-dispatch.tokens';
+import { EVENT_PUBLISHER } from '@sport-itsm/shared-domain';
+import { EVENT_SUBSCRIPTION_REGISTRY } from './event-dispatch.tokens';
 import { InProcessEventDispatcher } from './in-process-event-dispatcher';
 
 /**
