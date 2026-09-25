@@ -23,7 +23,7 @@
 #   Up:   docker compose -f docker/docker-compose.e2e.yml up -d --wait
 #   Down: docker compose -f docker/docker-compose.e2e.yml down -v
 #
-# Port 5499 is deliberately offset from the dev stack's 5432 so both can run
+# Port 5499 is deliberately offset from the dev stack's 5452 so both can run
 # at the same time.
 #
 # `name`: see the equivalent note in docker-compose.dev.yml — without an

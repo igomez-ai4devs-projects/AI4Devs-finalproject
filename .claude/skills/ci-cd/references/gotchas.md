@@ -177,6 +177,77 @@ job fails with no visible TypeScript error.
   rather than `--verbose`, which produces unusable volume. Raise `--max-old-space-size` only after
   the canary is clean; an oversized heap can destabilise the host rather than fix the build.
 
+## A relative `..` glob that leaves the image root globs the entire container filesystem — **Applies now**
+
+`apps/api/src/data-source.ts` resolves its `entities` glob as `join(__dirname, '..', '**',
+'*.entity.{ts,js}')`. That is safe wherever `__dirname` sits at least one directory below the
+filesystem root it must climb out of — which is true locally (`<repo>/dist/apps/api`, `..` →
+`<repo>/dist/apps`) — but if a Dockerfile's `COPY` flattens the compiled artifact straight onto the
+image's own `WORKDIR` (e.g. `WORKDIR /app`, `COPY dist/apps/api ./`), `__dirname` becomes `/app` and
+`..` resolves to `/`. TypeORM's `DataSource.initialize()` then asks its glob library
+(`tinyglobby`) to recursively enumerate the *entire container filesystem*, `/proc` included —
+confirmed empirically (`T-C10-69`): the process pins one CPU core at 100% and never returns, with no
+error, no timeout, no log line after the second query. It looks exactly like a hung network call; it
+is a hung filesystem walk.
+
+- **Rule:** any Dockerfile that copies a compiled artifact whose code does relative `..` navigation
+  from `__dirname` must preserve enough of the original directory nesting that `..` still lands
+  inside a small, real, bounded directory — never directly at the image's `WORKDIR`. `T-C10-69`'s
+  fix: `WORKDIR /app`, `COPY dist/apps/api dist/apps/api` (preserving the path instead of flattening
+  it with `./`), then `WORKDIR /app/dist/apps/api` for the remaining instructions — reproducing the
+  exact local shape (one level under a `dist/apps`-like directory) inside the image.
+  Do **not** work around this by rewriting the glob pattern in `data-source.ts` — that file belongs to
+  the migration ticket that owns it, not to a Dockerfile-driven change.
+- **Symptom:** a `typeorm migration:run` (or any other command that calls `DataSource.initialize()`)
+  hangs indefinitely inside a container after printing 1–2 `query:` log lines, with the process
+  pinned near 100% CPU (`docker stats <container>`) and no further output.
+- Verify by inspecting where the compiled entry point actually lands inside the image
+  (`docker run --rm <image> sh -c 'pwd; ls'`) and manually resolving what a `..` from there means,
+  rather than assuming the local, repository-root shape carries over.
+
+## `generatePackageJson` misses a dependency that is only ever `require()`d lazily — **Applies now**
+
+Nx's `generatePackageJson` (`apps/api/webpack.config.js`'s `generatePackageJson: true`) infers the
+production image's runtime dependencies from this project's *static* import graph (every file under
+`{projectRoot}`, not only what `main.js` bundles — confirmed by reading
+`nx/src/plugins/js/package-json/create-package-json.js`). A package that is only ever `require()`d
+**lazily**, at runtime, by another dependency — never through a static `import`/`require` anywhere in
+this codebase — is invisible to that graph and silently omitted from the generated
+`dist/apps/api/package.json`, even when it is declared as that dependency's own (optional)
+peerDependency and is pinned in the root `package.json`. Confirmed for `pg`: `typeorm`'s
+`PostgresDriver` only `require()`s it once a connection actually opens, so `pnpm nx build api
+--configuration=production` alone produces a `package.json` with `typeorm` but without `pg` — and
+`pnpm install --prod` against it inside the image then has nothing to install, so any later
+`DataSource.initialize()` against a real Postgres fails with `Cannot find module 'pg'`.
+
+- **Rule:** never assume a package appearing in `dist/apps/api/package.json` after a plain `nx build`
+  covers everything the compiled code needs at runtime — it only covers what is *statically*
+  reachable. A dependency loaded through another package's own lazy `require()` (database drivers are
+  the classic case: `pg`, `mysql2`, `mongodb`, …) needs to be added back explicitly. `T-C10-69`'s
+  `tools/build-api-runtime.mjs` does this for `pg`, reading the exact version from the root
+  `package.json` (never hardcoding it) and patching it into the generated manifest after `tsc` runs.
+- This will resurface for `main.js` itself (not only the compiled `data-source.js`) the moment a
+  context module wires `TypeOrmModule` into `app.module.ts` — reported as a finding, not fixed
+  generally, since that is a different artifact than any ticket has touched so far.
+
+## An editor on Windows can silently turn a shebang script's LF into CRLF — **Applies now**
+
+There is no `.gitattributes` in this repository (see the Prettier/CRLF note the orchestrator already
+carries), and on Windows a text edit to an already-LF file can come back out with CRLF line endings
+without the editing tool saying so. For most committed files that is only a noisy `git diff`. For a
+shell script with a `#!/bin/sh` shebang that a Linux container executes, it is a hard failure: the
+kernel reads the interpreter path as `/bin/sh\r`, which does not exist, so `docker run` fails with
+`exec /usr/local/bin/docker-entrypoint.sh: no such file or directory` — a message that reads like a
+missing `COPY`, not a line-ending problem. Hit while editing `docker/backend/docker-entrypoint.sh` for
+`T-C10-69`; `git show HEAD:<path> | file -` on the pre-edit version confirmed it was LF before the
+edit and CRLF after.
+
+- **Rule:** after editing any file a Linux container executes directly (an entrypoint, any script
+  with a shebang), run `file <path>` and confirm it still says plain `... text executable`, not `...
+  with CRLF line terminators`, before trusting a container run against it. If it flipped, normalize
+  it back (`content.replace(/\r\n/g, '\n')`) rather than assuming the edit tool preserved the original
+  line ending.
+
 ---
 
 ## Not applicable here (recorded so nobody re-derives them)

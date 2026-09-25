@@ -18,6 +18,32 @@
         }
       }
     },
+    "build-migrations": {
+      "dependsOn": ["build"],
+      "cache": true,
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{projectRoot}/tsconfig.migrations.json",
+        "{projectRoot}/tsconfig.app.json",
+        "{projectRoot}/tsconfig.json",
+        "{workspaceRoot}/tsconfig.base.json",
+        "{projectRoot}/src/data-source.ts",
+        "{projectRoot}/src/config/environment.ts",
+        "{projectRoot}/src/config/env.validation.ts",
+        "{projectRoot}/src/migrations/**/*.ts",
+        "{workspaceRoot}/tools/build-api-runtime.mjs",
+        "{workspaceRoot}/package.json"
+      ],
+      "outputs": [
+        "{workspaceRoot}/dist/apps/api/data-source.js",
+        "{workspaceRoot}/dist/apps/api/config",
+        "{workspaceRoot}/dist/apps/api/migrations",
+        "{workspaceRoot}/dist/apps/api/package.json"
+      ],
+      "options": {
+        "command": "node tools/build-api-runtime.mjs"
+      }
+    },
     "prune-lockfile": {
       "dependsOn": ["build"],
       "cache": true,

@@ -14,7 +14,7 @@ primary-key safety-net default is the core `uuidv7()` function, which does not e
 
 | Stack | File | Host port | Database | Storage |
 |---|---|---|---|---|
-| Development | `docker/docker-compose.dev.yml` (service `postgres`) | `5432` | `sport_itsm_dev` | named volume `postgres-data`, mounted at **`/var/lib/postgresql`** |
+| Development | `docker/docker-compose.dev.yml` (service `postgres`) | `5452` (container `5432`; host 5432 is taken locally) | `sport_itsm_dev` | named volume `postgres-data`, mounted at **`/var/lib/postgresql`** |
 | Acceptance | `docker/docker-compose.e2e.yml` (service `postgres-e2e`) | `5499` | `sport_itsm_e2e` | none — ephemeral, destroyed on `down` |
 | Stage | — | — | — | managed by the hosting platform; `docker-compose.stage.yml` has no `postgres` service |
 
@@ -48,6 +48,47 @@ From `CLAUDE.md` §3 and `ARCHITECTURE.md` §6.3, and non-negotiable:
 
 The four scripts `T-C10-16` delivers: `migration:generate`, `migration:run`, `migration:revert`,
 `migration:show` — all with `-d apps/api/src/data-source.ts`.
+
+### Running migrations inside the deployed image — `T-C10-69` (built)
+
+The four scripts above run `data-source.ts` as `.ts` through `ts-node` (`tools/typeorm.cjs`) — fine
+locally, but the production image (`docker/backend/Dockerfile`) ships no `ts-node`/`typescript`
+(`pnpm install --prod` against webpack's generated `package.json` excludes every root
+`devDependency`). ADR-013 puts `typeorm migration:run` on Render's pre-deploy command, which runs
+**inside that image**, so it needs a plain-CommonJS, non-bundled target.
+
+- `apps/api:build-migrations` (`dependsOn: ["build"]`) compiles `data-source.ts` + `migrations/*.ts`
+  with a dedicated `tsc -p apps/api/tsconfig.migrations.json` (via `tools/build-api-runtime.mjs`),
+  emitting straight into `dist/apps/api` — the same directory `main.js` lands in, so the existing
+  `COPY dist/apps/api …` in the Dockerfile already carries the compiled artifact into the image; no
+  second `COPY`.
+- The root script for the compiled artifact, run from the repository root (local sanity-check, not
+  inside the image): `pnpm migration:run:deploy` → `typeorm migration:run -d
+  dist/apps/api/data-source.js`. No `ts-node`, no `TS_NODE_PROJECT`.
+- The verbatim command for Render's pre-deploy field (runs at the image's own WORKDIR, documented in
+  `docker/backend/docker-entrypoint.sh`): `node_modules/.bin/typeorm migration:run -d
+  data-source.js`. Same file as above — the path differs only because the two invocations start
+  from different working directories (repository root vs. the image's WORKDIR).
+
+Two packaging traps this target exists to close, both confirmed empirically while building `T-C10-69`
+— see `gotchas.md` for the full writeups:
+
+- **`pg` never appears in the webpack-generated `dist/apps/api/package.json`.** Nx's
+  `generatePackageJson` infers runtime dependencies from this project's *static* import graph;
+  nothing in this codebase statically imports `pg` (TypeORM's `PostgresDriver` `require()`s it
+  lazily, only once a connection actually opens), so Nx omits it even though it is an (optional)
+  peerDependency of `typeorm` and is pinned in the root `package.json`. `build-api-runtime.mjs`
+  patches it in after compiling. **This will resurface for the running API itself** the first time a
+  context wires `TypeOrmModule` into `app.module.ts` — reported, not fixed generally, since that is a
+  different artifact than the one `T-C10-69` owns.
+- **The Docker image must preserve the `dist/apps/api` path, not flatten it at the image root.**
+  `data-source.ts`'s `entities` glob is `join(__dirname, '..', '**', '*.entity.{ts,js}')`. Flattened
+  at the image root (`WORKDIR /app`, `COPY dist/apps/api ./`), `__dirname` becomes `/app` and `..`
+  resolves to the filesystem root — `initialize()` then recursively globs the *entire container
+  filesystem* (`/proc` included) and hangs at 100% CPU, never returning. `docker/backend/Dockerfile`
+  instead does `WORKDIR /app`, `COPY dist/apps/api dist/apps/api`, then `WORKDIR
+  /app/dist/apps/api` — reproducing the exact bounded shape the repository root gives this same glob
+  locally.
 
 ## Ephemeral database for acceptance runs — built for `apps/api-e2e`
 

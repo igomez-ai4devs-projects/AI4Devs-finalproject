@@ -1,0 +1,16 @@
+{
+  "$comment": "Compiles apps/api/src/data-source.ts and its migrations to plain CommonJS `.js`, independently of apps/api/webpack.config.js's NxAppWebpackPlugin bundle (T-C10-69). ADR-013 puts `typeorm migration:run` on Render's pre-deploy command, which runs inside the deployed image, at its WORKDIR — not through the webpack `main.js` bundle, which is a single opaque chunk `migration:run -d <path>` cannot target. `tools/build-api-runtime.mjs` invokes this tsconfig with `tsc -p apps/api/tsconfig.migrations.json`.",
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "../../dist/apps/api",
+    "sourceMap": false,
+    "noEmitOnError": true
+  },
+  "include": [
+    "src/data-source.ts",
+    "src/config/environment.ts",
+    "src/config/env.validation.ts",
+    "src/migrations/**/*.ts"
+  ]
+}
