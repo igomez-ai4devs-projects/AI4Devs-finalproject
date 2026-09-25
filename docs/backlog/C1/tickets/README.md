@@ -3,11 +3,32 @@
 > Sources: `docs/backlog/C1/user-stories.md` (32 stories, all greenfield) · `docs/backlog/epic-map.md` (§ `C1`, § **Foundation ownership (priced once)**) · `docs/backlog/C10/tickets/` (the workspace foundation, already ticketed) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9 · PRD §7.1, §14
 > Test plan: [`../test-plan.md`](../test-plan.md)
 
-**98 tickets · 258.5h · none over the 3h cap.**
+**101 tickets · 263.5h · none over the 3h cap.** Three tickets added this pass (`T-C1-99`–`101`, block O, "see it — detail by reference") and two adjusted (`T-C1-09` +0.5h, `T-C1-10` −0.5h) for the Product Owner's minimal re-cut of delivery slice 1 — see **Delivery slices** below.
 **2 tickets are foundation** work with `story: —` — the six `incident` libraries and the context schema/module wiring. Everything else in the workspace is **priced once into `C10`** and is not re-paid here.
 **12 tickets are blocked** by six findings: **F24** (1), **F25** (2), **F27** (1), **F28** (2), **F29** (3), **F30** (3). None of those decisions is made in this backlog.
 
-The numbering **is** the implementation order. `T-C1-01` is built first. Where the order departs from the story sequence, the reason is stated below the affected block.
+**Delivery is now cut by vertical slice, not by block order — see Delivery slices below.** The Product Owner has re-cut delivery across `C1` and `C10` into three thin, end-to-end slices, approved by the user. **No ticket file changed and no ID moved for this.** The claim that used to stand here — *"the numbering is the implementation order"* — is corrected: the numbering is stable and mostly reflects a reasonable build order **within** a block, but which slice ships first is a delivery decision, not something this file's ID order ever decided. `T-C1-01` is still the first ticket **of Block A**; it is not necessarily the first ticket built end to end. Where the order departs from the story sequence **within a block**, the reason is stated below that block, exactly as before.
+
+## Delivery slices
+
+Approved by the user, from the Product Owner's cut. Three vertical, end-to-end slices, each following one Incident from a requester's action to what an agent or the requester sees next — rather than the horizontal, layer-by-layer blocks below. Full cross-epic detail (including the `C10` side of each slice) is in `docs/backlog/C10/tickets/README.md`'s own **Delivery slices** section; this table is the `C1` half.
+
+**Slice 1 superseded this pass — reduced to "register an Incident and see it," the urgent cut.** The user narrowed the goal to the smallest possible walking skeleton (no real auth, no design system, no i18n), and the Product Owner re-cut slice 1 accordingly. Slices 2 and 3 are unchanged.
+
+| Slice | Story, in one line | `C1` tickets |
+|---|---|---|
+| **1** (superseded, new cut) | A requester registers an Incident **and sees it** | `T-C1-01`–`03`, `05`, `06`, `04` — **in that order**, not ID order: see the Order note below Block B (finding **H2**) — `07`, `08`, `09` (widened, see Block B note), `10` (narrowed, see Block B note), `99`, `100`, `101` (all three new, block O) |
+| **2** (unchanged) | An agent triages and moves it | `T-C1-20`–`25`, `49`–`52` |
+| **3** (unchanged) | It is resolved and the requester confirms | `T-C1-53`–`64` |
+
+**This slice's `C1` total, recalculated from the files: 13 tickets · 31.5h.** Combined with the `C10` side (`docs/backlog/C10/tickets/README.md`), the whole slice is **41.0h**, matching the Product Owner's own figure. An earlier pass of this note double-counted `T-C10-72` (a seed migration nothing in this slice reads, since authentication is deferred and `Incident.reporter_user_id` is a soft reference with no foreign key) and reported 43.0h; that ticket moved back out of the slice — see `C10`'s README, block M.
+
+**Four deviations the user has explicitly approved for this slice** — full detail in `C10`'s **Delivery slices** section, since two of the four are `C10`-owned (no real auth; the audit-subscriber window). The two that land on `C1` tickets directly:
+
+1. **Design system deferred, accessibility is not.** `T-C1-10` and `T-C1-101` write hand-built semantic HTML meeting WCAG 2.1 AA without any `libs/incident/ui`/`libs/shared/ui` primitive. `T-C1-10`'s AC3 is left in place as a **known-pending criterion** — see its own note.
+2. **i18n deferred to a per-feature constants file.** `T-C1-08`, `T-C1-10`, `T-C1-100` and `T-C1-101` source every user-facing string from one exported constants file per feature lib, never `nestjs-i18n`/Transloco yet — the user has explicitly accepted this as debt against `CLAUDE.md` §3.
+
+**Everything else in this README ships after these three**, in whatever phase/block order the rest of this document already states — not orphaned, just later. That is most of the epic: the rest of blocks B and C, and all of blocks D through N.
 
 ## Reading a ticket
 
@@ -81,7 +102,13 @@ Source: `ARCHITECTURE.md` §5.1 and §5.5; epic map § `C1`, *What actually rema
 
 **Order note — `US-C1-05` before `US-C1-01`.** Reference numbering is built first even though it is the fifth story. `US-C1-05` requires the reference to be assigned **in the same transaction** as creation, so no Incident can ever exist without one; building intake first would create records that then need a retrofitted number and a data migration to give them one.
 
+**Order note — finding H2, `T-C1-04` after `T-C1-06`, not before it.** This block's table lists `T-C1-03 → 04 → 05 → 06` because that is ID order, but `T-C1-04`'s own `## Scope` says its migration adds the reference column to a table `T-C1-06` creates — *"the Incident table itself, created by `T-C1-06` — this migration is sequenced after it"*. Building `T-C1-04` at its ID position would migrate a column onto a table that does not exist yet. The real build order is **`03 → 05 → 06 → 04`**: the port (`03`), the aggregate (`05`), the Incident table (`06`), then the reference column and its constraint (`04`). No ticket file changes and no ID moves — the table above stays in ID order as an index; the corrected order is what **Delivery slices** (above) and any implementer must follow.
+
 **Blocked — F29.** `T-C1-10`, `T-C1-14` and `T-C1-16` carry `blocked_by: F29`. `FR-INC-01` is ambiguous about whether a requester may set the **structured** competition subject. This backlog reads it as *requesters supply free text, agents set the structured reference*. If the Product Owner confirms the opposite, the requester form, the picker placement and the permission on the subject write all change. Everything else in the block is unaffected.
+
+**Two `C10` dependencies this block needs, both closed this pass, neither a `C1` file change.** `T-C1-07` already declared `EventPublisherPort` generically, but the only ticket that built the dispatcher behind it (`T-C10-55`) was, until now, written entirely against role-administration events — extracted to `C10`'s `T-C10-73`, generic over `DomainEvent`. Separately, this slice ships with **no authentication at all** (a later, stricter cut than the one that first closed this note — not even a fixed-user sign-in): `T-C1-07`'s `Actor` parameter is unchanged, but it is now supplied by `C10`'s disposable `T-C10-74`, a single class in the composition root, rather than resolved from a session that no longer exists in this slice. **No seeded row backs it in this slice** — `iam.iam_user` is not part of it, because with authentication deferred nothing ever reads that table (`Incident.reporter_user_id` is a soft reference, no foreign key). `T-C10-74` simply declares the fixed id itself for now; `C10`'s `T-C10-72` takes over that constant later, when it ships with the identity stack and a real row exists to match it.
+
+**Widened / narrowed this pass — `T-C1-09` and `T-C1-10`, and where "see it" moved.** "See it" is now a separate capability (block O: `T-C1-99`, `100`, `101`), not part of this form. `T-C1-09` (+0.5h) gains the `GET /incidents/{reference}` call block O's use case needs. `T-C1-10` (−0.5h) drops the design-system composition it was never going to get in this slice, replaced by hand-built semantic HTML, and its final acceptance criterion changes from "the reference number is shown" to "the shell navigates to the detail route" — the echo-the-`POST` approach is explicitly rejected in favor of reading back what was actually persisted. See each ticket's own `## Context` for the full reasoning, including the two deviations the user accepted and the one criterion (`T-C1-10`'s `aria-live` citation) left deliberately pending.
 
 ---
 
@@ -284,6 +311,20 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 ---
 
+## Block O · See it — detail by reference — 3 tickets · 5h · phase disputed 0/1 (F6) — **delivery slice 1**
+
+| # | Title | Story | Layer | Agent | Est. |
+|---|---|---|---|---|---:|
+| [T-C1-99](T-C1-99.md) | `GetIncidentByReference` use case and the repository's read method | US-C1-01 | domain + application | backend-engineer | 1.5h |
+| [T-C1-100](T-C1-100.md) | `GET /incidents/{reference}` route and its response contract | US-C1-01 | contracts + infrastructure | backend-engineer | 1.5h |
+| [T-C1-101](T-C1-101.md) | Incident detail component — plain HTML, reference-routed | US-C1-01 | feature + ui | frontend-engineer | 2h |
+
+**New this pass — decision 4 of the minimal delivery-slice-1 cut.** "See it" is detail by reference, not an echo of the `POST` response: an echo shows what the requester typed, not what the server actually persisted, which proves nothing about the write path. Sequenced after `T-C1-05`/`T-C1-06` (the aggregate and its persistence, which this block extends with a read method) and reachable only by redirect from `T-C1-10`'s successful submission — there is no other route to this block yet. Numbered last for the usual reason: ticket IDs are stable and appended at the next free ID; it belongs, logically, immediately after `T-C1-06` inside block B.
+
+**One dependency flagged, not resolved — see `T-C1-100`'s own `## Context`.** `T-C1-08` sources its exception-filter mapping from `T-C10-40`, which is not part of this delivery slice. `T-C1-100`'s `404` mapping needs *some* filter to exist. This is reported for the Product Owner / Architect, not decided here.
+
+---
+
 ## Sequencing risks carried forward
 
 Two findings are about **phasing**, not implementation. They block nothing, and they are recorded here because the sequence they imply is a Product Owner decision that this backlog cannot make.
@@ -313,12 +354,13 @@ Two findings are about **phasing**, not implementation. They block nothing, and 
 | L · Scope rule at intake | 3 | 8.5 | unphased |
 | M · Knowledge suggestions and deflection | 4 | 11.0 | unphased |
 | N · Phase 3 | 6 | 16.0 | 3 (§14.5) |
-| **Total** | **98** | **258.5** | |
+| O · See it — detail by reference | 3 | 5.0 | disputed 0/1 |
+| **Total** | **101** | **263.5** | |
 
-**By phase.** disputed 0/1 (**F6**): 25 tickets · 66.5h · **the cut is not made here.** Phase 1 (MVP): 60 tickets · 156.5h. Unphased (**F9**): 7 tickets · 19.5h. Phase 3 (§14.5): 6 tickets · 16h.
+**By phase.** disputed 0/1 (**F6**): 28 tickets · 71.5h · **the cut is not made here.** Phase 1 (MVP): 60 tickets · 156.5h. Unphased (**F9**): 7 tickets · 19.5h. Phase 3 (§14.5): 6 tickets · 16h.
 
-**Foundation** (`story: —`): 2 tickets · 4.5h — the six `incident` libraries and the context schema/module wiring. Everything else is `C10`.
+**Foundation** (`story: —`): 2 tickets · 4.5h — the six `incident` libraries and the context schema/module wiring. Everything else is `C10`. (Block O's three tickets trace `US-C1-01` like the rest of block B — not foundation, even though new this pass.)
 
 **Blocked:** 12 tickets — **F24** `T-C1-41` · **F25** `T-C1-86`, `T-C1-87` · **F27** `T-C1-68` · **F28** `T-C1-79`, `T-C1-80` · **F29** `T-C1-10`, `T-C1-14`, `T-C1-16` · **F30** `T-C1-32`, `T-C1-34`, `T-C1-47`.
 
-**By agent:** `backend-engineer` 69 · `frontend-engineer` 26 · `—` 3. The three are the six-library scaffolding, which spans both platforms, and two API-E2E specs (`T-C1-64`, `T-C1-71`) — e2e-harness work on the backend platform (`apps/api-e2e`, `platform:backend`, `type:e2e`), which neither dev agent owns.
+**By agent:** `backend-engineer` 71 · `frontend-engineer` 27 · `—` 3. The three are the six-library scaffolding, which spans both platforms, and two API-E2E specs (`T-C1-64`, `T-C1-71`) — e2e-harness work on the backend platform (`apps/api-e2e`, `platform:backend`, `type:e2e`), which neither dev agent owns.
