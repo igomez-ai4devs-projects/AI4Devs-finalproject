@@ -1,0 +1,9 @@
+{
+  "name": "incident-data-access",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/incident/data-access/src",
+  "prefix": "incident",
+  "projectType": "library",
+  "tags": ["platform:frontend", "scope:incident", "type:data-access"],
+  "targets": {}
+}

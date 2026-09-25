@@ -17,6 +17,18 @@
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@sport-itsm/incident-application": [
+        "libs/incident/application/src/index.ts"
+      ],
+      "@sport-itsm/incident-data-access": [
+        "libs/incident/data-access/src/index.ts"
+      ],
+      "@sport-itsm/incident-domain": ["libs/incident/domain/src/index.ts"],
+      "@sport-itsm/incident-feature": ["libs/incident/feature/src/index.ts"],
+      "@sport-itsm/incident-infrastructure": [
+        "libs/incident/infrastructure/src/index.ts"
+      ],
+      "@sport-itsm/incident-ui": ["libs/incident/ui/src/index.ts"],
       "@sport-itsm/shared-contracts": ["libs/shared/contracts/src/index.ts"],
       "@sport-itsm/shared-domain": ["libs/shared/domain/src/index.ts"],
       "@sport-itsm/shared-util": ["libs/shared/util/src/index.ts"]

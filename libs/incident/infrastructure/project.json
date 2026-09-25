@@ -1,0 +1,9 @@
+{
+  "name": "incident-infrastructure",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/incident/infrastructure/src",
+  "projectType": "library",
+  "tags": ["platform:backend", "scope:incident", "type:infrastructure"],
+  "// targets": "to see all targets run: nx show project incident-infrastructure --web",
+  "targets": {}
+}

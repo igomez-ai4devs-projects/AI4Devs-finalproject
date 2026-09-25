@@ -2320,3 +2320,141 @@ No instales dependencias. No hagas commit ni push.
 Implementado ticket T-C10-73
 
 </br>
+
+**Prompt 14:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como sport-itsm-architect e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-01.md ·
+Andamiar las seis librerías del contexto `incident` con sus tres ejes de etiquetas
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+El ticket tiene `agent: —`: son seis librerías de **las dos plataformas**, así que no es de ningún
+agente de desarrollo. Es andamiaje de estructura, y eso es del arquitecto. Aplica
+**`sport-itsm-architecture`** (contextos, tags, matriz §5.3), con `sport-itsm-workflow` para el
+cierre. **Aquí no se escribe ni una línea de dominio, caso de uso, componente ni migración.**
+
+#### Por qué este ticket y por qué ahora
+Es el primero del bloque 3 de la rebanada 1 ("un requester registra una incidencia y la ve"):
+`T-C1-01` → `02` → `03` → `05` → `06` → `04`. Nada de `incident` compila hasta que existan estas
+seis librerías, y todo lo que viene detrás (agregado, referencia, caso de uso, endpoint, formulario)
+vive dentro de ellas.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx show projects                    # EXACTAMENTE 7: shared-contracts, shared-domain, shared-util, api-e2e, web-e2e, api, web
+    node -e "console.log(Object.keys(require('./tsconfig.base.json').compilerOptions.paths))"
+                                             # exactamente los 3 alias shared-*
+    pnpm verify:boundaries                   # 10/10, exit 0
+
+**El arnés de sondas es de un solo proceso a la vez.** `libs/__boundary-probe` funciona como lock:
+si ves "another run is in flight", **espera** — no borres el directorio.
+
+#### El ticket es el contrato
+Léelo entero; su "Out of scope" es vinculante (el esquema `incident` y el `IncidentModule` son
+`T-C1-02`). Lee además, y no de memoria:
+
+- **`ARCHITECTURE.md` §5.5** — los **seis comandos exactos**, bajo "Backend hexagon for one context"
+  y "Frontend slice for the same context". El ticket solo lista las etiquetas; **los flags de §5.5 no
+  son opcionales** (`--name`, `--importPath`, `--bundler=none`, `--unitTestRunner=jest`,
+  `--testEnvironment=node`, `--useProjectJson=true` en las de TypeScript; `--prefix=incident`,
+  `--style=scss`, `--changeDetection=OnPush`, `--standalone --skipModule` en las de Angular).
+  Ejecuta **cada uno primero con `--dry-run --no-interactive`** y revisa la lista.
+- **Los dos pasos posteriores de §5.5**: `"types": []` en `tsconfig.lib.json` de
+  **`incident-domain` e `incident-application`** (no en `incident-infrastructure`, que hará I/O; las
+  de Angular no llevan entrada `types`), y **borrar la unidad de ejemplo** de las seis (en las de
+  Angular, el componente de ejemplo con su `.html`, `.scss` y `.spec.ts`).
+- **`ARCHITECTURE.md` §5.3** (matriz de tipos, regla de scope, regla de plataforma) y **§8**
+  (`incident` nunca importa `sla`).
+- `libs/shared/util`, `libs/shared/domain` y `libs/shared/contracts` — cómo quedaron andamiadas las
+  hermanas. Imita su forma.
+- `tools/boundary-probes/verify.mjs` — cómo el arnés crea proyectos temporales etiquetados y los
+  retira. Te servirá para la trampa 2.
+
+#### Trampa 1 — seis librerías vacías y el target `test`
+El ticket prohíbe cualquier código, así que las seis quedan **vacías**. Jest sin ningún spec sale
+con "No tests found" y **código 1**, y el AC6 exige `pnpm nx run-many -t lint test` en verde.
+
+- Un spec de decoración (`expect(true).toBe(true)`) **no** es aceptable.
+- La vía razonable es `passWithNoTests: true` en el `jest.config.ts` de cada una de las seis, con un
+  comentario de una línea que diga que se retira cuando llegue el primer código (`T-C1-03` en
+  `incident-domain`, etc.). Es lo que ya hacen `apps/api` y `apps/web`. Si eliges otra vía,
+  justifícala.
+- **No declares un target `test` en `project.json`** (lo infiere `@nx/jest`).
+
+#### Trampa 2 — las sondas del ticket apuntan a una librería que no existe
+- **AC3** (`incident-domain` → `incident-infrastructure`): falla por la **matriz de tipos**. Directo.
+- **AC4** (`incident-domain` → `libs/sla/domain`): **`libs/sla/domain` no existe.** No generes el
+  contexto `sla`. Crea un proyecto **temporal** etiquetado `platform:backend,scope:sla,type:domain`
+  (a mano o como hace el arnés), añade su alias, importa desde `incident-domain`, pega el error de la
+  **regla de scope**, y retira el proyecto, su alias y la sonda. Al final `tsconfig.base.json` debe
+  tener exactamente **nueve** alias: los tres `shared-*` y los seis `incident-*`.
+- **AC5** (`incident-application` → `incident-feature`): el AC dice que falla por la **regla de
+  plataforma**, pero esa importación viola **también** la matriz de tipos (`application` no puede
+  depender de `feature`). Pega **todos** los mensajes que emita `@nx/enforce-module-boundaries` y di
+  explícitamente si aparece el de plataforma. Si solo aparece el de tipos, el AC no se ha demostrado:
+  dilo y repórtalo como hallazgo, no lo fuerces.
+- Revierte **las tres** sondas. `git diff libs/incident` sin rastro de ellas, y
+  `pnpm nx lint incident-domain incident-application` en verde después.
+
+#### Trampas ya pagadas — no las redescubras
+- **`--name=` como flag**, nunca posicional (§5.5 punto 1).
+- **`@nx/angular:library` escribe un bloque `generators` en `nx.json`** la primera vez que se usa
+  (§5.5 punto 3). Es esperado: revisa el diff de `nx.json`, confirma que **solo** añade ese bloque y
+  que sus valores coinciden con los flags que pasaste, y dilo en el informe. Nada más en `nx.json`.
+- **Jest 30 / versiones.** Tras generar, `git diff package.json pnpm-lock.yaml` debe quedar
+  **vacío**: `@nx/angular`, `jest-preset-angular` y todo lo necesario ya están instalados. Si un
+  generador añade o cambia una dependencia, restaura el pin exacto; nada de `^`/`~`.
+- **`eslint.config.mjs` de cada proyecto**: el que genere Nx, reexportando el raíz, sin reglas
+  añadidas ni relajadas. Las de Angular llevan el prefijo `incident` para selectores.
+- **Prettier en Windows**: comprueba solo lo tuyo:
+  `pnpm prettier --check libs/incident tsconfig.base.json nx.json`. No `prettier --check .`.
+
+#### Lo que NO debes tocar
+- `libs/shared/**`, `apps/**`, el `eslint.config.mjs` raíz, `tools/boundary-probes/`, `.github/`,
+  `docker/`, `package.json`, `CLAUDE.md`, `docs/**`, `.claude/**` (salvo tu propia memoria de
+  agente), `prompts.md`. El ticket no se edita.
+- Ningún agregado, puerto, caso de uso, entidad, componente, servicio, migración ni módulo de Nest.
+- Ningún otro contexto (`sla` incluido): la sonda del AC4 es temporal.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — `pnpm nx show projects`: exactamente 13 (los 7 de antes + los 6 `incident-*`), y
+   `ls libs/incident` muestra exactamente `application data-access domain feature infrastructure ui`.
+2. **AC2** — `pnpm nx show project <p> --json` de las seis: pega sus tags (exactamente tres, los del
+   ticket), `projectType: library`, sin target `build`.
+3. **AC3, AC4, AC5** — el error de lint de cada sonda, literal, y la reversión de cada una.
+4. `"types": []` en `tsconfig.lib.json` de `incident-domain` e `incident-application`; enséñalos.
+   Y ninguna unidad de ejemplo en las seis (`find libs/incident -name "*.ts" -path "*/lib/*"` vacío
+   o justificado).
+5. **AC6** — `pnpm nx run-many -t lint test --projects='incident-*'` en verde, y
+   `pnpm nx graph --file=tmp/graph.json`: nodos y aristas; con seis librerías vacías no debería haber
+   ninguna arista nueva. Borra `tmp/graph.json` después.
+6. `node -e "..."` sobre `tsconfig.base.json`: exactamente nueve alias.
+7. `git diff package.json pnpm-lock.yaml` vacío; `git diff nx.json` solo el bloque `generators` de
+   Angular.
+8. `pnpm verify:boundaries` → 10/10, ejecutado **solo**.
+9. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde — es lo que corre CI.
+10. `pnpm prettier --check libs/incident tsconfig.base.json nx.json` pasa.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Los seis comandos generadores exactos y qué borraste o ajustaste de la salida de cada uno.
+- Tu decisión sobre el target `test` (trampa 1) y por qué.
+- Cómo hiciste la sonda del AC4 sin crear el contexto `sla`, y qué reglas saltaron en el AC5.
+- El diff de `nx.json`.
+- La salida de las diez verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: notas de estado obsoletas (`ARCHITECTURE.md` §12.3,
+  `PROJECT-STRUCTURE.md`), y cualquier AC que no se pueda demostrar tal como está escrito.
+
+### Response:
+
+Implementado ticket T-C1-01
+
+</br>

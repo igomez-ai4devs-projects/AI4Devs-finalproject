@@ -153,7 +153,18 @@ const tagsFor = (axis, values) => values.map((v) => `${axis}:${v}`);
 /**
  * `depConstraints` — the three orthogonal rule families of §5.3. Every source
  * matcher demands all three axes, so the families compose: the plugin applies
- * *every* matching constraint, and a dependency must satisfy all of them.
+ * *every* matching constraint, and a dependency is accepted only if it
+ * satisfies all of them.
+ *
+ * Reporting is not cumulative, though. The plugin walks the matching
+ * constraints in array order and stops at the first one the dependency
+ * violates (`@nx/eslint-plugin` `enforce-module-boundaries`: `return` right
+ * after the first `context.report`), so an import that breaks several families
+ * is reported once, for the earliest. The type matrix is declared first, so a
+ * dependency that is illegal on both the type and the scope or platform axis
+ * surfaces as a type-matrix violation; the later families only speak when the
+ * type axis is legal. Fixing the reported violation can therefore reveal the
+ * next one on the following lint run.
  */
 const depConstraints = [
   // ── 1. Type matrix (§5.3) ────────────────────────────────────────────────
