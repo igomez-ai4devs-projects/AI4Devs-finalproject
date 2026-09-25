@@ -1,4 +1,5 @@
 import { Identity, TicketReference } from '@sport-itsm/shared-domain';
+import { Incident } from './incident.aggregate';
 
 /**
  * The outbound port through which the Incident context reaches persistence
@@ -15,13 +16,13 @@ import { Identity, TicketReference } from '@sport-itsm/shared-domain';
  * invents no type the port cannot honor: `Identity` and `TicketReference` are
  * already kernel types, unlike the aggregate itself.
  *
- * `findById()` and `save()` are intentionally **not** declared yet. Both name
- * `Incident`, the aggregate this ticket does not build (`T-C1-05` owns it) —
- * adding either now, even as a placeholder, would mean either inventing a
- * throwaway type `T-C1-05` has to delete, or importing an aggregate that does
- * not exist. `T-C1-05` extends this interface with both methods once
- * `Incident` exists to type them; see the ticket's reported deviation from the
- * `T-C1-03` Scope for why this is a deliberate split rather than an omission.
+ * `findById()` and `save()` were intentionally **not** declared by `T-C1-03`:
+ * both name `Incident`, which did not exist until this ticket (`T-C1-05`)
+ * built it — see that ticket's reported deviation from the `T-C1-03` Scope
+ * for why this was a deliberate split rather than an omission. `T-C1-05`
+ * completes the port with both methods now that `Incident` exists to type
+ * them; wiring a concrete adapter (`T-C1-06`) and calling either method from
+ * a use case (`T-C1-07`) remain out of this ticket's scope.
  */
 export interface IncidentRepositoryPort {
   /** A fresh, never-reused UUID v7 for a new Incident aggregate. */
@@ -29,6 +30,12 @@ export interface IncidentRepositoryPort {
 
   /** A fresh, never-reused human-readable reference for a new Incident. */
   nextReference(): Promise<TicketReference>;
+
+  /** The Incident with this identity, or `null` when none exists. */
+  findById(id: Identity): Promise<Incident | null>;
+
+  /** Persists the given Incident, insert or update (`T-C1-06` owns the mapping). */
+  save(incident: Incident): Promise<void>;
 }
 
 /**

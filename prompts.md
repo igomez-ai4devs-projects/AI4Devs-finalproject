@@ -2745,3 +2745,155 @@ No instales dependencias. No hagas commit ni push.
 Implementado ticket T-C1-03
 
 </br>
+
+**Prompt 17:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-05.md ·
+El agregado raíz `Incident` y sus invariantes de creación
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero **aquí no se escribe NestJS ni TypeORM**: es `type:domain`, código
+puro. Mandan `sport-itsm-engineering-principles` (inmutabilidad, errores tipados, estados ilegales
+irrepresentables, YAGNI) y `sport-itsm-architecture` (§6.2, ADR-005, ADR-008, ADR-009). Cierra con
+`sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Cuarto del bloque 3 de la rebanada 1 (orden real `03 → 05 → 06 → 04`). Es **el agregado central del
+producto**: todos los bloques posteriores lo extienden. Detrás vienen `T-C1-06` (entidad TypeORM y
+tabla), `T-C1-04` (secuencia y restricción única) y `T-C1-07` (`LogIncidentUseCase`), que llamará a
+`Incident.log()` y publicará su evento con `EVENT_PUBLISHER` tras el commit.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx test incident-domain             # 2 suites, 20 tests, verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas base de datos.
+
+#### Lo que ya existe y debes usar — léelo, no lo supongas
+- `libs/incident/domain/src/lib/incident-repository.port.ts` — `IncidentRepositoryPort` con
+  `nextIdentity()` y `nextReference()`, y el token `INCIDENT_REPOSITORY` (`T-C1-03`).
+- `libs/incident/domain/src/lib/incident-reference.policy.ts` — la política `INC` + 7 dígitos.
+- `@sport-itsm/shared-domain`: `Identity`, `TicketReference`, `DomainEvent` (+ `DomainEventInput`: exige
+  `name`, `occurredAt`, `actor`, **`correlationId`** y `payload`), `ClockPort`, `FixedClock`,
+  `DomainError`, `ImpactLevel`, `UrgencyLevel`, `Priority`.
+- `ARCHITECTURE.md` **§6.2** (forma del agregado; "every mutating method returns domain events"),
+  **ADR-005, ADR-008, ADR-009**.
+- `DATA-MODEL.md` **§20.3 `incident_ticket`** — columnas, nulabilidad y longitudes.
+- `PRD.md` **FR-INC-01** y `docs/backlog/C1/user-stories.md` → **US-C1-01** y **US-C1-07**.
+
+#### Trampa 1 — "contact channel" no está definido en ninguna parte
+FR-INC-01 y US-C1-01 piden capturar el *"contact channel"*, pero **ningún documento dice qué es**, y
+`DATA-MODEL.md` no tiene ninguna columna con ese nombre. Lo más cercano es **`origin_channel`**
+(`origin_channel_enum`: `portal` y `agent_logged` en el MVP, FR-OMN-01/02), que es el canal por el que
+entró la incidencia, no un medio para contactar al reporter.
+
+- **No inventes** un enum de medios de contacto (email, teléfono…) que ninguna fuente respalde.
+- Recomendación: modela `originChannel` con los valores de `DATA-MODEL.md` y trátalo como el "contact
+  channel" del AC1, citando la fuente en el código. Si concluyes otra cosa, justifícala contra las
+  fuentes.
+- **Repórtalo como hallazgo para el Product Owner**: el término del PRD no está definido y el modelo de
+  datos lo resuelve implícitamente como canal de origen.
+
+#### Trampa 2 — qué es obligatorio: el AC y el modelo de datos no coinciden del todo
+El AC2 exige errores tipados por campo obligatorio ausente. Deriva la lista de **`DATA-MODEL.md`**, no
+de tu intuición: `reporter_user_id`, `short_description`, `description` y `origin_channel` son
+`NOT NULL`, pero **`service_id` (servicio afectado) es `NULL`**, mientras que FR-INC-01 lo enumera entre
+lo que se captura.
+
+- Decide si el servicio afectado es obligatorio en la creación, **justifícalo con la fuente** y
+  **reporta la discrepancia**. Recomendación: sigue `DATA-MODEL.md` (opcional) y repórtalo, porque el
+  modelo de datos es el prescriptivo para el esquema de `T-C1-06`.
+- Cadenas en blanco cuentan como ausentes. Aplica las longitudes de `DATA-MODEL.md` (`short_description`
+  `varchar(255)`) como invariante de dominio, con su propio error tipado.
+- Cada error nombra el campo **por tipo o por una propiedad tipada**, no solo en el mensaje: un
+  llamante (el filtro de excepciones futuro, `T-C1-08`) tiene que poder distinguir qué campo falló sin
+  parsear texto. Hereda de `DomainError`.
+
+#### Trampa 3 — "Priority not yet derived" contra columnas `NOT NULL`
+El AC3 exige que una incidencia recién creada tenga la **Prioridad explícitamente sin derivar**, el flag
+de competición sin marcar y **ninguna categoría**. Pero `DATA-MODEL.md` declara `NOT NULL`
+`base_impact`, `assessed_impact`, `urgency`, `priority`, `priority_matrix_id`, `workflow_id` y
+`state_id`.
+
+- El agregado sigue **el AC**: "sin derivar" se representa de forma **explícita y tipada** (no con un
+  valor por defecto disfrazado como `P4` o `0`). Los campos de bloques posteriores (categoría, Impacto
+  evaluado, Urgencia, Prioridad derivada, flag de competición, sujeto afectado, asignación) quedan
+  declarados como **ausentes** con tipos honestos — usa los VO del kernel que ya existen
+  (`ImpactLevel`, `UrgencyLevel`, `Priority`) y **no crees** VO nuevos para lo que traen otros tickets
+  (`CompetitionSubject` es `T-C1-14`, la asignación es de bloques posteriores).
+- **Repórtalo como hallazgo crítico para `T-C1-06`**: la tabla no puede ser `NOT NULL` en esas columnas
+  si la incidencia nace sin priorizar. Es una contradicción entre `DATA-MODEL.md` y el AC3 que tendrán
+  que resolver el arquitecto y el Product Owner antes de escribir la migración.
+
+#### Trampa 4 — el estado del ciclo de vida
+§6.2 dibuja `IncidentState`, y el modelo de datos tiene `workflow_id`/`state_id` hacia un ciclo de
+vida **configurable** (FR-INC-06, bloque C) que depende de `StateModel` (`T-C10-10`, no construido).
+**No construyas el ciclo de vida.** Decide si el agregado lleva ya un estado inicial (`New`, citando
+US-C1-07) o nada, sin anticipar la configuración, y justifícalo. Repórtalo.
+
+#### Trampa 5 — tiempo, identidad, actor y correlación: todo entra por parámetro
+- **Nada de `new Date()`** (AC4, ADR-009): `log()` recibe el `ClockPort` o el instante ya leído de él.
+  Decide cuál y justifícalo.
+- La **identidad** y la **referencia** llegan ya generadas por el puerto (`nextIdentity()`,
+  `nextReference()`); el agregado no genera nada (§6.2, ADR-005).
+- `DomainEvent.record` exige **actor** y **`correlationId`**: `log()` tiene que recibirlos. El
+  **reporter** es un `Identity` distinto del actor en el caso general (un agente registra en nombre de
+  otro, FR-OMN-02), aunque en el portal coincidan. No colapses los dos conceptos.
+- `IncidentLogged` lleva actor, reporter y el estado creado (AC1). El payload se congela (lo hace
+  `DomainEvent`): que sea un objeto plano serializable, no el agregado.
+- Exactamente **un** evento en éxito; **ninguno** y **ninguna incidencia** en fallo (AC1, AC2).
+
+#### Trampa 6 — completar el puerto
+`T-C1-03` dejó pendientes `findById()` y `save()` porque necesitaban el tipo `Incident`. Añádelos ahora
+a `IncidentRepositoryPort` (`findById(id: Identity): Promise<Incident | null>`,
+`save(incident: Incident): Promise<void>` o la forma que justifiques) y exporta todo por el barrel.
+Actualiza el spec del puerto si hace falta.
+
+#### Lo que NO debes tocar
+`libs/shared/**`, las otras librerías `incident-*`, `apps/**`, `docker/**`, `.github/**`, `docs/**`,
+`.claude/**` (salvo tu memoria de agente), `package.json`, `tsconfig.base.json`, `prompts.md`. Nada de
+persistencia, caso de uso, autorización, controlador, entidad ni migración. Ningún comportamiento de
+prioridad (bloque D) ni de competición. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — `pnpm nx test incident-domain`: pega el resumen. Un test crea una incidencia válida y
+   comprueba cada campo, la referencia, y que hay **exactamente un** `IncidentLogged` con actor, reporter,
+   `correlationId`, `occurredAt` del reloj fijo y el estado creado.
+2. **AC2** — un test por cada campo obligatorio (ausente y en blanco) que comprueba el **tipo** de error
+   y el campo nombrado, y que no se devuelve incidencia ni evento. Y el de longitud máxima.
+3. **AC3** — un test que lee una incidencia recién creada: Prioridad explícitamente sin derivar, flag de
+   competición sin marcar, sin categoría.
+4. **AC4 — pureza**:
+   `grep -rnE "from '(@nestjs|@angular|typeorm|rxjs|express|pg|node:|fs|path|crypto)|new Date\(" libs/incident/domain/src --include=*.ts --exclude=*.spec.ts`
+   → vacío. `tsconfig.lib.json` con `"types": []`.
+5. Inmutabilidad: un test demuestra que el agregado y el payload del evento no se pueden mutar.
+6. `pnpm nx lint incident-domain` en verde; el grafo sigue con una sola arista desde `incident-domain`
+   (`-> shared-domain`); borra `tmp/graph.json`.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+8. `pnpm prettier --check libs/incident/domain`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la forma pública del agregado (`log()` y sus parámetros, los campos,
+  el evento) y del puerto completo.
+- Tus decisiones de las trampas 1 a 5, con su porqué y la fuente citada.
+- La salida de las ocho verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo "contact channel" (Product Owner), el
+  servicio afectado obligatorio u opcional, las columnas `NOT NULL` frente al AC3 (crítico para
+  `T-C1-06`) y el estado inicial.
+
+### Response:
+
+Implementado ticket T-C1-05
+
+</br>
