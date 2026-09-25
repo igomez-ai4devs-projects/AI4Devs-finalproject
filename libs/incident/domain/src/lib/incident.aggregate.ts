@@ -1,5 +1,6 @@
 import {
   DomainError,
+  describeValue,
   DomainEvent,
   Identity,
   ImpactLevel,
@@ -7,8 +8,7 @@ import {
   TicketReference,
   UrgencyLevel,
 } from '@sport-itsm/shared-domain';
-import { describeValue } from './describe-value';
-import { isNonEmptyString } from './is-non-empty-string';
+import { isNonEmptyString } from '@sport-itsm/shared-util';
 import { OriginChannel, OriginChannelCode } from './origin-channel.vo';
 
 /**

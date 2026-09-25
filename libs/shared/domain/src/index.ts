@@ -11,7 +11,7 @@
  * identities come from the repository port (`nextIdentity()`) and references
  * from a database sequence (`DATA-MODEL.md` §3.1, §3.2).
  */
-export { DomainError } from './lib/domain-error';
+export { DomainError, describeValue } from './lib/domain-error';
 export { Identity, InvalidIdentityError } from './lib/identity';
 export {
   TicketReference,

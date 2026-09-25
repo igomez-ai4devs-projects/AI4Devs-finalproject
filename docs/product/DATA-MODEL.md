@@ -79,7 +79,7 @@ Consequences that shape every table below:
 | Value object | Stored as | Table |
 |---|---|---|
 | `TicketReference` | `reference varchar(20)` + unique index | `incident_ticket`, `sr_request` |
-| `Priority` | `priority`, `priority_overridden`, `priority_override_justification`, `priority_matrix_id` | `incident_ticket` |
+| `Priority` | `priority`, `priority_overridden`, `priority_override_justification`, `priority_matrix_id` — all empty (`NULL` / `false`) until the first derivation; `priority IS NULL` **is** "not yet derived" (§8.5, ADR-014) | `incident_ticket` |
 | `CompetitionImpactFlag` | `competition_affects`, `competition_justification`, `competition_flag_set_by`, `competition_flag_set_at` | `incident_ticket`, `sr_request` |
 | `CompetitionSubject` | `competition_subject_type`, `competition_subject_external_id`, `competition_subject_label` | `incident_ticket`, `sr_request` |
 | `OriginChannel` | `origin_channel` (PG enum) | `incident_ticket`, `sr_request` |
@@ -613,15 +613,15 @@ erDiagram
         uuid logged_by_user_id "soft ref - agent who logged it on behalf"
         uuid service_id "soft ref to catalog.catalog_service"
         uuid category_id "soft ref to catalog.catalog_category - required to leave New"
-        uuid workflow_id FK
+        uuid workflow_id FK "pinned at creation - NFR-CFG-02"
         uuid state_id FK "configurable lifecycle - FR-WFL-01"
         state_category_enum state_category "open, pending, resolved, closed, cancelled"
         pending_reason_enum pending_reason "customer, third_party, change - FR-INC-06"
-        uuid priority_matrix_id FK "configuration version in force - NFR-CFG-02"
-        impact_enum base_impact "agent assessed, before competition uplift"
-        impact_enum assessed_impact "after competition uplift - FR-INC-05"
-        urgency_enum urgency
-        priority_enum priority "P1 to P4 - derived, never requester chosen"
+        uuid priority_matrix_id FK "nullable - pinned at first derivation - NFR-CFG-02"
+        impact_enum base_impact "nullable - agent assessed at triage, before uplift"
+        impact_enum assessed_impact "nullable - after competition uplift - FR-INC-05"
+        urgency_enum urgency "nullable - agent assessed at triage"
+        priority_enum priority "nullable - NULL is not yet derived - FR-INC-04"
         boolean priority_overridden "FR-INC-04"
         varchar_500 priority_override_justification "mandatory when overridden"
         boolean competition_affects "agent only, never automatic - FR-INC-05"
@@ -832,14 +832,14 @@ erDiagram
 | `logged_by_user_id` | `uuid` | yes | no | Agent who logged on the reporter's behalf (phone/chat) |
 | `service_id` | `uuid` | yes | no | **Soft** ref to `catalog.catalog_service`; drives SLA policy resolution |
 | `category_id` | `uuid` | yes | no | **Soft** ref to `catalog.catalog_category` (leaf `item` level); required before leaving `New` (FR-INC-03) |
-| `workflow_id` / `state_id` | `uuid` | no | no | Hard FKs to the configured lifecycle in force for this ticket (FR-WFL-01, NFR-CFG-02) |
-| `state_category` | enum | no | no | Denormalized, non-configurable classification so queries and KPIs never depend on customer configuration |
+| `workflow_id` / `state_id` | `uuid` | no | no | Hard FKs to the configured lifecycle in force for this ticket, pinned at creation (FR-WFL-01, NFR-CFG-02). Introduced with the lifecycle, with a lossless backfill (§8.5) |
+| `state_category` | enum | no | no | Denormalized, non-configurable classification so queries and KPIs never depend on customer configuration. Introduced with `state_id` (§8.5) |
 | `pending_reason` | enum | yes | no | `customer` / `third_party` / `change`; combined with the state's `sla_clock` it drives pause semantics (FR-INC-08) |
-| `priority_matrix_id` | `uuid` | no | no | The matrix **version** that produced the priority — in-flight tickets keep it (NFR-CFG-02) |
-| `base_impact` | enum | no | no | Agent's impact assessment **before** the competition uplift |
-| `assessed_impact` | enum | no | no | `base_impact` raised by `competition_impact_step` when the flag is set (FR-INC-05) |
-| `urgency` | enum | no | no | Agent-assessed urgency |
-| `priority` | enum | no | no | **Derived** from `(assessed_impact, urgency)` through the matrix; never chosen by a requester (FR-INC-04, R8) |
+| `priority_matrix_id` | `uuid` | yes | no | The matrix **version** that produced the priority — set at the **first** derivation and never changed afterwards, so in-flight tickets keep it (NFR-CFG-02, §8.5) |
+| `base_impact` | enum | yes | no | Agent's impact assessment **before** the competition uplift; `NULL` until triage (§8.5) |
+| `assessed_impact` | enum | yes | no | `base_impact` raised by `competition_impact_step` when the flag is set (FR-INC-05); `NULL` exactly when `base_impact` is |
+| `urgency` | enum | yes | no | Agent-assessed urgency; `NULL` until triage (§8.5) |
+| `priority` | enum | yes | no | **Derived** from `(assessed_impact, urgency)` through the matrix; never chosen by a requester (FR-INC-04, R8). `NULL` **is** the persisted "not yet derived" state (US-C1-08) — never a default level (§8.5) |
 | `priority_overridden` | `boolean` | no | no | Authorized override marker |
 | `priority_override_justification` | `varchar(500)` | yes | no | Mandatory when `priority_overridden` (CHECK) |
 | `competition_affects` | `boolean` | no | no | Agent-only flag; the whole of ADR-006 reduces to this column |
@@ -868,10 +868,16 @@ erDiagram
 |---|---|
 | `ck_incident_resolution` | `state_category NOT IN ('resolved','closed') OR (resolution_code_id IS NOT NULL AND resolution_notes IS NOT NULL)` |
 | `ck_incident_competition_flag` | `competition_affects = false OR (competition_justification IS NOT NULL AND competition_flag_set_by IS NOT NULL AND competition_flag_set_at IS NOT NULL)` |
-| `ck_incident_priority_override` | `priority_overridden = false OR priority_override_justification IS NOT NULL` |
+| `ck_incident_priority_override` | `priority_overridden = false OR (priority_override_justification IS NOT NULL AND priority IS NOT NULL)` — only a derived Priority can be overridden (FR-INC-04) |
+| `ck_incident_impact_pair` | `(base_impact IS NULL) = (assessed_impact IS NULL)` — the uplifted Impact exists exactly when the agent's assessment does (M4) |
+| `ck_incident_priority_derivation` | `(priority IS NULL) = (assessed_impact IS NULL OR urgency IS NULL)` — Priority exists exactly when both inputs do; no Priority without an assessment, no complete assessment without a Priority (FR-INC-04, US-C1-08) |
+| `ck_incident_priority_provenance` | `priority IS NULL OR priority_matrix_id IS NOT NULL` — every Priority names the matrix version that produced it (NFR-CFG-02) |
+| `ck_incident_categorized_beyond_new` | `state_category NOT IN ('pending','resolved','closed') OR category_id IS NOT NULL` — those categories are reachable only after exit from `New`, which FR-INC-03 gates on a category. `open` covers `New` itself and `cancelled` may be reached from `New`, so neither is constrained |
 | `ck_incident_subject` | `competition_subject_type IS NULL OR competition_subject_external_id IS NOT NULL OR competition_subject_label IS NOT NULL` |
 | `ck_incident_major` | `is_major = false OR (major_declared_by IS NOT NULL AND major_declared_at IS NOT NULL AND major_justification IS NOT NULL)` |
 | `ck_incident_csat` | `csat_score IS NULL OR csat_score BETWEEN 1 AND 5` |
+
+Deliberately **absent**: any check requiring an assessment (Impact, Urgency, Priority) at a given state. The PRD gates exit from `New` on a category (FR-INC-03) and on nothing else; whether an Incident may be assigned or worked while still unprioritized is a product rule that is not stated, and a `CHECK` is not the place to invent it (§3.7, §18 M14).
 
 These are structural safety nets. The **rules** are enforced in the domain layer; the constraints exist so that a defect cannot persist a record that contradicts the model, and so a DBA reading the schema can see the invariants.
 
@@ -895,6 +901,42 @@ Three columns, no constraint, and that is the deliberate design:
 
 1. **They are versioned, never edited in place.** Publishing a new matrix inserts a new `incident_priority_matrix` row with a new `version_no`; existing tickets keep pointing at the old one (NFR-CFG-02).
 2. **`jsonb` is used only for the rule DSL** (`condition`, `actions`, `guard`, `validation`, `options`). Everything a query filters on is a real column. `jsonb` here is a payload the domain interprets, not a way of avoiding modelling.
+
+### 8.5 A logged Incident is unassessed — nullability, and when each column arrives
+
+Recorded as **ADR-014** (ARCHITECTURE §10) and decisions **M14–M16** (§18). This section is the schema-level statement.
+
+**What an Incident is at the moment it is logged.** Reporter, origin channel, short and detailed description, optionally the affected Service, and its reference — nothing more (FR-INC-01/02, FR-OMN-02/04). Impact and Urgency are an agent's **triage** assessment (FR-INC-04/05, US-C1-02); Priority is **derived** from them and is never chosen by the requester (FR-INC-04, R8); the category is required only on **exit from `New`** (FR-INC-03, US-C1-07). The `Incident` aggregate is created in exactly that shape: category, Impact, Urgency and Priority absent, competition flag unset. The schema therefore represents an unassessed Incident as what it is:
+
+| Fact | Persisted as | Rejected alternative |
+|---|---|---|
+| Not yet assessed | `base_impact`, `assessed_impact`, `urgency` are `NULL` | A default level (`3`): indistinguishable from a real assessment, and silently feeds the matrix |
+| Not yet derived | `priority IS NULL`, `priority_matrix_id IS NULL` | A default Priority (`P3`) — exactly what US-C1-08 forbids — or an extra `unassessed` member of `priority_enum` / `impact_enum`, which would enter every matrix cell domain, SLA policy match and `GROUP BY` as if it were a level |
+| Not yet categorized | `category_id IS NULL` (already nullable) | — |
+| Flag not set | `competition_affects = false` (already the default) | — |
+
+The explicit "not yet derived" value the API contract exposes (US-C1-08) is produced by the mapper and the contract **from** `priority IS NULL`; it is never stored. Coherence is held by `ck_incident_impact_pair`, `ck_incident_priority_derivation`, `ck_incident_priority_provenance` and the tightened `ck_incident_priority_override` (§8.1, §20.3).
+
+**Configuration versions — pinned when they first govern the record.** NFR-CFG-02 protects records *governed* by a configuration. The two versions on the ticket first govern it at different moments:
+
+- **`workflow_id` — pinned at creation.** Every Incident has a lifecycle state from the instant it exists (it rests in `New`, US-C1-07), so the lifecycle version governs it from birth. Target `NOT NULL` stands.
+- **`priority_matrix_id` — pinned at the first derivation, then never changed.** It is a component of the `Priority` value object (§2); an unassessed Incident has no Priority and is governed by no matrix yet. Re-derivations after that (Impact/Urgency change, flag change) keep resolving the pinned version; an Incident logged under matrix *n* and first assessed after *n+1* is published derives under *n+1*.
+
+**When each column arrives — introduction follows behavior.** The dictionary (§20.3) states the **target** shape of `incident_ticket`. It is not created in one migration: a column is introduced by the migration of the **first behavior that writes it** (ADR-014), so the schema at any commit is a subset of the dictionary, never a contradiction of it.
+
+| Column group | Introduced with | Nullability on introduction | Backfill of existing rows |
+|---|---|---|---|
+| `id`, `reference` (+ `uq_incident_reference`), `short_description`, `description`, `origin_channel`, `reporter_user_id`, `service_id`, `created_at`, `updated_at`, `created_by`, `updated_by`, `version` | Logging an Incident (FR-INC-01/02) — the table-creating migration | Target | None — the table is new |
+| `logged_by_user_id` | Agent-logged intake (FR-OMN-01) | Target (nullable) | None |
+| `category_id` | Categorization (FR-INC-03) | Target (nullable) | None — `NULL` is true for every existing row |
+| `base_impact`, `assessed_impact`, `urgency`, `priority`, `priority_overridden`, `priority_override_justification`, `priority_matrix_id` + the four priority checks | Priority derivation / the matrix (FR-INC-04) | Target (nullable; `priority_overridden` `NOT NULL DEFAULT false`) | None — "not yet assessed" is true for every existing row |
+| `competition_affects` + `competition_*` + `ck_incident_competition_flag` | The competition flag (FR-INC-05) | Target (`competition_affects NOT NULL DEFAULT false`) | None — the default is true for every existing row |
+| `workflow_id`, `state_id`, `state_category` + `ck_incident_resolution`, `ck_incident_categorized_beyond_new` | The lifecycle (FR-INC-06, FR-WFL-01) — the migration that creates `incident_workflow*` and seeds the default version | Added nullable, backfilled, then `SET NOT NULL` **in the same migration** | **Required and exact:** every existing row → the seeded version's `is_initial` state (`new`, category `open`), plus one `incident_state_transition` creation row per ticket (`from_state_id NULL`, `occurred_at = created_at`, `actor_type = 'user'`, `actor_user_id = created_by`) |
+| All remaining columns (assignment, Major Incident, resolution, closure, FCR, reopen, CSAT) | Their own behaviors | Target (nullable or `NOT NULL` with a constant default) | None — the default or `NULL` is true for every existing row |
+
+**Why the lifecycle backfill is a fact, not a guess.** Before the lifecycle exists, no transition exists: no code path can move an Incident out of `New`. Every row written before that migration is therefore provably an Incident still in `New`, logged by `created_by` at `created_at` — which is exactly what the backfill writes. That is the test every late `NOT NULL` column must pass (ADR-014): if a lossless backfill cannot be stated, the column is nullable in the target instead. For the same reason **no seed row or placeholder state is written ahead of the state model**: until the aggregate holds a state, persistence would be inventing domain state the aggregate does not have (§2 item 3, ADR-005).
+
+**The mapper's side of the rule.** While an aggregate slot has no column yet (category, assessment, flag, subject, assignment in the first slice), the mapper reads it as empty and **refuses to save** an aggregate in which it is not empty — a typed mapping error, never a silently dropped value.
 
 ---
 
@@ -1809,6 +1851,9 @@ Recorded honestly, because a reader should know which parts are traceable and wh
 | M11 | **No `iam_session` / refresh-token table** | **A normative product decision — neither scope nor statelessness.** PRD §14.8 adopts **device-bounded termination**, rejects centrally withdrawn access, and forbids any derived artifact from requiring per-request validation against a central session record or a stored record of live sessions. `FR-IAM-06`, `FR-IAM-08` (deliberate sign-out) and `FR-IAM-09` (permanent deactivation) are each satisfied on the device or at authentication time, never by a stored session (§6.4). **Correction to this row's former rationale:** it cited ARCHITECTURE §3.2 for "stateless JWT"; §3.2 fixes the credential format only, and "stateless" in that document (ADR-004) means horizontally scalable API *instances* — which a PostgreSQL-backed session table would never have contradicted, the state being in the shared database rather than in an instance | High — the ground is a normative PRD decision rather than a phase boundary. Still additive and confined to `iam` if it is ever reopened, which only the four reversal triggers of PRD §14.8, or federation under `FR-IAM-04`, can do |
 | M12 | **Attachments store an object-storage key, not the bytes** | Keeping binaries out of PostgreSQL protects backup/restore times and the SLA sweep's working set. The storage adapter itself is not designed here | Medium — the column is a key either way |
 | M13 | **`csat_score` on the ticket instead of a `csat_survey` table** | The MVP explicitly limits CSAT to *basic capture* (PRD §14.3); a survey aggregate would be speculative | High — extractable later |
+| M14 | **An unassessed Incident persists its assessment as `NULL`; `priority IS NULL` is "not yet derived"** (ADR-014, §8.5) | An Incident is logged before triage (FR-INC-04/05, US-C1-02/08). A sentinel level would be mistaken for an assessment — US-C1-08 forbids exactly that — and an extra enum member would leak into the matrix, SLA policy matching and every KPI. Four checks keep the nullable columns coherent. **No check requires an assessment at any state**: the PRD states no such gate, so none is invented here | High — tightening later is a `CHECK` plus a data audit |
+| M15 | **`priority_matrix_id` is pinned at the first derivation, not at creation** (§8.5) | It belongs to the `Priority` value object (§2); NFR-CFG-02 protects records *governed* by a configuration, and no matrix governs an Incident before it has a Priority. `workflow_id`, by contrast, governs from birth and is pinned at creation | High — pinning at creation instead is a backfill to the version active at `created_at` |
+| M16 | **Columns arrive with the behavior that writes them; a late `NOT NULL` column must ship with a lossless backfill in the same migration** (ADR-014, §8.5) | Delivery is sliced vertically, so the ticket table exists long before workflow, matrix or triage do. Placeholder rows or states written ahead of the domain would be persistence inventing domain state (ADR-005). The lifecycle columns pass the test (every earlier row is provably in `New`); columns that cannot pass it are nullable in the target | Medium — the rule constrains every later migration on `incident_ticket` and `sr_request` |
 
 ---
 
@@ -2436,6 +2481,8 @@ Localization child of the `Category` aggregate: one row per category and locale,
 
 Aggregate root of the `Incident` aggregate (ADR-005): one row per Incident, carrying the inlined `TicketReference`, `Priority`, `CompetitionImpactFlag`, `CompetitionSubject`, `OriginChannel` and `ResolverAssignment` value objects as flat columns (§2). It is the persistence of FR-INC-01 → FR-INC-13 and FR-INC-18, and the only table in the context that carries `version` for optimistic locking.
 
+The columns below are the **target** shape. An Incident is logged **unassessed** — no category, Impact, Urgency or Priority — so every assessment column is nullable and held coherent by checks; and the table is built up column group by column group as the behaviors that write them ship, with the lifecycle columns backfilled losslessly when they arrive. Both rules, and the introduction order, are in §8.5 (ADR-014, M14–M16).
+
 | Attribute | Type | Null | Key | Default | Description |
 |---|---|---|---|---|---|
 | `id` | `uuid` | NOT NULL | PK | `uuidv7()` | UUID v7 issued by `IncidentRepositoryPort.nextIdentity()`; the DB default is a migration/fixture safety net only (§3.1) |
@@ -2447,15 +2494,15 @@ Aggregate root of the `Incident` aggregate (ADR-005): one row per Incident, carr
 | `logged_by_user_id` | `uuid` | NULL | soft → iam.iam_user.id | — | Agent who logged the Incident on the reporter's behalf (phone/chat intake, FR-OMN-02) |
 | `service_id` | `uuid` | NULL | soft → catalog.catalog_service.id | — | Affected Service; drives SLA policy resolution (FR-INC-01, FR-SLA-02) |
 | `category_id` | `uuid` | NULL | soft → catalog.catalog_category.id | — | Leaf `item` of the taxonomy; required before the ticket may leave `New` (FR-INC-03) |
-| `workflow_id` | `uuid` | NOT NULL | FK → incident.incident_workflow.id | — | Lifecycle configuration version in force for this ticket (FR-WFL-01, NFR-CFG-02) |
-| `state_id` | `uuid` | NOT NULL | FK → incident.incident_workflow_state.id | — | Current configurable lifecycle state (FR-INC-06, FR-WFL-01) |
-| `state_category` | `state_category_enum` | NOT NULL | — | — | Denormalized, non-configurable classification so queries and KPIs never depend on customer configuration (§3.5) |
+| `workflow_id` | `uuid` | NOT NULL | FK → incident.incident_workflow.id | — | Lifecycle configuration version in force for this ticket, pinned at creation (FR-WFL-01, NFR-CFG-02). Introduced by the lifecycle migration: added nullable, backfilled to the seeded version, then `SET NOT NULL` (§8.5, M16) |
+| `state_id` | `uuid` | NOT NULL | FK → incident.incident_workflow_state.id | — | Current configurable lifecycle state (FR-INC-06, FR-WFL-01). Same introduction as `workflow_id`; existing rows backfilled to the `is_initial` state (§8.5) |
+| `state_category` | `state_category_enum` | NOT NULL | — | — | Denormalized, non-configurable classification so queries and KPIs never depend on customer configuration (§3.5). Same introduction; backfilled from the initial state's `category` |
 | `pending_reason` | `pending_reason_enum` | NULL | — | — | `customer` / `third_party` / `change`; with the state's `sla_clock` it drives clock-pause semantics (FR-INC-06, FR-INC-08) |
-| `priority_matrix_id` | `uuid` | NOT NULL | FK → incident.incident_priority_matrix.id | — | The matrix **version** that produced `priority`; in-flight tickets keep it (FR-INC-04, NFR-CFG-02) |
-| `base_impact` | `impact_enum` | NOT NULL | — | — | Agent's Impact assessment **before** the competition uplift (M4) |
-| `assessed_impact` | `impact_enum` | NOT NULL | — | — | `base_impact` raised by `competition_impact_step` when the flag is set (FR-INC-05) |
-| `urgency` | `urgency_enum` | NOT NULL | — | — | Agent-assessed Urgency (FR-INC-04) |
-| `priority` | `priority_enum` | NOT NULL | — | — | Derived from `(assessed_impact, urgency)` through the matrix; never chosen by a requester (FR-INC-04, R8) |
+| `priority_matrix_id` | `uuid` | NULL | FK → incident.incident_priority_matrix.id | — | The matrix **version** that produced `priority`; set at the first derivation and never changed afterwards, so in-flight tickets keep it (FR-INC-04, NFR-CFG-02, M15) |
+| `base_impact` | `impact_enum` | NULL | — | — | Agent's Impact assessment **before** the competition uplift (M4); `NULL` until triage (FR-INC-04, M14) |
+| `assessed_impact` | `impact_enum` | NULL | — | — | `base_impact` raised by `competition_impact_step` when the flag is set (FR-INC-05); `NULL` exactly when `base_impact` is (`ck_incident_impact_pair`) |
+| `urgency` | `urgency_enum` | NULL | — | — | Agent-assessed Urgency (FR-INC-04); `NULL` until triage (M14) |
+| `priority` | `priority_enum` | NULL | — | — | Derived from `(assessed_impact, urgency)` through the matrix; never chosen by a requester (FR-INC-04, R8). `NULL` **is** "not yet derived" (US-C1-08) — never a default level (§8.5, M14) |
 | `priority_overridden` | `boolean` | NOT NULL | — | `false` | Authorized-override marker on the derived Priority (FR-INC-04) |
 | `priority_override_justification` | `varchar(500)` | NULL | — | — | Mandatory justification when the Priority is overridden (FR-INC-04, CHECK) |
 | `competition_affects` | `boolean` | NOT NULL | — | `false` | Agent-only "affects a competition in progress" flag; never automatic, never requester-set (FR-INC-05, ADR-006) |
@@ -2498,7 +2545,11 @@ Aggregate root of the `Incident` aggregate (ADR-005): one row per Incident, carr
 | `uq_incident_reference` | UK | unique `(reference)` — FR-INC-02, NFR-DAT-01 |
 | `ck_incident_resolution` | CHECK | `state_category NOT IN ('resolved','closed') OR (resolution_code_id IS NOT NULL AND resolution_notes IS NOT NULL)` |
 | `ck_incident_competition_flag` | CHECK | `competition_affects = false OR (competition_justification IS NOT NULL AND competition_flag_set_by IS NOT NULL AND competition_flag_set_at IS NOT NULL)` |
-| `ck_incident_priority_override` | CHECK | `priority_overridden = false OR priority_override_justification IS NOT NULL` |
+| `ck_incident_priority_override` | CHECK | `priority_overridden = false OR (priority_override_justification IS NOT NULL AND priority IS NOT NULL)` |
+| `ck_incident_impact_pair` | CHECK | `(base_impact IS NULL) = (assessed_impact IS NULL)` (M4, M14) |
+| `ck_incident_priority_derivation` | CHECK | `(priority IS NULL) = (assessed_impact IS NULL OR urgency IS NULL)` (FR-INC-04, M14) |
+| `ck_incident_priority_provenance` | CHECK | `priority IS NULL OR priority_matrix_id IS NOT NULL` (NFR-CFG-02, M15) |
+| `ck_incident_categorized_beyond_new` | CHECK | `state_category NOT IN ('pending','resolved','closed') OR category_id IS NOT NULL` (FR-INC-03) — created with the lifecycle columns (§8.5) |
 | `ck_incident_subject` | CHECK | `competition_subject_type IS NULL OR competition_subject_external_id IS NOT NULL OR competition_subject_label IS NOT NULL` |
 | `ck_incident_major` | CHECK | `is_major = false OR (major_declared_by IS NOT NULL AND major_declared_at IS NOT NULL AND major_justification IS NOT NULL)` |
 | `ck_incident_csat` | CHECK | `csat_score IS NULL OR csat_score BETWEEN 1 AND 5` |
@@ -4666,7 +4717,7 @@ Denormalized read model with **one row per ticket**, unioning Incidents and Serv
 | `service_id` | `uuid` | NULL | soft → catalog.catalog_service.id | — | Service filter dimension (FR-RPT-05) |
 | `category_id` | `uuid` | NULL | soft → catalog.catalog_category.id | — | Category filter dimension (FR-RPT-05) |
 | `category_path` | `varchar(255)` | NULL | — | — | Denormalized label path frozen at projection time, so renaming a category cannot retroactively change a historical report (NFR-DAT-03) |
-| `priority` | `priority_enum` | NOT NULL | — | — | Priority filter dimension, P1–P4 (FR-RPT-01/05) |
+| `priority` | `priority_enum` | NULL | — | — | Priority filter dimension, P1–P4 (FR-RPT-01/05). `NULL` mirrors an Incident whose Priority is not yet derived (§8.5, M14); a Service Request always has one (FR-SRQ-07) |
 | `competition_affects` | `boolean` | NOT NULL | — | `false` | The flagged subset behind the domain KPIs (FR-RPT-04, ADR-006) |
 | `competition_subject_type` | `competition_subject_enum` | NULL | — | — | Affected competition subject type (FR-RPT-05) |
 | `competition_subject_external_id` | `varchar(100)` | NULL | — | — | Opaque SCMS identifier; **no FK into SCMS, ever** (§8.2) |

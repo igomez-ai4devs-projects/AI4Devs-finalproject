@@ -1,5 +1,4 @@
-import { DomainError } from '@sport-itsm/shared-domain';
-import { describeValue } from './describe-value';
+import { DomainError, describeValue } from '@sport-itsm/shared-domain';
 
 /**
  * The closed set of intake channels, `origin_channel_enum` in
