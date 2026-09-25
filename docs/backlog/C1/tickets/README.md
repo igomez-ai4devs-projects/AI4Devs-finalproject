@@ -1,10 +1,10 @@
 # Tickets — C1 · Incident Management
 
-> Sources: `docs/backlog/C1/user-stories.md` (32 stories, all greenfield) · `docs/backlog/epic-map.md` (§ `C1`, § **Foundation ownership (priced once)**) · `docs/backlog/C10/tickets/` (the workspace foundation, already ticketed) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9 · PRD §7.1, §14
+> Sources: `docs/backlog/C1/user-stories.md` (34 stories — 30 greenfield, 4 gap: `US-C1-01`, `02`, `05`, `08`; includes `US-C1-33`/`34` for `FR-INC-19`/`20`) · `docs/backlog/epic-map.md` (§ `C1`, § **Foundation ownership (priced once)**, findings **F17**, **F31**) · `docs/backlog/C10/tickets/` (the workspace foundation, already ticketed) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9 · PRD §7.1, §14, §14.10
 > Test plan: [`../test-plan.md`](../test-plan.md)
 
-**102 tickets · 268.5h · five tickets now exceed the 3h cap, each with a recorded exception.** One ticket added this pass (`T-C1-102`, `FR-INC-20`, no story yet) on top of the three added by the previous pass (`T-C1-99`–`101`, block O, "see it — detail by reference") and the `T-C1-09`/`T-C1-10` re-cut for delivery slice 1 — see **Delivery slices** below.
-**2 tickets are foundation** work with `story: —` — the six `incident` libraries and the context schema/module wiring. `T-C1-102` also carries `story: —` but is **not** foundation (it has a persona and observable behavior); see its own `## Context` and the **third pass** note below.
+**102 tickets · 268.5h · five tickets now exceed the 3h cap, each with a recorded exception.** One ticket added this pass (`T-C1-102`, `FR-INC-20`) on top of the three added by the previous pass (`T-C1-99`–`101`, block O, "see it — detail by reference") and the `T-C1-09`/`T-C1-10` re-cut for delivery slice 1 — see **Delivery slices** below.
+**2 tickets are foundation** work with `story: —` — the six `incident` libraries and the context schema/module wiring. `T-C1-102` is **no longer** in this count: it is reparented to `US-C1-34` this pass (**F32**, third pass below) — it was never foundation (it has a persona and observable behavior), only briefly unstoried.
 **12 tickets are blocked** by six findings: **F24** (1), **F25** (2), **F27** (1), **F28** (2), **F29** (3), **F30** (3). None of those decisions is made in this backlog.
 
 **This pass — ADR-014 (`ARCHITECTURE.md` §10) and `DATA-MODEL.md` §8.5/M14–M16.** `incident_ticket`'s assessment, matrix-version and lifecycle columns are nullable in the target schema, a matrix version is pinned at an Incident's **first derivation** rather than at creation, and every column arrives with the migration of the first behavior that writes it, backfilled exactly where it lands `NOT NULL` on a table that already has rows. Nine tickets changed to carry this out; net effect **+2.5h** (263.5h → 266.0h), all inside blocks B (net 0h — one ticket lighter, one heavier), D, E, F and I:
@@ -43,6 +43,12 @@ Of the three Product Owner decisions relayed by the pass above, two are now numb
 
 **`T-C1-11`'s flagged build-order question is resolved, not moved.** Its own AC on an agent recording Impact/Urgency at logging cannot literally persist before `T-C1-30`'s mutators exist — and `T-C1-06`'s mapper (ADR-014 rule 4) would reject a save that tried. Resolution: the command accepts and authorizes the values but does not yet forward them to the aggregate; the Incident persists exactly as unassessed as `T-C1-06`/`T-C1-07` already produce. Wiring the dormant fields once `T-C1-30` ships is flagged as a finding for the architect, since `T-C1-30`'s own ticket does not currently mention picking them up. No estimate change (3h).
 
+**Third pass — `user-stories.md` regeneration (findings F32, F17; `architect-tech-lead`, this session).** `business-analyst` regenerated `docs/backlog/C1/user-stories.md`: 34 stories, `US-C1-33` (`FR-INC-19`) and `US-C1-34` (`FR-INC-20`) added, `US-C1-01`/`02`/`05`/`08` reshaped to **gap** (finding **F31** — real domain code now exists), `US-C1-09` corrected (matrix pinned at first derivation). The Product Owner also regenerated `epic-map.md`, reporting finding **F17**. Three corrections follow from those two artifacts:
+
+1. **Reparenting (F32).** `T-C1-102`'s `story: —` moves to `US-C1-34` — a straight reparent, no scope change. `T-C1-49`, `T-C1-50`, `T-C1-51` and `T-C1-73` are **not** reparented to `US-C1-33`: each ticket's own `## Context` now carries a "Story attribution" note deciding, by actual scope, that the ticket's primary identity stays its original story (`US-C1-15` for the first three — each is chiefly `FR-INC-06`'s state-model/transition-configuration/use-case mechanics; `US-C1-24` for `T-C1-73` — chiefly assignment mechanics) with `US-C1-33` cross-referenced for the specific acceptance criteria that implement `FR-INC-19`'s gates. The Story columns below are annotated accordingly.
+2. **Gap notes (US-C1-01/02/05/08).** `T-C1-08`, `T-C1-11` and `T-C1-30` each gained an "Already built" note pointing at the exact `libs/incident/domain` code (`Incident.log()`, `OriginChannel`, the reporter/actor separation, the not-yet-derived Priority state) their story's gap shape names, so their scope is read as the delta, not rebuilt from zero. `T-C1-11`'s title and text are also corrected from the obsolete "contact channel" to **origin channel** (PRD §14.10 decision D1, already the term the code and `US-C1-02` use). Verified directly against `libs/incident/domain/src/lib/incident.aggregate.ts`, `origin-channel.vo.ts` and `incident-reference.policy.ts` — no other `US-C1-01/02/05/08` ticket was found describing already-built domain behavior as still to do.
+3. **Phase correction (F17).** Blocks **L** (`FR-INC-15`, `US-C1-28`) and **M** (`FR-INC-16`, `US-C1-29`/`30`) were still labeled `unphased (F9)`, and the two sequencing risks below (**F23**, **F26**) were still recorded as open Product Owner calls. Both are resolved in the PRD (§14.3: `FR-INC-15` is `Must`, Phase 1, explicitly alongside intake; §14.5: `FR-INC-16`'s deflection-recording limb explicitly rides the same phase as `FR-KNW-06` measurement, Phase 3) — verified directly against `docs/product/PRD.md` §14.3 and §14.5. Block L moves to **Phase 1 (MVP)**, block M to **Phase 3 (§14.5)**; the totals table and the by-phase line below are recalculated, and **F23**/**F26** are marked resolved rather than open. `user-stories.md` itself still reads `Phase: unphased (F9)` on `US-C1-28`/`29`/`30` — that field is the Business Analyst's own artifact and is not edited here; this correction is reported for its next regeneration, exactly as **F31**'s build-state finding was reported the other way around last pass.
+
 **Delivery is now cut by vertical slice, not by block order — see Delivery slices below.** The Product Owner has re-cut delivery across `C1` and `C10` into three thin, end-to-end slices, approved by the user. **No ticket file changed and no ID moved for this.** The claim that used to stand here — *"the numbering is the implementation order"* — is corrected: the numbering is stable and mostly reflects a reasonable build order **within** a block, but which slice ships first is a delivery decision, not something this file's ID order ever decided. `T-C1-01` is still the first ticket **of Block A**; it is not necessarily the first ticket built end to end. Where the order departs from the story sequence **within a block**, the reason is stated below that block, exactly as before.
 
 ## Delivery slices
@@ -75,7 +81,7 @@ Approved by the user, from the Product Owner's cut. Three vertical, end-to-end s
 | `layer` | DDD layer per `ARCHITECTURE.md` §5.3 |
 | `platform` | `backend` / `frontend` / `shared` — stated for every ticket, and load-bearing where `agent` is `—` |
 | `agent` | `backend-engineer`, `frontend-engineer`, or `—` for workspace scaffolding and E2E test code, which neither dev agent owns |
-| `phase` | Copied verbatim from the story. Four values are in use: `disputed 0/1 (F6)`, `1 (MVP)`, `unphased (F9)`, `3 (§14.5)` |
+| `phase` | Copied verbatim from the story, except where corrected against a verified PRD phase this pass (**F17** — blocks L and M; see the **Third pass** note above). Three values are in use: `disputed 0/1 (F6)`, `1 (MVP)`, `3 (§14.5)`. `unphased (F9)` is retired: every `C1` story now has a PRD-verified phase. |
 | `blocked_by` | The finding that must be resolved before the ticket is real work |
 
 **Phases are read, not derived.** Every `C1` story carries a `Phase:` field and it is copied verbatim. **The Phase 0/1 cut of finding F6 is not resolved here** — PRD §14.2 places `FR-INC-01/02/03` in Phase 0 while §14.3 places `FR-INC-01 → 13, 18` in the Phase 1 MVP, overlapping without stating the boundary. That is a Product Owner decision. `US-C1-01` → `US-C1-07`, and the foundation that must land with them, carry `disputed 0/1`.
@@ -126,7 +132,7 @@ Source: `ARCHITECTURE.md` §5.1 and §5.5; epic map § `C1`, *What actually rema
 | [T-C1-08](T-C1-08.md) | Intake contracts and server-side rejection of priority-bearing fields | US-C1-01 | contracts + infrastructure | backend-engineer | 2.5h |
 | [T-C1-09](T-C1-09.md) | `incident/data-access` — Incident API service and signal store | US-C1-01 | data-access | frontend-engineer | 2.5h |
 | [T-C1-10](T-C1-10.md) | Requester intake form — plain language, mobile, WCAG 2.1 AA | US-C1-01 | feature + ui | frontend-engineer | 3h |
-| [T-C1-11](T-C1-11.md) | `LogIncidentOnBehalfUseCase` — reporter, contact channel and acting actor | US-C1-02 | application + infrastructure | backend-engineer | 3h |
+| [T-C1-11](T-C1-11.md) | `LogIncidentOnBehalfUseCase` — reporter, origin channel and acting actor | US-C1-02 | application + infrastructure | backend-engineer | 3h |
 | [T-C1-12](T-C1-12.md) | Agent single-flow intake surface with no loss of typed data | US-C1-02 | feature | frontend-engineer | 3h |
 | [T-C1-13](T-C1-13.md) | Reporter lookup with an explicit reporter-must-exist path | US-C1-02 | feature + data-access | frontend-engineer | 2.5h |
 | [T-C1-14](T-C1-14.md) | `CompetitionSubject` value object over the twelve-value closed subject type | US-C1-03 | domain | backend-engineer | 2.5h |
@@ -218,9 +224,9 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
-| [T-C1-49](T-C1-49.md) | Incident state model over the shared `StateModel` primitive | US-C1-15 | domain | backend-engineer | 3.5h |
-| [T-C1-50](T-C1-50.md) | Transition-rule configuration: persistence, migration and hot reload | US-C1-15 | infrastructure | backend-engineer | 3.5h |
-| [T-C1-51](T-C1-51.md) | `TransitionIncidentUseCase` with typed refusal and terminal-state protection | US-C1-15 | application | backend-engineer | 2.5h |
+| [T-C1-49](T-C1-49.md) | Incident state model over the shared `StateModel` primitive | US-C1-15 (+ US-C1-33, F32) | domain | backend-engineer | 3.5h |
+| [T-C1-50](T-C1-50.md) | Transition-rule configuration: persistence, migration and hot reload | US-C1-15 (+ US-C1-33, F32) | infrastructure | backend-engineer | 3.5h |
+| [T-C1-51](T-C1-51.md) | `TransitionIncidentUseCase` with typed refusal and terminal-state protection | US-C1-15 (+ US-C1-33, F32) | application | backend-engineer | 2.5h |
 | [T-C1-52](T-C1-52.md) | Lifecycle actions on the agent Incident view | US-C1-15 | feature + ui | frontend-engineer | 3h |
 | [T-C1-53](T-C1-53.md) | Resolution-code list: configurable, stable identifiers, translatable labels | US-C1-16 | domain + infrastructure | backend-engineer | 2.5h |
 | [T-C1-54](T-C1-54.md) | `ResolveIncidentUseCase` gated on resolution code and notes | US-C1-16 | domain + application | backend-engineer | 2.5h |
@@ -269,7 +275,7 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
 | [T-C1-72](T-C1-72.md) | `ResolverAssignment` and the append-only assignment history | US-C1-24 | domain + infrastructure | backend-engineer | 3h |
-| [T-C1-73](T-C1-73.md) | `ReassignIncidentUseCase`, the `IncidentAssigned` event and the assignment migration | US-C1-24 | application + domain + infrastructure | backend-engineer | 3.5h |
+| [T-C1-73](T-C1-73.md) | `ReassignIncidentUseCase`, the `IncidentAssigned` event and the assignment migration | US-C1-24 (+ US-C1-33, F32) | application + domain + infrastructure | backend-engineer | 3.5h |
 | [T-C1-74](T-C1-74.md) | Reassignment UI showing the full assignment path | US-C1-24 | feature + ui | frontend-engineer | 2.5h |
 | [T-C1-75](T-C1-75.md) | Functional escalation as a distinct kind, with its permission gate | US-C1-25 | domain + application | backend-engineer | 3h |
 | [T-C1-76](T-C1-76.md) | Escalated state visible in the agent work list | US-C1-25 | feature + ui | frontend-engineer | 2h |
@@ -309,7 +315,7 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 ---
 
-## Block L · Scope rule at intake — 3 tickets · 8.5h · phase unphased (F9)
+## Block L · Scope rule at intake — 3 tickets · 8.5h · phase 1 (MVP)
 
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
@@ -319,11 +325,11 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 **Blocked — F25.** `FR-INC-15` says *reject **or** flag* without deciding, and never says where the detection rules live. This backlog assumes both are configuration; the assumption needs Product Owner confirmation, and hardcoding either would make the mitigation of risk **R1** unmaintainable.
 
-**Sequence risk — F23, carried into the risk list below.** This block is the declared mitigation of the highest-rated product risk, and it is **unphased while the intake it protects is Phase 1**.
+**Phase corrected this pass — F23 resolved, F17.** This block was recorded as **unphased while the intake it protects is Phase 1**. PRD §14.3 has since settled it: `FR-INC-15` is `Must`, Phase 1, named explicitly alongside intake, with its priority raised from `Should` for exactly this reason. Block L now carries `phase: 1 (MVP)`; see the **Third pass** note above and the epic map's finding **F17**.
 
 ---
 
-## Block M · Knowledge suggestions and deflection — 4 tickets · 11h · phase unphased (F9)
+## Block M · Knowledge suggestions and deflection — 4 tickets · 11h · phase 3 (§14.5)
 
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
@@ -333,6 +339,8 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 | [T-C1-92](T-C1-92.md) | Abandonment detection at intake and the suggestions-shown marker | US-C1-30 | feature + data-access | frontend-engineer | 2.5h |
 
 **Boundary note.** Search, ranking and the article model are `C9`. `C1` calls a port and records the deflection; **no `C9` ticket is written here**, and the null adapter of `T-C1-89` keeps intake working while `C9` does not exist (`NFR-AVL-03`).
+
+**Phase corrected this pass — F26 resolved, F17.** This block was recorded as unphased. PRD §14.5 has since settled it: `FR-INC-16`'s deflection-recording limb explicitly rides the same phase as `FR-KNW-06` deflection measurement — "the two belong in the same phase" — so both are Phase 3, not phased apart. Block M now carries `phase: 3 (§14.5)`; see the **Third pass** note above and the epic map's finding **F17**.
 
 ---
 
@@ -369,20 +377,20 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
-| [T-C1-102](T-C1-102.md) | Untriaged-period configuration and the "overdue for triage" indicator | — (no story yet, `FR-INC-20`) | application + infrastructure | backend-engineer | 2.5h |
+| [T-C1-102](T-C1-102.md) | Untriaged-period configuration and the "overdue for triage" indicator | US-C1-34 | application + infrastructure | backend-engineer | 2.5h |
 
-**New this pass — `FR-INC-19`/`FR-INC-20` (PRD §14.10).** `FR-INC-20` requires an Incident to become visibly overdue for triage past a configurable maximum period in `New`. Numbered last, at the next free ID, because ticket IDs are stable and appended — it belongs, logically, right after `T-C1-50` (block F), whose `state_category = 'new'` and `ix_incident_untriaged` it depends on. **Not foundation work** (`FR-INC-20` has a persona and observable behavior), but no `US-C1-nn` exists for it yet — `story: —` is a placeholder for a real gap, reported as a finding for `business-analyst` in the ticket's own `## Context` and in the test plan's Findings note, not an exemption. **Dependent on PRD assumption A11** (the production period value and default action on expiry) without inventing one: the ticket builds fail-fast configuration and the query mechanism only, the same pattern already used for the Priority matrix (`T-C1-27`) and auto-close (`T-C1-63`).
+**New this pass — `FR-INC-19`/`FR-INC-20` (PRD §14.10).** `FR-INC-20` requires an Incident to become visibly overdue for triage past a configurable maximum period in `New`. Numbered last, at the next free ID, because ticket IDs are stable and appended — it belongs, logically, right after `T-C1-50` (block F), whose `state_category = 'new'` and `ix_incident_untriaged` it depends on. **Not foundation work** (`FR-INC-20` has a persona and observable behavior). **Reparented this pass (F32):** `story: —` is retired now that `business-analyst` has authored `US-C1-34` directly against `FR-INC-20`; see the ticket's own `## Context`. **Dependent on PRD assumption A11** (the production period value and default action on expiry) without inventing one: the ticket builds fail-fast configuration and the query mechanism only, the same pattern already used for the Priority matrix (`T-C1-27`) and auto-close (`T-C1-63`).
 
 ---
 
-## Sequencing risks carried forward
+## Sequencing risks carried forward — F23 and F26 resolved this pass (F17)
 
-Two findings are about **phasing**, not implementation. They block nothing, and they are recorded here because the sequence they imply is a Product Owner decision that this backlog cannot make.
+Both findings were about **phasing**, not implementation, and both are now settled by the PRD rather than open Product Owner calls — verified against `docs/product/PRD.md` §14.3 and §14.5 (epic map finding **F17**). Kept here as a resolved record, not a live risk.
 
-| Finding | Risk to the sequence |
-|---|---|
-| **F23** | **The mitigation of the top product risk is unphased while the thing it protects ships in Phase 1.** `FR-INC-15` (block L) guards the intake surface against sport-operations demand; intake itself (block B) is Phase 1. If the scope rule arrives after intake, risk **R1** has already materialized — the demand is in the backlog and the precedent is set. `US-C1-28` is written to ship **with** intake. Recommendation to the Product Owner: phase `FR-INC-15` into Phase 1 alongside `FR-INC-01`. |
-| **F26** | **Deflection recording is being phased apart from deflection measurement.** `FR-INC-16` requires recording at intake (block M), while §14.5 places `FR-KNW-06` deflection *measurement* in Phase 3 and the intake-facing `C9` articles in Phase 1. `T-C1-89`/`T-C1-90` (suggestions) and `T-C1-91`/`T-C1-92` (recording) are separate tickets under separate stories so the two halves can be phased independently. The Product Owner decides whether recording rides with Phase 1 suggestions or waits for Phase 3 measurement. |
+| Finding | Was | Resolved |
+|---|---|---|
+| **F23** — resolved | **The mitigation of the top product risk was unphased while the thing it protects ships in Phase 1.** `FR-INC-15` (block L) guards the intake surface against sport-operations demand; intake itself (block B) is Phase 1. Left unphased, risk **R1** could materialize before the mitigation shipped. | PRD §14.3: `FR-INC-15` is `Must`, Phase 1, named explicitly alongside intake ("**FR-INC-15** — scope-rule enforcement at intake"), with its priority raised from `Should` for exactly this reason. Block L now carries `phase: 1 (MVP)`. |
+| **F26** — resolved | **Deflection recording was read as phased apart from deflection measurement.** `FR-INC-16` requires recording at intake (block M), while §14.5 places `FR-KNW-06` deflection *measurement* in Phase 3. `T-C1-89`/`T-C1-90` (suggestions) and `T-C1-91`/`T-C1-92` (recording) stayed separate tickets under separate stories so the two halves *could* be phased independently. | PRD §14.5 states plainly that `FR-INC-16`'s recording limb "*is* the input `FR-KNW-06` measures, so the two belong in the same phase" — both Phase 3. Block M now carries `phase: 3 (§14.5)`. The two stories/tickets stay separate for scope clarity, not because they are phased apart. |
 
 ---
 
@@ -401,18 +409,18 @@ Two findings are about **phasing**, not implementation. They block nothing, and 
 | I · Assignment and escalation | 7 | 19.5 | 1 (MVP) |
 | J · First Contact Resolution | 2 | 5.5 | 1 (MVP) |
 | K · Linking | 5 | 13.0 | 1 (MVP) |
-| L · Scope rule at intake | 3 | 8.5 | unphased |
-| M · Knowledge suggestions and deflection | 4 | 11.0 | unphased |
+| L · Scope rule at intake | 3 | 8.5 | 1 (MVP) — corrected this pass, was `unphased`, see **F17** |
+| M · Knowledge suggestions and deflection | 4 | 11.0 | 3 (§14.5) — corrected this pass, was `unphased`, see **F17** |
 | N · Phase 3 | 6 | 16.0 | 3 (§14.5) |
 | O · See it — detail by reference | 3 | 5.0 | disputed 0/1 |
 | P · Untriaged-period visibility | 1 | 2.5 | 1 (MVP) |
 | **Total** | **102** | **268.5** | |
 
-**By phase.** disputed 0/1 (**F6**): 28 tickets · 71.0h · **the cut is not made here.** Phase 1 (MVP): 61 tickets · 162.0h. Unphased (**F9**): 7 tickets · 19.5h. Phase 3 (§14.5): 6 tickets · 16h.
+**By phase (recalculated this pass — F17).** disputed 0/1 (**F6**): 28 tickets · 71.0h · **the cut is not made here.** Phase 1 (MVP): 64 tickets · 170.5h (was 61 · 162.0h; +block L, 3 · 8.5h). Phase 3 (§14.5): 10 tickets · 27.0h (was 6 · 16.0h; +block M, 4 · 11.0h). **Unphased (F9): retired — 0 tickets.** Every `C1` block now carries a PRD-verified phase.
 
 **Tickets now at the 3h cap with a recorded exception (skill rule, not a sizing failure):** `T-C1-30`, `T-C1-43`, `T-C1-49`, `T-C1-50` and, new this second pass, `T-C1-73`, all at 3.5h — each bundles a migration with the one behavior that is its only writer, per the ADR-014 notes above; splitting any of them would leave a schema no code writes to yet, or a use case that cannot persist its own output.
 
-**Foundation** (`story: —`): 2 tickets · 4.5h — the six `incident` libraries and the context schema/module wiring. Everything else is `C10`. (Block O's three tickets trace `US-C1-01` like the rest of block B — not foundation, even though added by the first ADR-014 pass. `T-C1-102`, new this second pass, also carries `story: —` but is likewise **not** foundation — see its own `## Context` and block P above.)
+**Foundation** (`story: —`): 2 tickets · 4.5h — the six `incident` libraries and the context schema/module wiring. Everything else is `C10`. (Block O's three tickets trace `US-C1-01` like the rest of block B — not foundation, even though added by the first ADR-014 pass. `T-C1-102` is reparented to `US-C1-34` this pass — **F32** — and is no longer `story: —`; it was never foundation, only briefly unstoried — see its own `## Context` and block P above.)
 
 **Blocked:** 12 tickets — **F24** `T-C1-41` · **F25** `T-C1-86`, `T-C1-87` · **F27** `T-C1-68` · **F28** `T-C1-79`, `T-C1-80` · **F29** `T-C1-10`, `T-C1-14`, `T-C1-16` · **F30** `T-C1-32`, `T-C1-34`, `T-C1-47`. `T-C1-102`'s dependency on PRD assumption **A11** is not counted here: unlike these six findings, it blocks no *mechanism*, only the production configuration value — see block P.
 

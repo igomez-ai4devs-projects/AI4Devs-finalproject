@@ -1,13 +1,13 @@
 # Test Plan — C1 · Incident Management
 
-> Sources: `docs/backlog/C1/user-stories.md` (32 stories, all greenfield — predates `FR-INC-19`/`20`, see the Findings note added this pass) · `docs/backlog/C1/tickets/` (102 tickets — `T-C1-102` new this pass) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9, §10 (ADR-014) · `docs/product/DATA-MODEL.md` §3.2, §8.1, §8.5, §16, §18 (M14–M18) · PRD §7.1, §14, §14.10
+> Sources: `docs/backlog/C1/user-stories.md` (34 stories — 30 greenfield, 4 gap: `US-C1-01`, `02`, `05`, `08`; includes `US-C1-33`/`34` for `FR-INC-19`/`20`, now with their own stories — see the **Findings** note, updated this pass) · `docs/backlog/C1/tickets/` (102 tickets — `T-C1-102` reparented to `US-C1-34` this pass, **F32**) · `docs/backlog/epic-map.md` (finding **F17**) · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9, §10 (ADR-014) · `docs/product/DATA-MODEL.md` §3.2, §8.1, §8.5, §16, §18 (M14–M18) · PRD §7.1, §14, §14.10
 > This document is both the **BDD specification** and the **test strategy** for the epic. Every scenario below is written to seed a `.feature` file or a `*.spec.ts` directly.
 
 ## Context
 
 `C1` is the core aggregate of the product: intake, reference numbering, categorization, the Impact × Urgency matrix, the competition-in-progress flag, the eight-state lifecycle, clock-stopping Pending states, closure, collaboration, assignment, escalation, linking, scope enforcement, knowledge deflection, duplicate detection and First Contact Resolution.
 
-**Nothing was read from the codebase because there is none** — no `package.json`, no `apps/`, no `libs/`, no test. Every scenario below is written from the user stories and the architecture, not from source. All 32 stories are greenfield; no story carries a **Today:** line, so **no regression scenario is mandatory** in this epic.
+**As of this pass, real code exists** (`libs/incident/domain` — `Incident.log()`, `OriginChannel`, `IncidentReferencePolicy`), which is why four stories (`US-C1-01`, `02`, `05`, `08`) now carry a **Today:** line and are shaped **gap**, not greenfield (epic map finding **F31**). This does not add a regression scenario: gap is not the same as ⚫ Broken, and none of this epic's 34 stories is a defect story, so **no regression scenario is mandatory** — the original scenarios below still assume the remaining, unbuilt behavior and are unaffected in substance.
 
 **Where the risk concentrates.** `FR-INC-05` — the agent-only, justification-bearing competition-in-progress flag — is the one behavior the epic map calls domain-differentiating, and it is the only requirement in `C1` whose failure mode is **silent**: a flag that is set automatically, or accepted from a requester, produces a working system with a corrupted priority signal. `AT-C1-32` → `AT-C1-35` are therefore the highest-value scenarios in the plan, and `AT-C1-33` is a **permanent gate** rather than epic acceptance that can be retired.
 
@@ -867,7 +867,7 @@ Numbered `AT-C1-88` → `90`, appended rather than inserted at their logical pos
 **When** a transition out of `New` is attempted for each
 **Then** each is refused with a typed domain error naming the specific missing input, distinguishable from the categorization refusal and from one another; and an Incident with category, a full assessment and a Service set is permitted to proceed, subject to the other transition rules.
 
-- Test data: four in-memory Incidents · Dependencies: none — no HTTP, no DB · Covers: US-C1-07 (extended) (`T-C1-49`, `T-C1-51`) · `FR-INC-19` (PRD §14.10 — not yet reflected in `user-stories.md`, see the Findings note)
+- Test data: four in-memory Incidents · Dependencies: none — no HTTP, no DB · Covers: US-C1-33 (`FR-INC-19`'s own story, `T-C1-49`, `T-C1-51`), composed with US-C1-07's categorization gate and US-C1-15's transition mechanics on the same tickets — see **F32**
 - Why Unit: same reasoning as `AT-C1-18` — the gate must hold on every inbound path, which only a domain-level test proves independently of any adapter.
 
 #### AT-C1-90 — Assignment is refused while Impact or Urgency is unassessed — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform)
@@ -876,7 +876,7 @@ Numbered `AT-C1-88` → `90`, appended rather than inserted at their logical pos
 **When** assignment to a Resolver Group is attempted for each
 **Then** the first is refused with a typed error naming the missing assessment and appends nothing to the history, and the second succeeds.
 
-- Test data: one Incident, assessed and unassessed states · Dependencies: running API, real DB · Covers: US-C1-24 (extended) (`T-C1-73`) · `FR-INC-19` (PRD §14.10 — not yet reflected in `user-stories.md`, see the Findings note)
+- Test data: one Incident, assessed and unassessed states · Dependencies: running API, real DB · Covers: US-C1-33 (`FR-INC-19`'s own story, `T-C1-73`), composed with US-C1-24's assignment mechanics on the same ticket — see **F32**
 - Why API-E2E: the refusal must hold at the route the agent actually calls, not only inside the use case.
 
 ### Added this second pass — `FR-INC-19`/`20` (PRD §14.10) and the reference-immutability trigger (`DATA-MODEL.md` §3.2, M18)
@@ -889,7 +889,7 @@ Numbered `AT-C1-91` → `92`, appended for the same reason `AT-C1-88` → `90` w
 **When** the overdue-for-triage query runs against `ix_incident_untriaged`
 **Then** the first is reported overdue and the second is not; an Incident that has left `New` or that already has a category is never reported overdue regardless of age.
 
-- Test data: three Incidents (overdue, within-period, categorized-and-old) on `FixedClock`, a test-fixture period value · Dependencies: real PostgreSQL, `ix_incident_untriaged` (`T-C1-50`) · Covers: `FR-INC-20` (`T-C1-102`) — no story yet, see the Findings note
+- Test data: three Incidents (overdue, within-period, categorized-and-old) on `FixedClock`, a test-fixture period value · Dependencies: real PostgreSQL, `ix_incident_untriaged` (`T-C1-50`) · Covers: US-C1-34 (`FR-INC-20`, `T-C1-102`) — reparented this pass, see **F32**
 - Why Integration: the claim is about a real query against a real partial index and a real configured value, not something a stub can show; the *value* the business will configure (PRD assumption A11) is not asserted — only the mechanism, which is period-agnostic.
 - **Not blocked by A11.** Unlike `AT-C1-28`/`AT-C1-38`/`AT-C1-76`/etc., which wait on a Product Owner decision this plan cannot make, this scenario supplies its own test-fixture period the same way `AT-C1-53` (auto-close) supplies its own confirmation period — the mechanism is fully testable before the business sets a production value.
 
@@ -944,8 +944,8 @@ Component-level Jest tests for the Angular pieces (`T-C1-09`, `T-C1-10`, `T-C1-1
 | `FR-INC-16` | US-C1-29, 30 | AT-C1-78 → 81 | ✅ 4, recording only — measurement is `C17` / `C9` |
 | `FR-INC-17` | US-C1-31 | AT-C1-82 → 84 | ✅ 3 |
 | `FR-INC-18` | US-C1-32 | AT-C1-85 → 87 | ⚠ 2 of 3 — **not testable to a definition** until **F28** is settled |
-| `FR-INC-19` | US-C1-07 (extended), US-C1-24 (extended) — no dedicated story yet | `AT-C1-89`, `AT-C1-90` | ✅ 2 — landed in PRD §14.10 this second pass (was an unnumbered Product Owner decision at the first pass); `user-stories.md` predates it, see the Findings note below |
-| `FR-INC-20` | none yet (`story: —`, `T-C1-102`) | `AT-C1-91` | ✅ 1, mechanism only — the production period value and default action on expiry are PRD assumption A11, deliberately undecided |
+| `FR-INC-19` | US-C1-33 (its own story, this pass; composes with US-C1-07 and US-C1-24 on the same tickets — **F32**) | `AT-C1-89`, `AT-C1-90` | ✅ 2 — landed in PRD §14.10; `US-C1-33` authored by `business-analyst` this pass, tickets reparented per **F32** |
+| `FR-INC-20` | US-C1-34 (its own story, this pass — reparented from `T-C1-102`'s `story: —`, **F32**) | `AT-C1-91` | ✅ 1, mechanism only — the production period value and default action on expiry are PRD assumption A11, deliberately undecided |
 
 ## Risk-based notes
 
@@ -955,7 +955,7 @@ Component-level Jest tests for the Angular pieces (`T-C1-09`, `T-C1-10`, `T-C1-1
 
 **Determinism.** Every time-dependent scenario — the confirmation window, auto-close, clock pause and resume, the duplicate-detection window, flag timestamps — runs on `FixedClock` (`T-C10-09`, ADR-009). **No scenario in this plan sleeps, and none asserts against wall-clock time.**
 
-**Regression posture.** All 32 stories are greenfield, so **no mandatory regression scenario applies** — there is no ⚫ Broken requirement whose old behavior must be proven gone. The nearest equivalents are the three enumeration scenarios: once `AT-C1-33`, `AT-C1-34` and `AT-C1-62` pass, any later change that opens a second flag-write path, accepts the flag on a new route, or leaks an internal note through a new read path fails immediately.
+**Regression posture.** 30 of 34 stories are greenfield and 4 are gap (`US-C1-01`, `02`, `05`, `08` — real domain code already exists, epic map finding **F31**); none is a defect story, so **no mandatory regression scenario applies** — there is no ⚫ Broken requirement whose old behavior must be proven gone. The nearest equivalents are the three enumeration scenarios: once `AT-C1-33`, `AT-C1-34` and `AT-C1-62` pass, any later change that opens a second flag-write path, accepts the flag on a new route, or leaks an internal note through a new read path fails immediately.
 
 **Accessibility and language.** WCAG 2.1 AA and plain-language obligations are asserted per surface (`AT-C1-03`, `AT-C1-25`, `AT-C1-43`, `AT-C1-52`, `AT-C1-65`, `AT-C1-69`, `AT-C1-77`, `AT-C1-79`) rather than once globally, because they are properties of each screen. The platform a11y baseline itself belongs to the `NFR` epic.
 
@@ -972,13 +972,13 @@ Component-level Jest tests for the Angular pieces (`T-C1-09`, `T-C1-10`, `T-C1-1
 | **F30** | Decide whether a Priority override or the flag-driven re-derivation wins. The stories assume the override stands until explicitly returned; **two reasonable implementations produce different P1 counts**. | Product Owner | `T-C1-32`, `T-C1-34`, `T-C1-47` · `AT-C1-28`, `AT-C1-38` |
 | **A11** (PRD §10) | Set the production maximum untriaged period (`FR-INC-20`) and its default action on expiry. Not a defect and not a finding this backlog raised — the PRD states plainly that no value has been given by the business. `T-C1-102` builds the mechanism without it; `AT-C1-91` proves the mechanism on a test-fixture period, not the real one. | Product Owner / service organization | `T-C1-102` · `AT-C1-91` |
 
-## Findings for `business-analyst`
+## Findings for `business-analyst` — both resolved this pass
 
-`docs/backlog/C1/user-stories.md` predates `FR-INC-19` and `FR-INC-20` (PRD §14.10) — both landed in the PRD in the same pass as `ADR-014`, after the stories were written. Not edited here (this document does not own that file). Two follow-ups for the next `user-stories.md` regeneration:
+`docs/backlog/C1/user-stories.md` predated `FR-INC-19` and `FR-INC-20` (PRD §14.10) when this plan's first two passes were written. `business-analyst` has since regenerated the file (34 stories). Both follow-ups below are now closed:
 
-1. **`FR-INC-19`** (the triage gate on exit from `New` and on assignment) reads as a natural extension of the existing `US-C1-07` ("category is required before an Incident leaves `New`") and `US-C1-24` (reassignment) — confirm whether it needs its own `US-C1-nn`, or whether widening those two stories' acceptance criteria is enough. The tickets (`T-C1-49`, `T-C1-51`, `T-C1-73`) already implement the full requirement either way.
-2. **`FR-INC-20`** (no indefinite rest in `New`) has no story at all. `T-C1-102` was ticketed with `story: —` and a cited justification in its own `## Context`, per the architect-tech-lead skill's foundation-ticket rule — but `FR-INC-20` is not foundation work (it has a persona and observable behavior), so a real `US-C1-nn` should be authored for it and `T-C1-102` reparented to it in a later pass.
+1. **`FR-INC-19`** (the triage gate on exit from `New` and on assignment) got its **own story, `US-C1-33`** — not folded into `US-C1-07` or `US-C1-24` — per the "Decision on `FR-INC-19`" note in `user-stories.md` (it is one coherent business rule expressed as two gates on two operations, and a newly added `Must` requirement in its own right). `architect-tech-lead` traced `T-C1-49`, `T-C1-50`, `T-C1-51` and `T-C1-73`'s `FR-INC-19`-implementing acceptance criteria to `US-C1-33` this pass, without moving those tickets' primary `story:` field — see **F32**, `tickets/README.md`'s **Third pass** note, and each ticket's own "Story attribution" note.
+2. **`FR-INC-20`** (no indefinite rest in `New`) now has `US-C1-34`. `T-C1-102`'s `story: —` is reparented to `US-C1-34` this pass — see **F32**.
 
-**Sequencing risks, not blockers.** **F23** — the mitigation of risk R1 (`FR-INC-15`, block L) is unphased while the intake it protects is Phase 1; if it lands after intake, R1 has already materialized. **F26** — `FR-INC-16` deflection recording is being phased apart from `FR-KNW-06` deflection measurement. Both are recorded in [`tickets/README.md`](tickets/README.md) and both are Product Owner sequencing calls.
+**Sequencing risks — F23 and F26, resolved.** Both are settled in the PRD, not open Product Owner calls: **F23** — `FR-INC-15` (block L) is confirmed `Must`, Phase 1 (§14.3), shipping with intake, not after it. **F26** — `FR-INC-16` deflection recording (block M) is confirmed to ride the same phase as `FR-KNW-06` deflection measurement, Phase 3 (§14.5), not phased apart. Both corrections, and the recalculated phase totals, are in [`tickets/README.md`](tickets/README.md) (epic map finding **F17**).
 
 **Cross-epic completeness.** Two requirements cannot be closed by `C1` alone regardless of any decision above: **`FR-INC-14`** needs the `C2` Service Request side (`US-C1-27` says the two must ship together), and **`FR-INC-08`** is only half-proved here because the clock arithmetic is `C7`. Both must be reported as partial at the epic review rather than quietly closed.
