@@ -2609,3 +2609,139 @@ No instales dependencias. No hagas commit ni push. Deja los contenedores desecha
 
 ### Response:
 
+Implementado ticket T-C1-02
+
+</br>
+
+**Prompt 16:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-03.md ·
+Política de `TicketReference` para incidencias y el puerto de repositorio `nextReference()`
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero **aquí no se escribe NestJS ni TypeORM**: es `type:domain`, código
+puro. Mandan `sport-itsm-engineering-principles` (inmutabilidad, errores tipados, YAGNI) y
+`sport-itsm-architecture` (§5.3 fila `domain`, §5.4 dónde vive un puerto, §6.2–§6.3 puertos con
+token). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el tercero del bloque 3 de la rebanada 1. El orden real es **`03 → 05 → 06 → 04`** (nota H2 del
+README de `C1`): primero el puerto y la política de referencia (este), luego el agregado (`T-C1-05`),
+la tabla (`T-C1-06`) y por último la secuencia y la restricción única (`T-C1-04`). `US-C1-05` exige
+que ninguna incidencia exista sin referencia, por eso la referencia va antes que el agregado.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx show projects                    # 13
+    pnpm nx test shared-domain               # verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas base de datos.
+
+#### El ticket es el contrato — pero tiene dos puntos que chocan con la fuente
+Léelo entero. Lee además, y no de memoria:
+- **`libs/shared/domain/src/lib/ticket-reference.vo.ts`** — `TicketReference` **ya existe** (`T-C10-08`):
+  valida `^[A-Z]{3}[0-9]{7}$`, expone `value` y `prefix`. No se modifica.
+- **`DATA-MODEL.md` §3.1 y §3.2** (referencias legibles: `INC0000123`, `varchar(20)`, secuencia
+  `incident.incident_reference_seq`, **nunca reutilizada**) y la fila de `id` en §20.3 (UUID v7 emitido
+  por `IncidentRepositoryPort.nextIdentity()`).
+- **`ARCHITECTURE.md` §6.2** (el agregado se construye completo en dominio puro antes de cualquier
+  I/O) y **§6.3** (puerto = `interface` + `Symbol` exportado desde la librería de dominio).
+- `libs/shared/domain/src/lib/event-publisher.port.ts` — el ejemplo vigente de puerto + token.
+- `PRD.md` **FR-INC-02** y `docs/backlog/C1/user-stories.md` → `US-C1-05`.
+
+#### Trampa 1 — el formato: "prefijo, separador y parte numérica"
+El Scope dice *"prefix, separator and numeric part"*. **La fuente dice otra cosa**: `DATA-MODEL.md`
+fija `INC0000123` — prefijo de tres letras y siete dígitos, **sin separador** — y el VO compartido lo
+hace cumplir. Un separador (`INC-0000123`) no pasaría la validación del kernel ni cabría en la forma
+documentada.
+
+- **Implementa la forma de `DATA-MODEL.md`**: `INC` + 7 dígitos con ceros a la izquierda.
+- **Repórtalo como hallazgo** para `architect-tech-lead`: el Scope del ticket contradice
+  `DATA-MODEL.md`. No edites el ticket.
+- El requisito de "no ambigüedad al leerlo en voz alta" se cumple por construcción (prefijo fijo y solo
+  dígitos): **demuéstralo con un test**, no con un comentario.
+- Siete dígitos se agotan en 9.999.999. Decide qué pasa si la secuencia entrega un número mayor:
+  **error de dominio tipado**, nunca truncar ni envolver en silencio (eso reutilizaría referencias,
+  que es exactamente lo que FR-INC-02 prohíbe). Documenta el límite.
+
+#### Trampa 2 — `findById()` y `save()` nombran un agregado que aún no existe
+El Scope pide que `IncidentRepositoryPort` exponga `nextReference()`, `findById()` y `save()`. Pero
+`save(incident: Incident)` y `findById(): Promise<Incident | null>` necesitan el tipo **`Incident`**, que
+es `T-C1-05` — el siguiente ticket.
+
+- **No crees un `Incident` provisional** ni un tipo placeholder para que compile: el agregado es de
+  `T-C1-05` y un esqueleto aquí sería código que ese ticket tendría que deshacer.
+- Declara ahora lo que se puede declarar honestamente (`nextReference()`), y decide entre: (a) dejar
+  `findById`/`save` para `T-C1-05`, que es quien trae el tipo, y reportarlo como desviación del Scope;
+  o (b) otra forma que no invente el agregado. Recomendación: (a). Justifica tu elección.
+- **`nextIdentity()`**: `DATA-MODEL.md` §3.1 y §20.3 dicen que el puerto emite también el UUID v7 del
+  agregado (`nextIdentity()` "alongside the existing `nextReference()`"), y el ticket no lo menciona.
+  Solo nombra tipos del kernel (`Identity`), así que se puede declarar aquí sin inventar nada. Decide
+  si lo incluyes y justifícalo con la fuente; en cualquier caso, repórtalo.
+
+#### Trampa 3 — el puerto y su token
+- `interface IncidentRepositoryPort` + `export const INCIDENT_REPOSITORY = Symbol(...)` en
+  `libs/incident/domain`, exportados por el barrel — igual que `EVENT_PUBLISHER` junto a
+  `EventPublisherPort`. Un `Symbol` es JavaScript puro: nada de `@nestjs/*` aquí.
+- Métodos asíncronos (`Promise<…>`): la referencia sale de una secuencia de base de datos, es I/O
+  detrás del puerto. `Promise` no es un import de I/O.
+- La política de formato/parseo vive en `libs/incident/domain` y **compone** el `TicketReference` del
+  kernel; no dupliques su validación ni la cambies. Si el VO del kernel no expone algo que necesitas (la
+  parte numérica, por ejemplo), resuélvelo en la política de `incident` — **no toques
+  `libs/shared/domain`**. Si crees que el kernel debe cambiar, para y repórtalo.
+- Errores: lanza errores tipados que hereden de `DomainError` del kernel, distinguibles por tipo, no por
+  mensaje (la misma disciplina que `T-C10-08`).
+
+#### Trampa 4 — la primera arista de `incident`
+`libs/incident/domain` pasará a depender de `@sport-itsm/shared-domain`: es la **primera arista** del
+contexto `incident` y es legal (`domain` → `domain`, `scope:incident` → `scope:shared`). Importa **solo
+por el barrel** `@sport-itsm/shared-domain`, nunca por ruta profunda. Verifícalo en el grafo.
+
+Y quita `passWithNoTests: true` de `libs/incident/domain/jest.config.ts`: su propio comentario dice
+que se retira con este ticket.
+
+#### Lo que NO debes tocar
+`libs/shared/**`, las otras cinco librerías `incident-*`, `apps/**`, `docker/**`, `.github/**`,
+`docs/**`, `.claude/**` (salvo tu memoria de agente), `package.json`, `tsconfig.base.json`,
+`prompts.md`. Nada de agregado, adaptador, entidad, migración ni secuencia (`T-C1-04`, `05`, `06`). El
+ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — `pnpm nx test incident-domain`: pega el resumen. Tests de round-trip (formatear → parsear →
+   mismos componentes), forma exacta (`INC0000123`), límite superior (9.999.999 válido, 10.000.000 lanza
+   el error tipado), entradas inválidas (0, negativos, no enteros) y el test de "sin caracteres
+   ambiguos".
+2. **AC2 — pureza**: `grep -rnE "from '(@nestjs|@angular|typeorm|rxjs|express|pg|node:|fs|path|crypto)" libs/incident/domain/src`
+   → vacío. Y `tsconfig.lib.json` sigue con `"types": []`.
+3. **AC2 — lint**: `pnpm nx lint incident-domain` en verde.
+4. **AC3**: los tests corren sin base de datos ni HTTP (ningún mock de red ni de BD necesario).
+5. El grafo: `pnpm nx graph --file=tmp/graph.json` → la arista nueva `incident-domain -> shared-domain` y
+   ninguna otra nueva; borra el fichero.
+6. `libs/incident/domain/jest.config.ts` sin `passWithNoTests`.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+8. `pnpm prettier --check libs/incident/domain`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; el contenido literal del puerto y de la política.
+- Tus decisiones de las trampas 1 y 2 (formato, límite, `findById`/`save`, `nextIdentity`), con su porqué.
+- La salida de las ocho verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, la contradicción del Scope con
+  `DATA-MODEL.md` sobre el separador, qué métodos del puerto quedan para `T-C1-05` y la presencia o no
+  de `nextIdentity()` en el ticket.
+
+### Response:
+
+Implementado ticket T-C1-03
+
+</br>
