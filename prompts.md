@@ -1886,3 +1886,123 @@ Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasad
 
 ### Response:
 
+Implementado ticket T-C10-16
+
+</br>
+
+**Prompt 11:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-17.md ·
+Cadena base de migraciones y la migración de arranque
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** y cierra con `sport-itsm-workflow`.
+Es infraestructura de migraciones: aquí no se crea ninguna tabla, ninguna entidad ni ningún módulo
+de Nest.
+
+#### Por qué este ticket y por qué ahora
+Es el **segundo de la rebanada 1** ("un requester registra una incidencia y la ve"). `T-C10-16`
+dejó la base de datos **alcanzable** (commit `44a9699`); este ticket la deja **reproducible**: fija
+la primera migración y la convención que heredan todas las demás. Detrás de ti vienen `T-C10-11` y
+`T-C10-73`, y más tarde `T-C1-02`/`T-C1-04`, que crean el esquema `incident` y su primera tabla
+**siguiendo la convención que tú escribas**. Lo que dejes aquí es lo que copiarán.
+
+#### Precondición
+    git log --oneline -1          # 44a9699 [T-C10-16] ...
+    git status --porcelain        # limpio
+    docker compose -f docker/docker-compose.dev.yml up -d postgres
+    pnpm typeorm migration:show -d apps/api/src/data-source.ts   # conecta, lista vacía
+
+Si la última falla, **para**: la precondición es `T-C10-16`, no algo que arregles tú.
+
+#### El ticket es el contrato
+Léelo entero, incluida la sección *Defect fixed here*. Lee además:
+
+- `apps/api/src/data-source.ts` — **ya declara** el glob de migraciones
+  (`join(__dirname, 'migrations', '*.{ts,js}')`), con un comentario que dice que llegan con este
+  ticket. Tu trabajo en ese fichero es **verificar** que cumple el AC del glob único `.ts`/`.js`
+  sin rama por entorno, no reescribirlo. Si lo tocas, justifícalo.
+- `tools/typeorm.cjs` y los scripts `migration:*` de `package.json` — cómo se ejecuta la CLI.
+- `docs/product/DATA-MODEL.md` §3.1 y §3.1.1 (clave primaria `DEFAULT uuidv7()`, suelo PG ≥ 18),
+  §6/§20.1 (esquema **`iam`**) y §19 (el orden de verificación: `SELECT uuidv7();` antes de generar
+  nada, y "las migraciones generadas son un borrador, no una autoridad").
+- `.claude/skills/ci-cd/references/gotchas.md`, *TypeORM CLI entity globs must match what the
+  image ships* — la regla que tu nota de convención tiene que dejar escrita para `T-C10-69`.
+
+#### Trampa 1 — cuántos esquemas crea la migración de arranque
+El Scope dice "the per-context schema namespaces of DATA-MODEL, **starting with** the `iam`
+schema". Leído a la ligera, eso son los diez esquemas de `DATA-MODEL.md`. **No lo son.**
+`T-C1-02` lo resuelve: *"every other context's namespace is that context's own cost"*, y su propio
+Scope incluye la migración que crea el esquema `incident`. Si tú creas `incident` aquí, la
+migración de `T-C1-02` choca o queda vacía.
+
+La migración de arranque crea **`iam` y las dos extensiones, y nada más**. Ningún otro esquema.
+
+#### Trampa 2 — el nombre del esquema, otra vez
+El esquema se llama **`iam`**. `identity_access` es el slug del contexto en Nx, nunca un nombre de
+Postgres. El ticket lo corrigió en origen, pero `T-C1-02` (línea 19) **todavía cita** la redacción
+antigua: *"starting with the `identity_access` schema"*. No edites ese ticket — está fuera de tu
+alcance —: **repórtalo como hallazgo** para que se regenere.
+
+#### Trampa 3 — `down` y las extensiones
+El `up` usa `CREATE EXTENSION IF NOT EXISTS`; el `down` tiene que borrarlas (el ticket lo exige).
+Eso tiene un filo: si la extensión **ya existía** antes de la migración, el `down` borra algo que
+no creó. En la base de desarrollo, recién creada, no pasa; pero razónalo, decide (y di en el informe
+qué decidiste y por qué), y déjalo escrito en la nota de convención si afecta a migraciones
+futuras. No añadas una tercera extensión: el AC exige exactamente dos. Tampoco `uuid-ossp` ni
+`pgcrypto`: `uuidv7()` es core en PostgreSQL 18.
+
+#### Trampa 4 — la convención de nombres de TypeORM
+El fichero es `<timestamp>-<PascalCaseName>.ts`; la clase, por convención de TypeORM,
+`<PascalCaseName><timestamp>` e implementa `MigrationInterface`. Escríbela **a mano** con SQL
+explícito (`queryRunner.query`), no con `migration:generate`: no hay entidades, y aunque las
+hubiera, el AC pide SQL explícito revisable. Nada de `synchronize`.
+
+#### Lo que NO debes tocar
+- **`docker/**`**, el entrypoint y el `Dockerfile` — son de `ci-cd-expert`. Que la migración viaje
+  dentro de la imagen desplegada es `T-C10-69`; si ves que el build de webpack de `apps/api` no
+  empaqueta `migrations/` y que `__dirname` apunta a otro sitio en `dist/`, **repórtalo**, no lo
+  arregles.
+- Ninguna tabla (`T-C10-21`, `T-C10-36`, `T-C10-44`), ninguna entidad, ningún módulo de Nest,
+  ningún otro esquema (trampa 1).
+- `libs/**`, `docs/**`, `.claude/**`, `nx.json`, `eslint.config.mjs`, `package.json` (no hacen falta
+  dependencias nuevas; si crees que sí, párate y repórtalo). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `SELECT version();` y `SELECT uuidv7();` contra el Postgres de desarrollo — pega ambas salidas
+   (DATA-MODEL §19 paso 3).
+2. **Base vacía de verdad**: parte de una base sin la migración aplicada y sin `iam` ni las
+   extensiones. Pega el estado inicial (`\dn` y `\dx`, o las consultas equivalentes a
+   `pg_namespace`/`pg_extension`).
+3. `pnpm typeorm migration:run -d apps/api/src/data-source.ts` → éxito; pega la salida y el estado
+   después (`iam` existe, `citext` y `pg_trgm` instaladas, una fila en la tabla `migrations`).
+4. `pnpm typeorm migration:revert -d apps/api/src/data-source.ts` → pega el estado después: debe ser
+   **idéntico** al del punto 2, sin residuos.
+5. La secuencia run → revert → run, **dos veces seguidas**, con el mismo resultado ambas veces.
+   Pega la salida, no un resumen.
+6. `pnpm typeorm migration:show -d apps/api/src/data-source.ts` lista la migración como aplicada.
+7. `grep -rn "synchronize" apps/api/src` → solo `false`.
+8. `pnpm nx e2e api-e2e` sigue en verde (su target ya apunta al Postgres de desarrollo desde
+   `T-C10-16`).
+9. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde.
+10. `pnpm prettier --check apps/api` pasa. **No** ejecutes `prettier --check .`.
+
+Deja la base de desarrollo con la migración **aplicada** al terminar. Un criterio que no has
+ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Informa al terminar
+- Ficheros creados y modificados, y si tocaste `data-source.ts`, por qué.
+- El contenido literal de la migración (`up` y `down`) y de la nota de convención.
+- Qué decidiste sobre el `down` de las extensiones (trampa 3) y por qué.
+- La salida de las diez verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la redacción `identity_access` que
+  sobrevive en `T-C1-02`, y el estado del empaquetado de migraciones en el build de `apps/api` para
+  `T-C10-69`.
+
+### Response:
+

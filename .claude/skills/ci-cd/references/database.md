@@ -1,17 +1,37 @@
 # CI/CD — Database (provisioning, data source, migration execution model)
 
-> **Status: not built.** There is no `docker-compose.yml`, no `apps/api/src/data-source.ts`, no
-> migration and no database in this repository. Provisioning and the data source are owned by ticket
-> **`T-C10-16`**; the first migration by **`T-C10-17`**. This document is the contract those tickets
-> must produce and the rules that bind them afterwards.
+> **Status: partly built.** Provisioning and the data source exist (`T-C10-16`): the compose stacks
+> under `docker/`, `apps/api/src/data-source.ts`, the environment validation and the four
+> `migration:*` scripts. **No migration exists yet** — the first one, and the migration convention,
+> belong to **`T-C10-17`**. Verify the current state in the code before trusting any detail below.
 
-## Provisioning — `T-C10-16`
+## Provisioning — `T-C10-16` (built)
 
-A local PostgreSQL **16** through `docker-compose.yml`, with a **named volume** and credentials read
-from the environment — never hardcoded, never committed. `pnpm typeorm migration:show` against it
-must connect and report an empty migration list.
+A local **PostgreSQL 18** — image `postgres:18.6`, pinned to the exact patch tag, never `postgres:18`
+or `latest` (`CLAUDE.md` §2). 18 is a hard functional floor, not only a version policy: the schema's
+primary-key safety-net default is the core `uuidv7()` function, which does not exist before 18
+(`DATA-MODEL.md` §3.1.1, ADR-012).
 
-Waiting for it to be ready means `pg_isready`, not a sleep.
+| Stack | File | Host port | Database | Storage |
+|---|---|---|---|---|
+| Development | `docker/docker-compose.dev.yml` (service `postgres`) | `5432` | `sport_itsm_dev` | named volume `postgres-data`, mounted at **`/var/lib/postgresql`** |
+| Acceptance | `docker/docker-compose.e2e.yml` (service `postgres-e2e`) | `5499` | `sport_itsm_e2e` | none — ephemeral, destroyed on `down` |
+| Stage | — | — | — | managed by the hosting platform; `docker-compose.stage.yml` has no `postgres` service |
+
+Each compose file declares an explicit `name:` — all three live in `docker/`, and without it they
+would share one Compose project, so tearing one stack down would take another's volume with it.
+
+The volume mount point is PostgreSQL-18-specific — see `gotchas.md`, *PostgreSQL 18 images reject a
+volume mounted at `/var/lib/postgresql/data`*.
+
+The API reads the connection from five mandatory keys with no in-code default — `POSTGRES_HOST`,
+`POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` — validated at boot by
+`apps/api/src/config/env.validation.ts` and listed in `.env.example`. The credentials in the compose
+files are development-only literals; real credentials are never committed.
+`pnpm typeorm migration:show -d apps/api/src/data-source.ts` against the development stack must
+connect and list the applied migrations (empty until `T-C10-17`).
+
+Waiting for it to be ready means `pg_isready` (the compose healthcheck), not a sleep.
 
 ## The migration execution model — the rule that matters most
 

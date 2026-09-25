@@ -29,7 +29,16 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # Mount the PARENT directory, not .../data. Since the postgres:18 image
+      # (docker-library/postgres#1259), the entrypoint keeps the actual
+      # PGDATA in a major-version-numbered subdirectory it manages itself
+      # (e.g. /var/lib/postgresql/18/docker), so it can tell a stale
+      # different-major-version data directory apart from a fresh one. A
+      # volume mounted straight at /var/lib/postgresql/data — correct through
+      # PostgreSQL 17 — makes PG18 see an "unused mount" one level too deep
+      # and refuse to start (crash-loops as unhealthy). Mounting one level up,
+      # at /var/lib/postgresql, is what PG18 itself expects.
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 10s

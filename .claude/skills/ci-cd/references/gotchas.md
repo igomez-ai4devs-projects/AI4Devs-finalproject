@@ -85,6 +85,23 @@ repository.
   Windows), kill that PID, and confirm the port is free before declaring the job done. In a
   container, make the application PID 1 or use an init so signals reach it.
 
+## PostgreSQL 18 images reject a volume mounted at `/var/lib/postgresql/data` — **Applies now**
+
+From the `postgres:18` images on (docker-library/postgres#1259), the entrypoint keeps `PGDATA` in a
+major-version subdirectory it manages itself (e.g. `/var/lib/postgresql/18/docker`), so it can tell
+a stale data directory from another major apart from a fresh one. A volume mounted straight at
+`/var/lib/postgresql/data` — the correct layout through PostgreSQL 17, and what every older example
+shows — is seen as an *"unused mount/volume"* one level too deep: the container exits with code 1
+and crash-loops as `unhealthy`. It bit `docker/docker-compose.dev.yml` in this repository, blocking
+`T-C10-17` until it was fixed.
+
+- **Rule:** mount the named volume at **`/var/lib/postgresql`**, never at `.../data`, for any
+  `postgres:18.x` service. An ephemeral service with no volume is unaffected.
+- **Symptom:** `docker ps` shows `Restarting (1)`, and `docker logs <container>` mentions
+  `pg_ctlcluster`, major-version-specific directory names and an "unused mount/volume".
+- A volume created with the old layout holds no usable data — remove it with
+  `docker compose -f <file> down -v` for **that** Compose project only, then start again.
+
 ---
 
 ## Caution for later — Dockerfile copying libraries one by one
