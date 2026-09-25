@@ -24,7 +24,7 @@ If a task implies one, it is a scope change, not an infrastructure detail.
 |---|---|---|
 | Local, no containers | **Works today** | `pnpm nx serve api` / `serve web`. This is the daily loop |
 | Local Docker stack | **Works today** | `docker/docker-compose.dev.yml` — `postgres:18.6` plus `api`/`web` dev images |
-| E2E database | **Works today, still unused** | `docker/docker-compose.e2e.yml` — disposable `postgres:18.6`. `T-C10-06` is closed and its `acceptance` job in `deploy-stage.yml` runs `nx e2e api-e2e`/`web-e2e` for real, but neither step brings up this compose file or any database service — `apps/api` boots for the suite with no database (see `pipeline.md`) |
+| E2E database | **Works today, in use** | `docker/docker-compose.e2e.yml` — disposable `postgres:18.6` on host port 5499, brought up, migrated and torn down by `pnpm nx e2e api-e2e`'s own Nx targets, locally and in the `acceptance` job (see `database.md`) |
 | Pipeline runner | **Built** | GitHub Actions, `.github/workflows/deploy-stage.yml` — see `pipeline.md` |
 | Stage | **Decided and built (ADR-013), not yet deployed** | Render, prebuilt `ghcr.io` images from `docker/docker-compose.stage.yml`; see below |
 | Production | **Does not exist and none is planned** | ADR-013, driver K8 (academic/portfolio delivery capacity) |
@@ -47,9 +47,6 @@ touching anything platform-related.
 
 Still genuinely open, and not this skill's call to make:
 
-- **The compiled data source + migrations artifact the pre-deploy command needs inside the running
-  image** — `apps/api/src/data-source.ts` does not exist yet (`T-C10-16`). See the packaging note
-  flagged in `docker/backend/Dockerfile` above the `pnpm install --prod` line.
 - **Secrets and dashboard configuration.** Nobody has created the GitHub Secrets (`RENDER_DEPLOY_HOOK_API`,
   `RENDER_DEPLOY_HOOK_WEB`) or the Render registry credential yet — that is a manual, one-time setup
   step for the repository owner, not something this skill or a workflow run can do.
@@ -67,8 +64,10 @@ Today the validated schema is exactly:
 |---|---|---|
 | `NODE_ENV` | `development` \| `test` \| `staging` \| `production` | Enum — a typo fails the boot |
 | `PORT` | integer 1–65535 | No default anywhere |
+| `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | non-empty string | `T-C10-16` |
+| `POSTGRES_PORT` | integer 1–65535 | `T-C10-16`; `5452` against the local development stack, `5499` for acceptance |
 
-Database keys arrive with `T-C10-16`, observability keys with the `NFR` epic's observability slice.
+Observability keys arrive with the `NFR` epic's observability slice.
 
 **Rules.**
 

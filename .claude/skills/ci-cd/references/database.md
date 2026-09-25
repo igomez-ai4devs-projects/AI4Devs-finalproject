@@ -1,9 +1,11 @@
 # CI/CD — Database (provisioning, data source, migration execution model)
 
-> **Status: partly built.** Provisioning and the data source exist (`T-C10-16`): the compose stacks
+> **Status: built.** Provisioning and the data source exist (`T-C10-16`): the compose stacks
 > under `docker/`, `apps/api/src/data-source.ts`, the environment validation and the four
-> `migration:*` scripts. **No migration exists yet** — the first one, and the migration convention,
-> belong to **`T-C10-17`**. Verify the current state in the code before trusting any detail below.
+> `migration:*` scripts. The chain holds one migration — the bootstrap
+> `1790349248155-CreateIamSchemaAndExtensions.ts` (`T-C10-17`: the `iam` schema, `citext`, `pg_trgm`) —
+> and its conventions live in `apps/api/src/migrations/README.md`. Verify the current state in the
+> code before trusting any detail below.
 
 ## Provisioning — `T-C10-16` (built)
 
@@ -29,7 +31,7 @@ The API reads the connection from five mandatory keys with no in-code default �
 `apps/api/src/config/env.validation.ts` and listed in `.env.example`. The credentials in the compose
 files are development-only literals; real credentials are never committed.
 `pnpm typeorm migration:show -d apps/api/src/data-source.ts` against the development stack must
-connect and list the applied migrations (empty until `T-C10-17`).
+connect and list the chain — today the single bootstrap migration (`T-C10-17`).
 
 Waiting for it to be ready means `pg_isready` (the compose healthcheck), not a sleep.
 
@@ -47,7 +49,8 @@ From `CLAUDE.md` §3 and `ARCHITECTURE.md` §6.3, and non-negotiable:
   delegates to.
 
 The four scripts `T-C10-16` delivers: `migration:generate`, `migration:run`, `migration:revert`,
-`migration:show` — all with `-d apps/api/src/data-source.ts`.
+`migration:show` — all with `-d apps/api/src/data-source.ts` already baked in, so never append a
+second `-d` (the raw `pnpm typeorm migration:* -d …` form is the one that takes it).
 
 ### Running migrations inside the deployed image — `T-C10-69` (built)
 
@@ -109,9 +112,8 @@ alone reproduces the shape below — no separate script to run by hand, no workf
    blocks on the compose file's own `pg_isready` healthcheck; never a fixed sleep.
 2. `api-e2e:e2e-migrate` (`dependsOn: [e2e-db-up]`) runs the existing `pnpm migration:run` script
    against it — the same script and the same chain a real deploy would use, never `synchronize`.
-   Today the chain is empty (**`T-C10-17`** still owns the first migration), so this step only
-   creates TypeORM's own `migrations` bookkeeping table and reports "No migrations are pending" — but
-   the step is real and already wired, not a placeholder.
+   Today that applies the single bootstrap migration (`T-C10-17`: the `iam` schema and the `citext`
+   and `pg_trgm` extensions) plus TypeORM's own `migrations` bookkeeping table.
 3. `api-e2e:serve-under-test` (`dependsOn: [api:build, e2e-migrate]`) boots the API against that
    database only once the chain above has run.
 4. `api-e2e:e2e`'s own command is wrapped by `tools/e2e/teardown-after.mjs`, which runs the suite
@@ -130,7 +132,8 @@ depends on leftover rows is a suite that passes for the wrong reason.
 
 ## Backups and resets
 
-No backup script exists and no environment needs one yet — there is no data anywhere. When a
+No backup script exists and no environment needs one yet — no table exists anywhere, only the
+bootstrap migration's schema and extensions. When a
 long-lived environment appears, the operations are `pg_dump` for capture and `pg_restore` for
 recovery, and a reset means **drop, recreate, re-run the migration chain** — never a manual `ALTER`
 that leaves the schema in a state no migration can reproduce.

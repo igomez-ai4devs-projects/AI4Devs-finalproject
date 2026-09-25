@@ -26,9 +26,13 @@ Local and stage infrastructure is scaffolded: `docker/` holds the three compose 
 `docker/backend/` and `docker/frontend/` Dockerfiles, and `.github/workflows/deploy-stage.yml` runs
 three jobs — `verify`, `acceptance` (`pnpm nx e2e api-e2e` / `web-e2e` for real; `T-C10-06` is closed
 and both projects exist, confirmed by `pnpm nx show projects`), and `deploy-stage`, which builds,
-pushes and deploys stage, gated to a push on `main` only. Still absent: `apps/api/src/data-source.ts`
-and any migration (both owned by `T-C10-16` / `T-C10-17`) — so no `typeorm migration:*` command
-belongs in a workflow yet.
+pushes and deploys stage, gated to a push on `main` only. `verify` also runs
+`pnpm nx run api:build-migrations`, so the uploaded `dist/` carries `data-source.js` and
+`migrations/`. The data source (`apps/api/src/data-source.ts`, `T-C10-16`) and the migration chain
+(`apps/api/src/migrations/`, one bootstrap migration, `T-C10-17`) exist; `pnpm nx e2e api-e2e`
+brings up, migrates (`pnpm migration:run`) and tears down its own ephemeral PostgreSQL on host port
+5499. The workflow still has no `typeorm migration:*` step of its own: stage migrations are Render's
+pre-deploy command (ADR-013). The development database publishes host port **5452**.
 
 **The deployment platform is decided.** [ADR-013](../../../docs/product/ARCHITECTURE.md) (`docs/product/ARCHITECTURE.md`
 §10) — Render, stage only, no production, prebuilt images pushed to `ghcr.io` and deployed by calling

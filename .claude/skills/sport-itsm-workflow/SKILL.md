@@ -94,22 +94,51 @@ manager: an `npm install` or `yarn` here produces a second lockfile and is forbi
 pnpm install                          # single lockfile: pnpm-lock.yaml
 pnpm nx serve api | serve web         # dev, watch mode
 pnpm nx build api | build web         # production bundle under dist/
+pnpm nx run api:build-migrations      # compiles data-source.ts + config/ + migrations/ into dist/apps/api
 pnpm nx test <project>                # Jest
 pnpm nx lint <project>                # ESLint, boundary checks included
 pnpm nx run-many -t lint test build   # every project
 pnpm nx affected -t lint test build   # only what changed against main
 pnpm verify:boundaries                # proves the boundary rule still bites — 10/10 today
-pnpm nx e2e api-e2e | e2e web-e2e     # Cypress 15 + Cucumber, one smoke scenario each
-pnpm nx show projects                 # exactly the projects the tickets created
+pnpm nx e2e api-e2e | e2e web-e2e     # Cypress 15 + Cucumber (see "Acceptance suites" below)
+pnpm nx show projects                 # exactly the projects the tickets created — 13 today
 pnpm nx graph                         # dependency graph
 pnpm prettier --check . | --write .   # the formatting gate
 pnpm nx reset                         # clear the Nx cache when it looks stale
 ```
 
-**Not runnable yet, and why.** `pnpm typeorm migration:generate|run|revert -d apps/api/src/data-source.ts`
-— TypeORM is not installed, `apps/api/src/data-source.ts` does not exist, and there is no migration
-and no database until `T-C10-16` / `T-C10-17`. That is the only command on the surface above that is
-still a promise rather than a gate.
+**Migrations.** TypeORM and the `pg` driver are installed, the data source is
+`apps/api/src/data-source.ts` (`synchronize: false`) and the chain lives in
+`apps/api/src/migrations/` — today one bootstrap migration
+(`1790349248155-CreateIamSchemaAndExtensions.ts`, `T-C10-17`: the `iam` schema plus the `citext` and
+`pg_trgm` extensions) and a `README.md` holding the migration conventions (naming, registration
+glob, reversibility, primary-key default, schema names). Read that README before writing a
+migration. Two command forms exist, and they differ only in who supplies `-d`:
+
+```bash
+pnpm typeorm migration:generate|run|revert|show -d apps/api/src/data-source.ts   # raw CLI: you pass -d
+pnpm migration:generate <path/Name> | migration:run | migration:revert | migration:show   # -d already baked in
+pnpm migration:run:deploy             # runs against the compiled dist/apps/api/data-source.js (deploy step)
+```
+
+`pnpm typeorm` runs `tools/typeorm.cjs` (ts-node against `apps/api/tsconfig.app.json`) with the
+repository's `.env` loaded when present. The `migration:*` scripts already carry
+`-d apps/api/src/data-source.ts` — **never append a second `-d`**. Every one of these needs a
+reachable PostgreSQL: locally that is `docker/docker-compose.dev.yml`, which publishes the
+development database on **host port 5452** (not 5432; the container still listens on 5432
+internally). Migrations are never run on application boot.
+
+**Acceptance suites.** `pnpm nx e2e api-e2e` owns an **ephemeral PostgreSQL 18** of its own, entirely
+inside its Nx target graph: `e2e-db-up` (`docker/docker-compose.e2e.yml`, host port **5499**, waited
+on through its healthcheck) → `e2e-migrate` (`pnpm migration:run` against it) → `serve-under-test`
+(the built API with `NODE_ENV=test`, port 3333) → `e2e`, which asserts the server under test is the
+one this run started and always tears the database stack down afterwards, pass or fail. It needs a
+running Docker daemon. `api-e2e` has two scenarios today (`harness-smoke.feature`,
+`event-dispatch-harness.feature`), `web-e2e` one (`harness-smoke.feature`). **When you run Cypress
+from a VS Code integrated terminal** — including an agent shell spawned inside VS Code — the
+inherited `ELECTRON_RUN_AS_NODE=1` makes the Cypress binary fail (`bad option --smoke-test`). Unset
+it in the **same** command: `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e`. A failure with that
+variable set says nothing about the suite.
 
 **There is CI, and it runs a specific set of checks — do not overstate or understate it.**
 `.github/workflows/deploy-stage.yml` (there is no `.gitlab-ci.yml`) runs on every push to `main` and
@@ -117,19 +146,25 @@ every pull request, in three jobs:
 
 | Job | Runs | When |
 |---|---|---|
-| `verify` | `pnpm install --frozen-lockfile`, `pnpm prettier --check .`, `pnpm nx run-many -t lint test build`, `pnpm verify:boundaries` | every push and PR |
-| `acceptance` | `pnpm nx e2e api-e2e`, then `pnpm nx e2e web-e2e` | every push and PR, after `verify` |
+| `verify` | `pnpm install --frozen-lockfile`, `pnpm prettier --check .`, `pnpm nx run-many -t lint test build`, `pnpm nx run api:build-migrations`, `pnpm verify:boundaries`; uploads `dist/` for `deploy-stage` | every push and PR |
+| `acceptance` | `pnpm nx e2e api-e2e` (which brings up, migrates and tears down its own ephemeral database), then `pnpm nx e2e web-e2e` | every push and PR, after `verify` |
 | `deploy-stage` | builds and pushes both images to `ghcr.io`, then calls the Render deploy hooks (ADR-013) | **only** a push landing on `main`; never a branch, never a PR |
 
 So a check *may* be claimed to run in CI **if and only if** it is one of the commands in that table.
-No `typeorm migration:*` command runs in CI, deliberately — adding one before `T-C10-16` would invent
-a gate this repository cannot pass. The pipeline is owned by `ci-cd-expert`: report a gap, do not
-edit the workflow as a side effect of another ticket.
+The only migration command CI executes is the `pnpm migration:run` inside `api-e2e:e2e-migrate`,
+against the throwaway acceptance database; the workflow adds no `typeorm migration:*` step of its
+own, and applying migrations to stage is Render's pre-deploy command (ADR-013), not a workflow
+step. The pipeline is owned by `ci-cd-expert`: report a gap, do not edit the workflow as a side
+effect of another ticket.
 
-**Unit test suites are real for libraries, empty for the two applications.** `shared-util` runs 3
-suites / 19 tests (`T-C10-07`). `api` and `web` still pass via `passWithNoTests`, so for those two a
+**Unit test suites: real for the shared kernel and `api`, empty by design elsewhere.**
+`shared-util` runs 3 suites / 19 tests, `shared-domain` 8 / 86, `shared-contracts` 1 / 2 and `api`
+2 / 15 (the post-commit event dispatcher and the gating of its `NODE_ENV=test` harness). `web` and
+the six `incident-*` libraries have no spec yet and pass via `passWithNoTests` (`web` on its
+`project.json` target, each `incident-*` library in its `jest.config.ts`), so for those seven a
 green run proves the runner works and nothing more — read the output before believing a green
-`run-many -t test`.
+`run-many -t test`. (`api` still carries `passWithNoTests` on its target, but it now has suites, so
+its green run is real.)
 
 ## Artifact ownership — report, do not edit
 
@@ -155,7 +190,7 @@ regenerated rather than hand-patched.
 | The tag vocabulary, the type matrix or `depConstraints` | `docs/product/ARCHITECTURE.md` §5, re-run `pnpm verify:boundaries`, and add a probe if a new rule was introduced |
 | A structural decision that is hard to reverse | A new ADR in `docs/product/ARCHITECTURE.md` §10, numbered after the last one |
 | Where something lives on disk | `docs/product/PROJECT-STRUCTURE.md` |
-| The persisted schema | `docs/product/DATA-MODEL.md`, and a TypeORM migration — `synchronize` is always `false` |
+| The persisted schema | `docs/product/DATA-MODEL.md`, and a TypeORM migration in `apps/api/src/migrations/` following that directory's `README.md` — `synchronize` is always `false` |
 | A command or a convention | `CLAUDE.md` §3, and the stack skill if it is platform-specific |
 | Anything that makes an as-built status note stale | Report it. Status notes in `readme.md` §2 and `ARCHITECTURE.md` §12.3 are the user's call, not a side effect of your ticket |
 

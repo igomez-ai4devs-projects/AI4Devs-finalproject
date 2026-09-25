@@ -15,7 +15,7 @@ import prettier from 'eslint-config-prettier/flat';
  * Every Nx project carries exactly three tags, one per axis. This object declares
  * *which values exist*; it deliberately does NOT declare which may depend on which.
  * The `@nx/enforce-module-boundaries` `depConstraints` matrix that consumes this
- * vocabulary is delivered by ticket T-C10-03 and is intentionally absent here.
+ * vocabulary (T-C10-03) is declared separately below, as `depConstraints`.
  */
 export const TAG_VOCABULARY = Object.freeze({
   platform: Object.freeze(['backend', 'frontend', 'shared']),
@@ -250,8 +250,8 @@ export default [
   },
 
   // Nx workspace rules. `flat/base` registers the `@nx` plugin without enabling
-  // any rule: `@nx/enforce-module-boundaries` stays off until T-C10-03 turns it
-  // on together with its constraint matrix.
+  // any rule; `@nx/enforce-module-boundaries` is switched on, with its
+  // `depConstraints` matrix (T-C10-03), by the block further below.
   ...nx.configs['flat/base'],
   ...nx.configs['flat/typescript'],
   ...nx.configs['flat/javascript'],

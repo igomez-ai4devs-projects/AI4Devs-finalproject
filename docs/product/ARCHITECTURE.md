@@ -7,7 +7,7 @@
 | Document type | Software Architecture Document — structural, technology-bearing |
 | Owner | Software Architect, Sport ITSM |
 | Status | **Target architecture — design intent, not as-built** |
-| Authoritative inputs | `CLAUDE.md` (stack, layout, tags), `docs/PRD.md` (behavior, phasing), `readme.md` §0.3/§1.1/§1.2 (ubiquitous language) |
+| Authoritative inputs | `CLAUDE.md` (stack, layout, tags), `docs/product/PRD.md` (behavior, phasing), `readme.md` §0.3/§1.1/§1.2 (ubiquitous language) |
 | Governing standards | `sport-itsm-architecture` (structure), `sport-itsm-backend`, `sport-itsm-frontend`, `sport-itsm-engineering-principles` |
 | Language standard | Technical English, standard DDD / ITSM terminology |
 

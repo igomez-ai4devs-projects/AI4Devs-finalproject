@@ -19,6 +19,7 @@ AI4Devs-finalproject/
 ├─ tsconfig.base.json               # TypeScript 5.9 strict + path aliases (@sport-itsm/<lib>) for every library
 ├─ eslint.config.mjs                # ESLint 9 flat config - hosts @nx/enforce-module-boundaries (the boundary matrix)
 ├─ .prettierrc                      # Prettier 3 - single quotes, semicolons; formatting is never hand-made
+├─ .gitattributes                   # every text file checked out as LF (eol=lf), on every platform
 ├─ jest.preset.js                   # shared Jest 29 preset
 ├─ .gitignore
 │
@@ -76,8 +77,11 @@ AI4Devs-finalproject/
 │  │
 │  ├─ api-e2e/                       # platform:backend  scope:shared  type:e2e
 │  │  ├─ src/
-│  │  │  ├─ features/log-incident.feature       # Gherkin, traced to PRD acceptance criteria
-│  │  │  ├─ step-definitions/log-incident.steps.ts
+│  │  │  ├─ features/                           # Gherkin, traced to PRD acceptance criteria
+│  │  │  │  ├─ harness-smoke.feature            # EXISTS (T-C10-06): the API under test answers HTTP
+│  │  │  │  ├─ event-dispatch-harness.feature   # EXISTS (T-C10-73): post-commit dispatch via the NODE_ENV=test harness
+│  │  │  │  └─ log-incident.feature             # target: first product scenario (C1)
+│  │  │  ├─ step-definitions/                   # one *.steps.ts per feature (harness-smoke, event-dispatch-harness exist)
 │  │  │  └─ support/
 │  │  ├─ cypress.config.ts
 │  │  └─ project.json
@@ -180,17 +184,21 @@ AI4Devs-finalproject/
 │  ├─ approval/  notification/  audit/  reporting/    # generic supporting contexts (ADR-001)
 │  └─ problem/  change/  release/  asset-config/      # PHASE 2 - deliberately not scaffolded yet
 │
-├─ docs/product/
-│  ├─ PRD.md                         # product requirements (behavioral authority for the MVP)
-│  ├─ ARCHITECTURE.md                # target architecture: C4, context map, hexagon, ADR-001..013
-│  ├─ COMPONENTS.md                  # main components (companion to readme §2.2)
-│  ├─ PROJECT-STRUCTURE.md           # this document (companion to readme §2.3)
-│  └─ adr/                           # ADRs promoted to individual files when scaffolding starts
+├─ docs/
+│  ├─ product/
+│  │  ├─ PRD.md                      # product requirements (behavioral authority for the MVP)
+│  │  ├─ ARCHITECTURE.md             # target architecture: C4, context map, hexagon, ADR-001..013 (§10)
+│  │  ├─ DATA-MODEL.md               # prescriptive relational schema, per context schema
+│  │  ├─ COMPONENTS.md               # main components (companion to readme §2.2)
+│  │  └─ PROJECT-STRUCTURE.md        # this document (companion to readme §2.3)
+│  ├─ backlog/                       # derived from the PRD: epic-map.md, <key>/user-stories.md, <key>/tickets/
+│  └─ adr/                           # target, not created yet: ADRs still live in ARCHITECTURE.md §10
 │
 ├─ .claude/
-│  ├─ agents/{sport-itsm-architect.md,sport-itsm-product-owner.md}
+│  ├─ agents/{sport-itsm-product-owner,sport-itsm-architect,business-analyst,architect-tech-lead,
+│  │         backend-engineer,frontend-engineer,testing-implementer,ci-cd-expert}.md
 │  └─ skills/{sport-itsm-architecture,sport-itsm-backend,sport-itsm-frontend,
-│             sport-itsm-engineering-principles,service-desk-expert,feature-docs,…}/
+│             sport-itsm-engineering-principles,sport-itsm-workflow,service-desk-expert,feature-docs,…}/
 │
 ├─ CLAUDE.md                         # operational context for AI agents working in this repo
 ├─ readme.md                         # the delivery document
@@ -216,8 +224,8 @@ AI4Devs-finalproject/
 | `libs/shared/domain` | Shared kernel primitives genuinely used by three or more contexts (`Identity`, `TicketReference`, `Priority`, `DomainEvent`, `StateModel`, `ClockPort`). Deliberately kept small. |
 | `libs/shared/ui` | The in-house **design system**: domain-agnostic presentational components reusable by any context (button, form field, dialog/overlay, menu, table, tabs, toast, badge, chip), the SCSS design-token layer and the hand-written accessibility primitives (focus-trap/restore directive, `aria-live` announcer). Angular code with a shared scope, therefore tagged `platform:frontend scope:shared type:ui`, not `platform:shared` (ADR-010). It injects no service and performs no I/O. |
 | `libs/shared/util` | Pure, dependency-free helpers. |
-| `docs/` | Engineering documentation: PRD, architecture, components, this structure document, and `docs/adr/` for Architecture Decision Records. |
-| `.claude/` | The AI operating model: **agents** (Product Owner, Software Architect) and **skills** (architecture, backend, frontend, engineering principles, ITSM domain, documentation standard). |
+| `docs/` | `docs/product/`: PRD, architecture, data model, components and this structure document. `docs/backlog/`: the backlog derived from the PRD (epic map, user stories, tickets). `docs/adr/` is the intended home of individual Architecture Decision Records; it does not exist yet — the ADRs still live in `ARCHITECTURE.md` §10. |
+| `.claude/` | The AI operating model: **agents** (Product Owner, Software Architect, Business Analyst, Architect / Tech Lead, backend engineer, frontend engineer, testing implementer, CI/CD expert) and **skills** (architecture, backend, frontend, engineering principles, workflow, CI/CD, ITSM domain, backlog roles, documentation standard). |
 
 ## 4. Naming and file conventions
 
@@ -250,8 +258,8 @@ The consequence worth stating plainly: **in this repository the folder structure
 ## 6. Documentation, specification and agent folders
 
 - **`docs/product/PRD.md`** is the single canonical source of **product behavior**, for the life of the project. There is no `openspec/` directory and no spec-delta workflow: a behavior change is made in the PRD by the Product Owner, and the derived backlog under `docs/backlog/` is regenerated from it.
-- **`docs/`** also holds the engineering counterpart: the architecture document, the component reference, this structure document, and `docs/adr/` where the structural decisions currently embedded in `ARCHITECTURE.md` §10 are promoted to individual ADR files once scaffolding starts.
-- **`.claude/`** holds the AI operating model: **agents** (`sport-itsm-product-owner`, `sport-itsm-architect`) are roles, and **skills** are the layered, reusable guardrails they consume — business (`service-desk-expert`), system (`sport-itsm-architecture`), craft (`sport-itsm-engineering-principles`), stack (`sport-itsm-backend`, `sport-itsm-frontend`) and documentation (`feature-docs`). `CLAUDE.md` at the root is the entry point that ties them together.
+- **`docs/`** also holds the engineering counterpart: the architecture document, the component reference, this structure document, and `docs/adr/`, the intended home of the structural decisions currently embedded in `ARCHITECTURE.md` §10 once they are promoted to individual ADR files. That promotion has not happened: `docs/adr/` does not exist today, and `ARCHITECTURE.md` §10 remains the only ADR record.
+- **`.claude/`** holds the AI operating model: **agents** (`sport-itsm-product-owner`, `sport-itsm-architect`, `business-analyst`, `architect-tech-lead`, `backend-engineer`, `frontend-engineer`, `testing-implementer`, `ci-cd-expert`) are roles, and **skills** are the layered, reusable guardrails they consume — business (`service-desk-expert`), system (`sport-itsm-architecture`), craft (`sport-itsm-engineering-principles`), stack (`sport-itsm-backend`, `sport-itsm-frontend`) and documentation (`feature-docs`). `CLAUDE.md` at the root is the entry point that ties them together.
 
 ## 7. Governance commands
 

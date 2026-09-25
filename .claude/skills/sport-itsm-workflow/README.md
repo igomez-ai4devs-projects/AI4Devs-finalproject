@@ -28,5 +28,6 @@ skill).
   restating it — a forked rule drifts.
 - Covers process and operations only. Structure → `sport-itsm-architecture`. Code craft →
   `sport-itsm-engineering-principles`. Stack detail → `sport-itsm-backend` / `sport-itsm-frontend`.
-- Statements about what exists in the workspace go stale as tickets land. Re-verify before relying
-  on the "not runnable yet" list.
+- Statements about what exists in the workspace (project count, test counts, the migration chain,
+  the CI job table) go stale as tickets land. Re-verify them against the repository before relying
+  on them.

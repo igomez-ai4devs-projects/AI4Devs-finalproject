@@ -33,7 +33,7 @@ All code, identifiers, comments, commit messages, and technical documentation ar
 - **`pg`** driver.
 - **`synchronize` is ALWAYS `false`** in every environment. Schema changes happen **only** through migrations — never via schema auto-sync.
 - **Migrations execution policy:**
-  - **Development:** may auto-run on backend startup (`apps/api/src/data-source.ts`).
+  - **Development:** may auto-run on backend startup (`apps/api/src/data-source.ts`). As built today nothing auto-runs in any environment: `data-source.ts` sets `migrationsRun: false`, and the chain is applied explicitly with `pnpm migration:run`.
   - **Staging/Production:** migrations are applied through a **controlled step** (deploy job / explicit command), **not** unconditionally on every instance startup — this avoids race conditions when multiple API instances boot concurrently. Gate startup auto-run behind an environment flag (e.g., only when `NODE_ENV=development`).
 
 ## Authentication / Authorization
@@ -106,12 +106,14 @@ All code, identifiers, comments, commit messages, and technical documentation ar
 - Build the API: `pnpm nx build api`
 - Unit/integration tests for a project: `pnpm nx test <project>`
 - Lint a project: `pnpm nx lint <project>`
-- API E2E (Cypress + Cucumber): `pnpm nx e2e api-e2e` — an `nx:run-commands` target over `cypress run`, not an `@nx/cypress` executor (ADR-011)
+- API E2E (Cypress + Cucumber): `pnpm nx e2e api-e2e` — an `nx:run-commands` target over `cypress run`, not an `@nx/cypress` executor (ADR-011). It brings up its own ephemeral PostgreSQL (`docker/docker-compose.e2e.yml`, host port 5499), applies `pnpm migration:run` to it, serves the built API with `NODE_ENV=test`, and tears the database down pass or fail — it needs a running Docker daemon. From a VS Code integrated terminal, prefix it with `unset ELECTRON_RUN_AS_NODE;` in the same command, or the Cypress binary fails before any test runs
 - Affected checks: `pnpm nx affected -t lint test build`
-- TypeORM migrations (via `ts-node` + `tsconfig-paths`, data source at `apps/api/src/data-source.ts`):
+- Compiled migration runtime for the deployed image: `pnpm nx run api:build-migrations` (`data-source.ts` + `config/` + `migrations/` → `dist/apps/api`)
+- TypeORM migrations (`pnpm typeorm` runs `tools/typeorm.cjs`: `ts-node` against `apps/api/tsconfig.app.json`, with `.env` loaded when present; data source at `apps/api/src/data-source.ts`; conventions in `apps/api/src/migrations/README.md`). All of them need a reachable PostgreSQL — locally `docker/docker-compose.dev.yml`, published on **host port 5452**:
   - Generate: `pnpm typeorm migration:generate -d apps/api/src/data-source.ts <path/Name>`
   - Run: `pnpm typeorm migration:run -d apps/api/src/data-source.ts`
   - Revert: `pnpm typeorm migration:revert -d apps/api/src/data-source.ts`
+  - Shorthands with `-d` already included — never add a second one: `pnpm migration:generate <path/Name>`, `pnpm migration:run`, `pnpm migration:revert`, `pnpm migration:show`; `pnpm migration:run:deploy` runs the compiled `dist/apps/api/data-source.js`
 
 ---
 

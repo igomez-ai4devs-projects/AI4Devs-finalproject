@@ -254,7 +254,7 @@ Honest accounting of what this architecture costs:
 - **Eventual consistency in the cross-cutting path.** Audit and notification writes sit outside the ticket transaction. Mitigated with an in-process dispatcher with retry and audit-completeness assertions in acceptance tests, but it is a real trade-off against strict transactional auditing.
 - **Learning curve.** DDD + hexagonal + Nx tags is a steep onboarding cost, and the discipline degrades quickly if boundary violations are silenced instead of fixed.
 
-> **Status:** this is the **target architecture**, now partly materialized. The Nx workspace, the pinned toolchain, the ESLint 9 / Prettier 3 layer and the three-axis tag scheme all exist (`T-C10-01` … `T-C10-03`), and `@nx/enforce-module-boundaries` enforces the type matrix, the scope rule and the platform rule — proven to bite by `pnpm verify:boundaries` (10/10). All four applications are scaffolded: `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and the two Cypress + Cucumber acceptance harnesses `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`), and the first library exists — `libs/shared/util` (`T-C10-07`) — so `pnpm nx show projects` reports exactly `api`, `api-e2e`, `web`, `web-e2e` and `shared-util`, and `pnpm nx lint` passes for all five. What is still absent is everything the boundary rules are actually *for*: no bounded context, no hexagon layer and **not a single cross-project dependency edge**. `pnpm nx graph` shows five nodes and zero edges — nothing imports `shared-util` yet, and each acceptance suite reaches its application through an Nx *task* dependency, which is not a code edge and puts nothing in the graph.
+> **Status:** this is the **target architecture**, now partly materialized. The Nx workspace, the pinned toolchain, the ESLint 9 / Prettier 3 layer and the three-axis tag scheme all exist (`T-C10-01` … `T-C10-03`), and `@nx/enforce-module-boundaries` enforces the type matrix, the scope rule and the platform rule — proven to bite by `pnpm verify:boundaries` (10/10). All four applications are scaffolded: `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and the two Cypress + Cucumber acceptance harnesses `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`). The shared kernel exists except for the design system — `libs/shared/util` (`T-C10-07`), `libs/shared/domain` (`T-C10-08`, `T-C10-09`, including `EventPublisherPort` and its `EVENT_PUBLISHER` token) and `libs/shared/contracts` (`T-C10-11`); there is no `libs/shared/ui` — and the first bounded context, `incident`, has its six libraries scaffolded **empty** (`T-C1-01`). `pnpm nx show projects` therefore reports **13** projects, and `pnpm nx lint` passes for all of them. `apps/api` owns the TypeORM data source, the bootstrap migration (`T-C10-16`, `T-C10-17`) and the in-process post-commit event dispatcher (`T-C10-73`). `pnpm nx graph` shows 13 nodes and **exactly two edges**, `api → shared-domain` and `shared-domain → shared-util`; nothing imports `shared-contracts` or any `incident-*` library yet, and each acceptance suite reaches its application through an Nx *task* dependency, which is not a code edge. Still absent: every context domain model, use case and adapter, every product endpoint and the health probes.
 
 ### **2.2. Descripción de componentes principales:**
 
@@ -415,7 +415,7 @@ Every integration is a **port with an adapter**, so none of them is a hard runti
 | **SCMS Identity Provider / SSO** | Authentication and profile/entitlement attributes | `IdentityProviderPort` in `identity-access/domain`; local-credential adapter first, SSO adapter later (FR-IAM-04) |
 | **Email gateway** | Outbound notification delivery | Adapter behind the `notification` context's outbound port (SMTP/HTTPS) |
 
-> **Status:** as in §2.1, these components describe the **target architecture**. Two of them now exist as scaffolding — the **API** (`apps/api`, NestJS 11, `T-C10-04`) and the **Web Client** (`apps/web`, Angular 20 standalone shell, `T-C10-05`), both building and linting green. Neither carries any of the responsibilities described above yet. Only one library exists, `libs/shared/util` (`T-C10-07`), which is pure helpers and not a component in this table's sense; **no other component listed here has been scaffolded** — no bounded-context library, no PostgreSQL database, no external gateway. The boundary rule that checks these components against each other is configured and proven (`T-C10-03`), but with no project importing another it still has nothing real to police.
+> **Status:** as in §2.1, these components describe the **target architecture**. Two of them exist as scaffolding — the **API** (`apps/api`, NestJS 11, `T-C10-04`) and the **Web Client** (`apps/web`, Angular 20 standalone shell, `T-C10-05`), both building and linting green. The Web Client carries none of the responsibilities described above and imports no library. The API carries only composition-root plumbing: the TypeORM data source (`apps/api/src/data-source.ts`, `T-C10-16`), one bootstrap migration (the `iam` schema and the `citext` and `pg_trgm` extensions, `T-C10-17`) and the post-commit event dispatcher (`apps/api/src/event-dispatch/`, `T-C10-73`); it exposes no product endpoint and no health probe. The shared kernel (`shared-util`, `shared-domain`, `shared-contracts`) exists, `libs/shared/ui` does not, and the six `incident-*` libraries are empty. **PostgreSQL 18** is provisioned only as containers — `docker/docker-compose.dev.yml` for development (host port 5452) and an ephemeral instance that `pnpm nx e2e api-e2e` brings up, migrates and tears down; no context table, no TypeORM entity and no external gateway exists. The boundary rule is configured and proven (`T-C10-03`), and now judges two real edges: `api → shared-domain` and `shared-domain → shared-util`.
 
 ### **2.3. Descripción de alto nivel del proyecto y estructura de ficheros**
 
@@ -444,6 +444,8 @@ AI4Devs-finalproject/
 │  │  ├─ src/
 │  │  │  ├─ main.ts                 # bootstrap: global prefix /api, ValidationPipe, pino, i18n, Swagger (dev only)
 │  │  │  ├─ data-source.ts          # TypeORM DataSource used by the migration CLI (synchronize: false)
+│  │  │  ├─ event-dispatch/         # single post-commit domain-event dispatcher, bound to EVENT_PUBLISHER
+│  │  │  ├─ testing/                # test-only HTTP harness, in the module graph only when NODE_ENV=test
 │  │  │  ├─ app/
 │  │  │  │  ├─ app.module.ts        # root module: imports every context composition module
 │  │  │  │  ├─ incident/            # composition root slice for the incident context
@@ -460,9 +462,7 @@ AI4Devs-finalproject/
 │  │  │  │  │  ├─ sla.module.ts
 │  │  │  │  │  └─ jobs/sla-sweep.job.ts         # second inbound adapter: warning/breach sweep, auto-close
 │  │  │  │  ├─ service-request/  knowledge/  service-catalog/  identity-access/
-│  │  │  │  ├─ approval/  notification/  audit/  reporting/
-│  │  │  │  └─ events/
-│  │  │  │     └─ in-process-event-publisher.ts # single post-commit domain-event dispatcher
+│  │  │  │  └─ approval/  notification/  audit/  reporting/
 │  │  │  ├─ common/
 │  │  │  │  ├─ filters/domain-error.filter.ts   # domain error -> contract error-code envelope
 │  │  │  │  ├─ guards/jwt-auth.guard.ts
@@ -479,16 +479,20 @@ AI4Devs-finalproject/
 │  │  │  │  ├─ en/{errors,notifications}.json
 │  │  │  │  └─ es/{errors,notifications}.json
 │  │  │  └─ migrations/
-│  │  │     ├─ 1712345678901-CreateIdentityAccessTables.ts
-│  │  │     └─ 1712345679002-CreateIncidentTables.ts
+│  │  │     ├─ README.md                        # naming, registration and reversibility conventions
+│  │  │     ├─ 1790349248155-CreateIamSchemaAndExtensions.ts   # bootstrap: iam schema, citext, pg_trgm
+│  │  │     └─ <timestamp>-CreateIncidentTables.ts             # target: one migration per context schema
 │  │  ├─ jest.config.ts
 │  │  ├─ project.json                           # Nx targets + the three tags
 │  │  └─ tsconfig.{json,app.json,spec.json}
 │  │
 │  ├─ api-e2e/                       # platform:backend  scope:shared  type:e2e
 │  │  ├─ src/
-│  │  │  ├─ features/log-incident.feature       # Gherkin, traced to PRD acceptance criteria
-│  │  │  ├─ step-definitions/log-incident.steps.ts
+│  │  │  ├─ features/                           # Gherkin, traced to PRD acceptance criteria
+│  │  │  │  ├─ harness-smoke.feature            # exists (T-C10-06): the API under test answers HTTP
+│  │  │  │  ├─ event-dispatch-harness.feature   # exists (T-C10-73): post-commit dispatch via the NODE_ENV=test harness
+│  │  │  │  └─ log-incident.feature             # target: first product scenario (C1)
+│  │  │  ├─ step-definitions/                   # one *.steps.ts per feature
 │  │  │  └─ support/
 │  │  ├─ cypress.config.ts
 │  │  └─ project.json
@@ -587,17 +591,21 @@ AI4Devs-finalproject/
 │  ├─ approval/  notification/  audit/  reporting/    # generic supporting contexts (ADR-001)
 │  └─ problem/  change/  release/  asset-config/      # PHASE 2 - deliberately not scaffolded yet
 │
-├─ docs/product/
-│  ├─ PRD.md                         # product requirements (behavioral authority for the MVP)
-│  ├─ ARCHITECTURE.md                # target architecture: C4, context map, hexagon, ADR-001..010
-│  ├─ COMPONENTS.md                  # main components (companion to §2.2)
-│  ├─ PROJECT-STRUCTURE.md           # companion to this section
-│  └─ adr/                           # ADRs promoted to individual files when scaffolding starts
+├─ docs/
+│  ├─ product/
+│  │  ├─ PRD.md                      # product requirements (behavioral authority for the MVP)
+│  │  ├─ ARCHITECTURE.md             # target architecture: C4, context map, hexagon, ADR-001..013 (§10)
+│  │  ├─ DATA-MODEL.md               # prescriptive relational schema, per context schema
+│  │  ├─ COMPONENTS.md               # main components (companion to §2.2)
+│  │  └─ PROJECT-STRUCTURE.md        # companion to this section
+│  ├─ backlog/                       # derived from the PRD: epic-map.md, <key>/user-stories.md, <key>/tickets/
+│  └─ adr/                           # target, not created yet: ADRs still live in ARCHITECTURE.md §10
 │
 ├─ .claude/
-│  ├─ agents/{sport-itsm-architect.md,sport-itsm-product-owner.md}
+│  ├─ agents/{sport-itsm-product-owner,sport-itsm-architect,business-analyst,architect-tech-lead,
+│  │         backend-engineer,frontend-engineer,testing-implementer,ci-cd-expert}.md
 │  └─ skills/{sport-itsm-architecture,sport-itsm-backend,sport-itsm-frontend,
-│             sport-itsm-engineering-principles,service-desk-expert,feature-docs,…}/
+│             sport-itsm-engineering-principles,sport-itsm-workflow,service-desk-expert,feature-docs,…}/
 │
 ├─ CLAUDE.md                         # operational context for AI agents working in this repo
 ├─ readme.md                         # this document
@@ -620,11 +628,11 @@ AI4Devs-finalproject/
 | `libs/<context>/ui` | Presentational Angular components with `OnPush` and zero injected services. |
 | `libs/<context>/data-access` | The only outbound edge of the client: typed API services and signal stores. |
 | `libs/shared/contracts` | The single typed API surface shared by frontend and backend — DTO shapes, enums and error codes. Types only. |
-| `libs/shared/domain` | Shared kernel primitives genuinely used by three or more contexts (`Identity`, `TicketReference`, `Priority`, `DomainEvent`, `StateModel`, `ClockPort`). Deliberately kept small. |
+| `libs/shared/domain` | Shared kernel primitives genuinely used by three or more contexts (`Identity`, `TicketReference`, `Priority`, `DomainEvent`, `StateModel` — target, not built yet (`T-C10-10`) — and `ClockPort`). Deliberately kept small. |
 | `libs/shared/ui` | The in-house **design system**: domain-agnostic presentational components reusable by any context (button, form field, dialog/overlay, menu, table, tabs, toast, badge, chip), the SCSS design-token layer and the hand-written accessibility primitives (focus-trap/restore directive, `aria-live` announcer). Angular code with a shared scope, therefore tagged `platform:frontend scope:shared type:ui`, not `platform:shared` (ADR-010). It injects no service and performs no I/O. |
 | `libs/shared/util` | Pure, dependency-free helpers. |
-| `docs/` | Engineering documentation: PRD, architecture, components, project structure, and `docs/adr/` for Architecture Decision Records. |
-| `.claude/` | The AI operating model: **agents** (Product Owner, Software Architect) and **skills** (architecture, backend, frontend, engineering principles, ITSM domain, documentation standard). |
+| `docs/` | `docs/product/`: PRD, architecture, data model, components and project structure. `docs/backlog/`: the backlog derived from the PRD (epic map, user stories, tickets). `docs/adr/` is the intended home of individual Architecture Decision Records; it does not exist yet — the ADRs still live in `ARCHITECTURE.md` §10. |
+| `.claude/` | The AI operating model: **agents** (Product Owner, Software Architect, Business Analyst, Architect / Tech Lead, backend engineer, frontend engineer, testing implementer, CI/CD expert) and **skills** (architecture, backend, frontend, engineering principles, workflow, CI/CD, ITSM domain, backlog roles, documentation standard). |
 
 #### 2.3.3 Naming and file conventions
 
@@ -657,14 +665,14 @@ The consequence worth stating plainly: **in this repository the folder structure
 #### 2.3.5 Documentation, specification and agent folders
 
 - **`docs/product/PRD.md`** is the single canonical source of **product behavior**, for the life of the project. There is no `openspec/` directory and no spec-delta workflow: a behavior change is made in the PRD by the Product Owner, and the derived backlog under `docs/backlog/` is regenerated from it.
-- **`docs/`** also holds the engineering counterpart: the architecture document, the component reference, the project-structure document, and `docs/adr/` where the structural decisions currently embedded in `ARCHITECTURE.md` §10 are promoted to individual ADR files once scaffolding starts.
-- **`.claude/`** holds the AI operating model: **agents** (`sport-itsm-product-owner`, `sport-itsm-architect`) are roles, and **skills** are the layered, reusable guardrails they consume — business (`service-desk-expert`), system (`sport-itsm-architecture`), craft (`sport-itsm-engineering-principles`), stack (`sport-itsm-backend`, `sport-itsm-frontend`) and documentation (`feature-docs`). `CLAUDE.md` at the root is the entry point that ties them together.
+- **`docs/`** also holds the engineering counterpart: the architecture document, the component reference, the project-structure document, and `docs/adr/`, the intended home of the structural decisions currently embedded in `ARCHITECTURE.md` §10 once they are promoted to individual ADR files. That promotion has not happened: `docs/adr/` does not exist today, and `ARCHITECTURE.md` §10 remains the only ADR record.
+- **`.claude/`** holds the AI operating model: **agents** (`sport-itsm-product-owner`, `sport-itsm-architect`, `business-analyst`, `architect-tech-lead`, `backend-engineer`, `frontend-engineer`, `testing-implementer`, `ci-cd-expert`) are roles, and **skills** are the layered, reusable guardrails they consume — business (`service-desk-expert`), system (`sport-itsm-architecture`), craft (`sport-itsm-engineering-principles`), stack (`sport-itsm-backend`, `sport-itsm-frontend`) and documentation (`feature-docs`). `CLAUDE.md` at the root is the entry point that ties them together.
 
 #### 2.3.6 Useful commands
 
 Every command runs from the **repository root**, through **pnpm + Nx**. **Node 22 LTS** is required (pinned in `.nvmrc` and in `package.json` → `engines`) and **pnpm is the only supported package manager** — running `npm install` or `yarn` here would produce a second lockfile and is forbidden.
 
-The **Availability** column distinguishes what runs *today* — on a workspace holding the four applications `apps/api`, `apps/web`, `apps/api-e2e` and `apps/web-e2e`, and nothing else — from what only becomes meaningful once `libs/` is generated.
+The **Availability** column distinguishes what runs *today* — on a workspace holding the four applications, the shared kernel (`shared-util`, `shared-domain`, `shared-contracts`) and the six empty `incident-*` libraries, 13 projects in all — from what only becomes meaningful once more of `libs/` is generated.
 
 **Workspace and toolchain**
 
@@ -680,7 +688,7 @@ ESLint 9 uses a **flat config** at `eslint.config.mjs` (there is no `.eslintrc` 
 
 | Command | What it does | Availability |
 | --- | --- | --- |
-| `pnpm nx run-many -t lint` | Runs the `lint` target of every project — today `api`, `web`, `api-e2e` and `web-e2e`, all green. It no longer exits `0` vacuously, but a green lint over legal code still does not prove the boundary rule bites; see the boundary verification below. | Now |
+| `pnpm nx run-many -t lint` | Runs the `lint` target of every project — today all 13, all green. It no longer exits `0` vacuously, but a green lint over legal code still does not prove the boundary rule bites; see the boundary verification below. | Now |
 | `pnpm eslint <path>` | Lints files directly, bypassing Nx and its project graph. Useful for exercising the config on a path that belongs to no project. | Now |
 | `pnpm eslint --print-config <path>` | Prints the fully resolved config for one file path. Use it to check *which* rules apply where — Angular rules must appear on `apps/web/**` and the frontend library types, and must be absent on `apps/api/**`. | Now |
 | `pnpm prettier --check .` | Fails if any non-ignored file deviates from `.prettierrc` (`singleQuote`, `semi`). The CI formatting gate. | Now |
@@ -691,7 +699,7 @@ ESLint 9 uses a **flat config** at `eslint.config.mjs` (there is no `.eslintrc` 
 
 | Command | What it does | Availability |
 | --- | --- | --- |
-| `pnpm nx show projects` | Lists every Nx project in the workspace. Currently returns exactly `api`, `api-e2e`, `web` and `web-e2e`; anything else means a project was generated outside its ticket. | Now |
+| `pnpm nx show projects` | Lists every Nx project in the workspace. Currently returns exactly 13: `api`, `api-e2e`, `web`, `web-e2e`, `shared-contracts`, `shared-domain`, `shared-util` and the six `incident-*` libraries (`domain`, `application`, `infrastructure`, `feature`, `ui`, `data-access`); anything else means a project was generated outside its ticket. | Now |
 | `pnpm nx graph` | Opens the interactive dependency graph in a browser. The visual check that a context depends only on itself and `scope:shared`. | Now |
 | `pnpm nx graph --file=tmp/graph.json` | Writes the same graph as JSON without opening a browser — the CI-friendly and scriptable form. | Now |
 | `pnpm nx lint <project>` | Runs ESLint on one project, **including `@nx/enforce-module-boundaries`**. This is the command that turns the three-axis tag scheme of §2.3.4 into a build failure. | Now |
@@ -704,18 +712,18 @@ ESLint 9 uses a **flat config** at `eslint.config.mjs` (there is no `.eslintrc` 
 | --- | --- | --- |
 | `pnpm nx serve api` / `pnpm nx serve web` | Runs the NestJS API / the Angular web client in development mode with watch. | Now |
 | `pnpm nx build api` / `pnpm nx build web` | Produces the production bundle of each application under `dist/`. | Now |
-| `pnpm nx test <project>` | Runs the Jest unit/component suite of one project (`incident-domain`, `api`, `web`…). Real today for `shared-util` (3 suites / 19 tests, `T-C10-07`). For `api` and `web` the suites are still **empty** and pass via `passWithNoTests` — there a green result proves the runner works, nothing more. | Now |
-| `pnpm nx e2e api-e2e` / `pnpm nx e2e web-e2e` | Runs the Cypress + Cucumber acceptance suites (Gherkin `*.feature` + `*.steps.ts`). Each target starts the application under test itself and tears it down afterwards. Both hold **one smoke scenario** proving the harness runs end to end; the epic's own scenarios arrive with the tickets that own the behavior. | Now |
+| `pnpm nx test <project>` | Runs the Jest unit/component suite of one project (`incident-domain`, `api`, `web`…). Real today for `shared-util` (3 suites / 19 tests), `shared-domain` (8 / 86), `shared-contracts` (1 / 2) and `api` (2 / 15 — the event dispatcher and the gating of its test harness). For `web` and the six `incident-*` libraries the suites are still **empty** and pass via `passWithNoTests` — there a green result proves the runner works, nothing more. | Now |
+| `pnpm nx e2e api-e2e` / `pnpm nx e2e web-e2e` | Runs the Cypress + Cucumber acceptance suites (Gherkin `*.feature` + `*.steps.ts`). Each target starts the application under test itself and tears it down afterwards; `api-e2e` also brings up its own ephemeral PostgreSQL (host port 5499), applies the migrations to it and tears it down, pass or fail, so it needs a running Docker daemon. `api-e2e` holds two scenarios (the harness smoke test and the event-dispatch harness), `web-e2e` one smoke scenario; the epic's own scenarios arrive with the tickets that own the behavior. From a VS Code integrated terminal, run `unset ELECTRON_RUN_AS_NODE` in the same command first — the inherited variable makes the Cypress binary fail before any test runs. | Now |
 
 **Schema evolution (TypeORM)**
 
-The data source lives at `apps/api/src/data-source.ts`. `synchronize` is always `false`: migrations are the **only** mechanism for schema change.
+The data source lives at `apps/api/src/data-source.ts`, and the chain in `apps/api/src/migrations/` (conventions in its `README.md`; today one bootstrap migration). `synchronize` is always `false`: migrations are the **only** mechanism for schema change. Every command needs a reachable PostgreSQL — locally `docker/docker-compose.dev.yml`, published on **host port 5452**. The shorthand scripts `pnpm migration:generate <path/Name>`, `pnpm migration:run`, `pnpm migration:revert` and `pnpm migration:show` already carry `-d apps/api/src/data-source.ts` — do not add a second `-d`; `pnpm migration:run:deploy` runs the compiled `dist/apps/api/data-source.js` produced by `pnpm nx run api:build-migrations`.
 
 | Command | What it does | Availability |
 | --- | --- | --- |
-| `pnpm typeorm migration:generate -d apps/api/src/data-source.ts <path/Name>` | Diffs the entity model against the database and writes a new timestamped migration. | Once `apps/api/src/data-source.ts` exists |
-| `pnpm typeorm migration:run -d apps/api/src/data-source.ts` | Applies every pending migration. | Once `apps/api/src/data-source.ts` exists |
-| `pnpm typeorm migration:revert -d apps/api/src/data-source.ts` | Rolls back the last applied migration. | Once `apps/api/src/data-source.ts` exists |
+| `pnpm typeorm migration:generate -d apps/api/src/data-source.ts <path/Name>` | Diffs the entity model against the database and writes a new timestamped migration. | Now (meaningful once entities exist) |
+| `pnpm typeorm migration:run -d apps/api/src/data-source.ts` | Applies every pending migration. | Now |
+| `pnpm typeorm migration:revert -d apps/api/src/data-source.ts` | Rolls back the last applied migration. | Now |
 
 ##### Bootstrap verification
 
@@ -783,7 +791,7 @@ pnpm nx show projects
 
 Expected: the command exits `0`, writes `tmp/graph.json` (a gitignored path), prints `projects: 0`, and `pnpm nx show projects` returns nothing.
 
-> This criterion was satisfied **at `T-C10-01`**, when the workspace was empty, and is recorded here as that ticket's evidence. **Re-running it today gives `projects: 5`** — `api` (`T-C10-04`), `web` (`T-C10-05`), `api-e2e` / `web-e2e` (`T-C10-06`) and `shared-util` (`T-C10-07`). The re-runnable form of the check is now "exactly the projects the tickets created, and nothing else": `pnpm nx show projects` must return `api`, `api-e2e`, `shared-util`, `web` and `web-e2e`.
+> This criterion was satisfied **at `T-C10-01`**, when the workspace was empty, and is recorded here as that ticket's evidence. **Re-running it today gives `projects: 13`** — `api` (`T-C10-04`), `web` (`T-C10-05`), `api-e2e` / `web-e2e` (`T-C10-06`), `shared-util` (`T-C10-07`), `shared-domain` (`T-C10-08`, `T-C10-09`), `shared-contracts` (`T-C10-11`) and the six `incident-*` libraries (`T-C1-01`). The re-runnable form of the check is now "exactly the projects the tickets created, and nothing else": `pnpm nx show projects` must return those 13.
 
 ##### Lint and format verification
 
@@ -795,7 +803,7 @@ These are the acceptance criteria of ticket **`T-C10-02` · ESLint 9 flat config
  NX   No tasks were run
 ```
 
-**Zero projects meant zero lint tasks, so that exit code proved nothing about the configuration.** Today the same command runs real tasks for all four applications and passes — but a green lint over *legal* code still proves only that the config loads, never that an illegal import is caught; that is what `pnpm verify:boundaries` below is for. To exercise the config on a path belonging to no project, drive ESLint directly:
+**Zero projects meant zero lint tasks, so that exit code proved nothing about the configuration.** Today the same command runs real tasks for all 13 projects and passes — but a green lint over *legal* code still proves only that the config loads, never that an illegal import is caught; that is what `pnpm verify:boundaries` below is for. To exercise the config on a path belonging to no project, drive ESLint directly:
 
 ```bash
 pnpm eslint --print-config eslint.config.mjs   # resolves 456 rules, 69 enabled
@@ -854,11 +862,12 @@ The script scaffolds throwaway projects under `libs/__boundary-probe/`, each car
 | `p4` | a project with two tags instead of three | fail — §5.2, "no exceptions" |
 | `p5` | `type:infrastructure` → `type:app` | fail — nothing may depend on the composition root |
 | `p6` | `type:e2e` → `type:infrastructure` | fail — `e2e` may use only `contracts` and `util` |
+| `p7` | `type:util` → `type:contracts` | fail — `util` is the innermost type and may depend only on `util` |
 
-The three `pass` rows matter as much as the six `fail` rows: a configuration that forbade everything would satisfy the failures and silently block `apps/api` and `libs/shared/ui`.
+The three `pass` rows matter as much as the seven `fail` rows: a configuration that forbade everything would satisfy the failures and silently block `apps/api` and `libs/shared/ui`.
 
 Run it after **any** change to the tag vocabulary, the type matrix or the `depConstraints` block — adding a context, widening a row, introducing an ADR-driven exception. Real project code cannot replace it: legal code never exercises the prohibition.
-> **Status:** the workspace **bootstrap** (`T-C10-01`), the **lint/format toolchain and tag vocabulary** (`T-C10-02`) and the **enforced `depConstraints` matrix** (`T-C10-03`) are done, and every check above passes. All **four applications** are now scaffolded on top of them — `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and both Cypress + Cucumber acceptance harnesses, `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`) — and the **first library**, `libs/shared/util` (`T-C10-07`), sits on top of those — so `pnpm nx lint` runs against real project code and passes for all five, and `pnpm verify:boundaries` reports 10/10 with both platforms in the graph. That green lint is **not** evidence the boundary rule bites: no project imports another, so no permanent dependency edge has ever been judged. Two rows were additionally probed against real projects and then reverted — `type:e2e` against `apps/api-e2e` while closing `T-C10-06`, and `type:util` against `shared-util` while closing `T-C10-07`, both rejected as required — but the standing proof is `verify:boundaries`, where the `type:util` row is now the permanent probe `p7`. Everything else under `libs/` on this page remains **target structure**. The two acceptance suites are executable and hold **one smoke scenario each**, proving the harness reaches a live API process and the served shell; the epic's own acceptance scenarios belong to the tickets that own the behavior.
+> **Status:** the workspace **bootstrap** (`T-C10-01`), the **lint/format toolchain and tag vocabulary** (`T-C10-02`) and the **enforced `depConstraints` matrix** (`T-C10-03`) are done, and every check above passes. All **four applications** are scaffolded on top of them — `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and both Cypress + Cucumber acceptance harnesses, `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`) — together with the shared kernel (`shared-util`, `shared-domain`, `shared-contracts`; `T-C10-07` … `T-C10-11`) and the six empty `incident-*` libraries (`T-C1-01`): **13 projects**, `pnpm nx lint` green for all of them, and `pnpm verify:boundaries` reporting 10/10. The graph now holds two legal code edges (`api → shared-domain`, `shared-domain → shared-util`), so the boundary rule judges real dependencies — but legal edges still cannot show that an illegal one is caught; the standing proof remains `verify:boundaries`. Two rows were additionally probed against real projects and then reverted — `type:e2e` against `apps/api-e2e` while closing `T-C10-06`, and `type:util` against `shared-util` while closing `T-C10-07`, both rejected as required — and the `type:util` row is now the permanent probe `p7`. Unit tests are real for `shared-util` (3 suites / 19 tests), `shared-domain` (8 / 86), `shared-contracts` (1 / 2) and `api` (2 / 15); `web` and the six `incident-*` libraries pass through `passWithNoTests`. `apps/api` owns `data-source.ts`, `migrations/` (conventions README plus the bootstrap migration), `event-dispatch/` and a `NODE_ENV=test`-only `testing/` harness. Every other path under `apps/api`, every path under `apps/web/src/app/` beyond the shell, and everything under `libs/` other than the shared kernel and the empty `incident` libraries remains **target structure**. The acceptance suites are executable: `api-e2e` holds two scenarios (`harness-smoke.feature`, `event-dispatch-harness.feature`) and runs against its own ephemeral PostgreSQL, `web-e2e` one smoke scenario; the epic's own acceptance scenarios belong to the tickets that own the behavior.
 
 ### **2.4. Infraestructura y despliegue**
 
@@ -957,7 +966,7 @@ The consequence is stated plainly because it is a real property of the system: *
 
 Both images are plain OCI containers built from Dockerfiles that contain nothing Render-specific, and the API reads every setting from environment variables through its validated configuration schema. Moving to another container host is a pipeline change plus a dashboard exercise: no application code, no library boundary, no Nx tag and no database schema is involved. The dependency on Render is deliberately shallow.
 
-> **Status.** This section records a **decision**, not a running system. Nothing is deployed yet: the images build and run locally, and the GitHub Actions workflow that implements the steps above does not exist under `.github/workflows/` at the time of writing. Pipeline implementation is owned by the CI/CD role; this section and ADR-013 are the specification it implements.
+> **Status.** This section records a **decision** and the pipeline that implements it. `.github/workflows/deploy-stage.yml` exists and runs three jobs: `verify` (format, lint, test, build, `api:build-migrations`, `verify:boundaries`) and `acceptance` (both Cypress suites, `api-e2e` against its own ephemeral PostgreSQL) on every push and pull request, and `deploy-stage` — build and push both images to `ghcr.io`, then call the Render deploy hooks — only on a push to `main`. The two deploy-hook steps are skipped until the `RENDER_DEPLOY_HOOK_API` / `RENDER_DEPLOY_HOOK_WEB` repository secrets exist; whether the Render services themselves are configured is dashboard state (ADR-013) and cannot be verified from this repository. Pipeline implementation is owned by the CI/CD role; this section and ADR-013 are the specification it implements.
 
 ### **2.5. Seguridad**
 
@@ -2215,7 +2224,7 @@ Indexes are chosen for stated non-functional requirements, not speculatively:
 
 **Phase 2 is deliberately not modelled.** `problem`, `change`, `release` and `asset-config` (PRD §14.4) have their behavior specified but their schema left to the phase-2 design, so it is shaped by real phase-1 experience rather than speculation. What phase 1 already guarantees for them: `incident_link` and `sr_link` already accept `problem`, `change`, `release` and `configuration_item` as target record types, holding opaque `uuid`s with no FK (FR-INC-10), and `apr_workflow.record_type` already accepts `change` and `release`. Adding those contexts is therefore **additive** — new schemas and new tables, with **no phase-1 table restructured**.
 
-> **Status:** as in §2.1, §2.2 and §2.3, this is the **target data model**. The Nx workspace has been bootstrapped but holds no project, so there is no `apps/api` and no `apps/api/src/data-source.ts`, **no TypeORM entity and no migration exists**, and no database has ever been created. None of the constraints, partial indexes, partitions or `GRANT`/`REVOKE` statements above has been executed or measured; NFR-PRF-02 and NFR-PRF-04 must be proven with `EXPLAIN (ANALYZE, BUFFERS)` against a seeded volume before either is claimed.
+> **Status:** as in §2.1, §2.2 and §2.3, this is the **target data model**. `apps/api/src/data-source.ts` exists (`T-C10-16`) and the migration chain holds a single bootstrap migration (`T-C10-17`) that creates only the `iam` schema and the `citext` and `pg_trgm` extensions; **no table and no TypeORM entity exists**. PostgreSQL runs only as the local development container and the ephemeral acceptance database. None of the tables, constraints, partial indexes, partitions or `GRANT`/`REVOKE` statements above has been executed or measured; NFR-PRF-02 and NFR-PRF-04 must be proven with `EXPLAIN (ANALYZE, BUFFERS)` against a seeded volume before either is claimed.
 
 ### **3.2. Descripción de entidades principales:**
 
@@ -2626,7 +2635,7 @@ These hold for every table above and are stated once rather than repeated per en
 | **Enums vs versioned lookup tables** | A native PG enum when the value set is closed and the domain branches on it (`priority`, `impact`, `origin_channel`, `sla_instance_state`, `actor_type`). A lookup table (`id`, `code` UK, `active`, `*_translation`) when an administrator may change it without a release (NFR-CFG-01) or it must be translatable without changing its identifier (NFR-I18N-05). Records store the lookup **id**, never the label, so a rename changes one row and zero historical facts. Configuration is **versioned, never edited in place**: a ticket keeps the matrix, workflow and policy version it was created under (NFR-CFG-02). |
 | **Hard FK only inside a context** | A real `FOREIGN KEY` exists only within one schema / one bounded context, with `ON DELETE CASCADE` only from an aggregate root to a part it exclusively owns and `RESTRICT` everywhere else. Every cross-context or polymorphic reference is an **indexed `uuid` with no constraint** (ADR-003) — the database expression of the module-boundary rule of §2.1. |
 
-> **Status:** as in §3.1, this is the **target entity model**, derived from the PRD. **No TypeORM entity class exists, no migration exists, and no database has ever been created.** None of the primary keys, unique constraints, `CHECK` constraints, partial indexes, partitions or `GRANT`/`REVOKE` statements described above has been executed, and no cardinality or constraint here has been validated against a live PostgreSQL instance. The first migration is the moment any of it becomes fact; until then the correct reading is "designed and reviewed", not "implemented".
+> **Status:** as in §3.1, this is the **target entity model**, derived from the PRD. **No TypeORM entity class exists**, and the only migration (`T-C10-17`) creates the `iam` schema and two extensions, not a single table. None of the primary keys, unique constraints, `CHECK` constraints, partial indexes, partitions or `GRANT`/`REVOKE` statements described above has been executed, and no cardinality or constraint here has been validated against a live PostgreSQL instance. The first table-creating migration is the moment any of it becomes fact; until then the correct reading is "designed and reviewed", not "implemented".
 
 ---
 
