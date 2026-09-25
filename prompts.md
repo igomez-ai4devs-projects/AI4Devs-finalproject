@@ -2458,3 +2458,154 @@ No instales dependencias. No hagas commit ni push.
 Implementado ticket T-C1-01
 
 </br>
+
+
+**Prompt 15:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-02.md ·
+Namespace de esquema `incident` y la raíz de composición `IncidentModule`
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (NestJS 11, TypeORM, migraciones),
+`sport-itsm-architecture` (§6.3: `apps/api` es la única raíz de composición) y cierra con
+`sport-itsm-workflow`. Aquí no hay dominio: una migración, un módulo vacío pero cableado y el
+registro de una ruta de entidades.
+
+#### Por qué este ticket y por qué ahora
+Es el segundo del bloque 3 de la rebanada 1 (`T-C1-01` → **`02`** → `03` → `05` → `06` → `04`).
+Nada del contexto `incident` se puede persistir ni exponer por HTTP hasta que exista esto: la tabla
+de `T-C1-04`, el repositorio de `T-C1-06` y el endpoint de `T-C1-08` cuelgan de este esquema y de
+este módulo. **Lo que dejes aquí es el patrón que copiarán todos los contextos siguientes.**
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx show projects                    # 13 (incluidos los seis incident-*)
+    docker ps --filter name=sport-itsm-postgres-dev   # healthy, 0.0.0.0:5452->5432
+    POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres pnpm typeorm migration:show -d apps/api/src/data-source.ts
+                                             # [X] CreateIamSchemaAndExtensions1790349248155
+
+#### Trampas del entorno — ya pagadas, no las redescubras
+- **Puerto de desarrollo 5452**, no 5432 (5432 está ocupado en esta máquina). No lo cambies.
+- Hay variables globales de Windows `POSTGRES_*` de otro proyecto (usuario `userdev`) que **pisan el
+  `.env`**: pasa los cinco valores explícitos **en la misma llamada Bash** en cada comando de la CLI,
+  como en la precondición.
+- `pnpm typeorm <cmd> -d apps/api/src/data-source.ts` lleva `-d`; los atajos
+  `pnpm migration:run|revert|show` **ya lo llevan** — no añadas otro, rompe con un error confuso.
+- Cypress desde el terminal de VS Code: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- Prettier en Windows: comprueba solo tus ficheros.
+
+#### El ticket es el contrato
+Léelo entero; su "Out of scope" es vinculante (ninguna tabla, puerto, adaptador ni controlador). Lee
+además, y no de memoria:
+- **`apps/api/src/migrations/README.md`** — la convención de `T-C10-17`: nombre, clase, reversibilidad,
+  nombres de esquema reales de `DATA-MODEL.md`. El esquema es **`incident`** (`DATA-MODEL.md` §8/§20.3).
+- La migración de arranque `1790349248155-CreateIamSchemaAndExtensions.ts` — el ejemplo a seguir.
+- `apps/api/src/data-source.ts`, `apps/api/tsconfig.migrations.json`, `tools/build-api-runtime.mjs`
+  y `docker/backend/Dockerfile` — cómo se carga el data source en local (ts-node) y en la imagen
+  (compilado, WORKDIR `/app/dist/apps/api`).
+- `ARCHITECTURE.md` §6.3 y `PROJECT-STRUCTURE.md` — el módulo va en
+  **`apps/api/src/app/incident/incident.module.ts`**.
+- `apps/api/src/app/app.module.ts` y `apps/api/src/event-dispatch/event-dispatch.module.ts` — cómo
+  se registran hoy los módulos.
+
+#### Trampa 1 — el AC3 pide `/health/ready`, y no existe
+`/health/live` y `/health/ready` son de **`T-C10-28`** (observabilidad, `@nestjs/terminus`), que no
+está hecho: hoy `main.ts` solo reserva la exclusión del prefijo. **No implementes health aquí.**
+Demuestra lo demostrable del AC3 — que la API arranca con `IncidentModule` registrado (log de Nest
+`IncidentModule dependencies initialized`, la API escuchando, `pnpm nx e2e api-e2e` en verde) — y
+**reporta el AC3 como parcialmente no demostrable** por dependencia de `T-C10-28`.
+
+#### Trampa 2 — "registrar la ruta de entidades de `incident`" es más difícil de lo que parece
+Hoy el data source declara `entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')]`. Con
+`__dirname = apps/api/src`, eso busca en `apps/api/**`: **no alcanza `libs/incident/infrastructure`**,
+que es donde `T-C1-06` pondrá la entidad TypeORM.
+
+Decide cómo registrar el contexto `incident` y **justifícalo** contra estas tres restricciones:
+- **Local (CLI con ts-node)**: la ruta tiene que encontrar
+  `libs/incident/infrastructure/src/**/*.entity.ts` desde el `__dirname` real.
+- **Imagen desplegada**: `tsconfig.migrations.json` solo compila `data-source.ts`, `config/` y
+  `migrations/`. Un `import` de `@sport-itsm/incident-infrastructure` en `data-source.ts` **no
+  funciona** allí: `tsc` no reescribe los alias de ruta, y el `require` compilado fallaría en la
+  imagen. Por eso **no importes clases de entidad por alias** en `data-source.ts`.
+- **El glob no puede escapar al sistema de ficheros**: `T-C10-69` descubrió que un glob con `..` que
+  en la imagen resolvía a `/` dejaba colgado `DataSource.initialize()` recorriendo `/proc`. Cualquier
+  ruta nueva tiene que resolver a un directorio acotado tanto en local como en `/app/dist/apps/api`
+  (si en la imagen no existe, que sea un directorio inexistente, no la raíz).
+
+Hoy no hay ninguna entidad, así que el glob no encontrará nada: está bien. **Repórtalo como hallazgo
+para `T-C1-06` y `ci-cd-expert`**: cuando exista la primera entidad, la imagen tendrá que compilarla
+y copiarla (o el data source tendrá que cambiar de estrategia), porque hoy no viaja en `dist/`.
+
+#### Trampa 3 — la migración del esquema
+- Fichero `<timestamp>-CreateIncidentSchema.ts`, clase `CreateIncidentSchema<timestamp>`, timestamp
+  **posterior** a `1790349248155`. SQL explícito con `queryRunner.query`, sin `migration:generate`.
+- Sigue la convención del README en `up`/`down`. Decide si el `down` usa `DROP SCHEMA` **sin**
+  `CASCADE` (falla si alguien dejó tablas: más seguro, obliga a revertir en orden) o con él, y
+  justifícalo. Recomendación: sin `CASCADE`, porque cada tabla futura tendrá su propia migración
+  reversible que se revierte antes.
+- **"Base vacía" del AC1**: la base de desarrollo ya tiene aplicada la migración de arranque. Haz los
+  ciclos run → revert → run contra una base **desechable** (el stack `docker/docker-compose.e2e.yml`
+  en 5499, levantado y destruido a mano, o un contenedor propio), partiendo de verdad vacía, y
+  demuestra que después del `revert` no queda ningún objeto en el esquema `incident` ni el propio
+  esquema. Al terminar, deja la base de **desarrollo** con las dos migraciones aplicadas.
+
+#### Trampa 4 — el módulo vacío pero cableado
+- `IncidentModule` en `apps/api/src/app/incident/incident.module.ts`, importado desde `AppModule`.
+- **Ningún provider de negocio ni controlador** (AC4). El "bloque de binding de tokens" se establece
+  como `providers: []` con un comentario que muestra la forma exacta que añadirán los tickets
+  siguientes (`{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }`, citando
+  §6.3). **No declares tokens ni clases que aún no existen** para rellenar el ejemplo.
+- `EVENT_PUBLISHER` ya es global (`EventDispatchModule`); no lo reimportes.
+- No instales `@nestjs/typeorm` ni conectes `TypeOrmModule`: el ticket no lo pide y la API sigue sin
+  abrir conexión al arrancar. Si crees que hace falta, **para y repórtalo**.
+
+#### Lo que NO debes tocar
+`libs/**`, `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria de agente),
+`package.json`, `prompts.md`, `apps/api/src/event-dispatch/**`, `apps/api/src/testing/**`,
+`apps/api/tsconfig.migrations.json` y `tools/build-api-runtime.mjs` (salvo que la trampa 2 lo exija
+de verdad; si lo tocas, justifícalo). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — contra la base desechable vacía: `migration:run` aplica las dos migraciones; `\dn` muestra
+   `iam` e `incident`. Pega la salida.
+2. **AC2** — `migration:revert` retira solo `CreateIncidentSchema…`; `\dn` sin `incident` y sin
+   objetos residuales (`SELECT … FROM pg_class c JOIN pg_namespace n … WHERE n.nspname='incident'`
+   vacío). Luego run → revert → run otra vez con el mismo resultado. Pega todo.
+3. Destruye la base desechable. En la base de **desarrollo** (5452), `migration:run` y
+   `migration:show` → las dos `[X]`.
+4. **Trampa 2** — muestra la ruta de entidades resuelta en local (p. ej. un `node -e` que cargue el
+   data source con ts-node e imprima `dataSource.options.entities`) y explica cómo resuelve en la
+   imagen. `pnpm nx run api:build-migrations` sigue en verde y `dist/apps/api/migrations/` contiene
+   la nueva migración compilada.
+5. **AC3** — la API arranca: pega la línea `IncidentModule dependencies initialized` y la de
+   escucha. Reporta explícitamente qué parte del AC3 no se puede demostrar (`/health/ready`).
+6. **AC4** — enseña `incident.module.ts` completo; `pnpm nx lint api` en verde.
+7. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde (su `e2e-migrate` aplica ahora las dos
+   migraciones sobre la base efímera: pega esas líneas).
+8. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+9. `grep -rn "synchronize" apps/api/src` → solo `false`; `grep -rn "process.env" apps/api/src` → solo
+   `config/` y el test de gating ya existente.
+10. `pnpm prettier --check` sobre los ficheros que has creado o tocado.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Deja los contenedores desechables eliminados y
+`sport-itsm-postgres-dev` `healthy` en 5452.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- El contenido literal de la migración y de `incident.module.ts`.
+- Tus decisiones de las trampas 2 y 3, con su porqué.
+- La salida de las diez verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el AC3 y `/health/ready` (`T-C10-28`), el
+  empaquetado de entidades en la imagen para `T-C1-06`/`ci-cd-expert`, y el `passWithNoTests` que
+  `apps/api/project.json` mantiene aunque `api` ya tiene tests.
+
+### Response:
+

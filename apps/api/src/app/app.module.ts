@@ -5,6 +5,7 @@ import { NodeEnvironment } from '../config/env.validation';
 import { loadEnvironment } from '../config/environment';
 import { EventDispatchModule } from '../event-dispatch/event-dispatch.module';
 import { TestEventDispatchModule } from '../testing/test-event-dispatch.module';
+import { IncidentModule } from './incident/incident.module';
 
 /**
  * This module's own import list is decided once, when this file is first
@@ -36,12 +37,15 @@ const testOnlyModules =
  * composition module per bounded context, each binding that context's port
  * tokens to concrete adapters (ADR-003), plus the cross-cutting
  * `EventDispatchModule` that binds `EventPublisherPort` for all of them
- * (`T-C10-73`). No context library exists yet.
+ * (`T-C10-73`). `IncidentModule` (`T-C1-02`) is the first context module;
+ * it is empty but wired, so later `incident` tickets add providers to it
+ * rather than inventing a registration pattern.
  */
 @Module({
   imports: [
     ConfigModule.forRoot(configModuleOptions),
     EventDispatchModule,
+    IncidentModule,
     ...testOnlyModules,
   ],
 })
