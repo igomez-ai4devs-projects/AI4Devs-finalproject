@@ -132,6 +132,8 @@ export interface LoggedIncident {
 interface IncidentProps {
   readonly id: Identity;
   readonly reference: TicketReference;
+  readonly loggedAtEpochMs: number;
+  readonly loggedBy: Identity;
   readonly reporterId: Identity;
   readonly originChannel: OriginChannel;
   readonly shortDescription: string;
@@ -181,6 +183,27 @@ interface IncidentProps {
 export class Incident {
   readonly id: Identity;
   readonly reference: TicketReference;
+  /**
+   * The instant `log()` was called — `incident_ticket.created_at`'s domain
+   * source (`DATA-MODEL.md` §3.3/§8.5) and the "original creation time"
+   * `FR-SLA-04` recalculates from (ADR-014 does not change what created the
+   * SLA basis, only what else the row may lack). Stored as epoch
+   * milliseconds, not `Date`, for the same reason `DomainEvent` stores
+   * `occurredAtEpochMs` and `DateTimeRange` stores `startsAtEpochMs`: a
+   * stored `Date` stays mutable through `setTime()` however frozen the
+   * object around it is (kernel precedent, not a new decision).
+   */
+  readonly loggedAtEpochMs: number;
+  /**
+   * Who performed the logging action — `incident_ticket.created_by`'s
+   * domain source (`DATA-MODEL.md` §3.3). Deliberately **not** the same
+   * concept as `reporterId`: the reporter is who the Incident is *about*
+   * (`FR-OMN-04`), `loggedBy` is who acted (`FR-OMN-02`, `US-C1-02`) — an
+   * agent logging on a caller's behalf makes the two different identities,
+   * even though the portal path happens to make them equal (`T-C1-05` Trap
+   * 5, see `LogIncidentCommand`'s own doc above).
+   */
+  readonly loggedBy: Identity;
   readonly reporterId: Identity;
   readonly originChannel: OriginChannel;
   readonly shortDescription: string;
@@ -197,6 +220,8 @@ export class Incident {
   private constructor(props: IncidentProps) {
     this.id = props.id;
     this.reference = props.reference;
+    this.loggedAtEpochMs = props.loggedAtEpochMs;
+    this.loggedBy = props.loggedBy;
     this.reporterId = props.reporterId;
     this.originChannel = props.originChannel;
     this.shortDescription = props.shortDescription;
@@ -254,6 +279,8 @@ export class Incident {
     const incident = new Incident({
       id: command.id,
       reference: command.reference,
+      loggedAtEpochMs: command.occurredAt.getTime(),
+      loggedBy: command.actor,
       reporterId: command.reporterId,
       originChannel: command.originChannel,
       shortDescription: command.shortDescription,

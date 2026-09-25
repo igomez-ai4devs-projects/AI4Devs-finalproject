@@ -3,9 +3,45 @@
 > Sources: `docs/backlog/C1/user-stories.md` (32 stories, all greenfield) · `docs/backlog/epic-map.md` (§ `C1`, § **Foundation ownership (priced once)**) · `docs/backlog/C10/tickets/` (the workspace foundation, already ticketed) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9 · PRD §7.1, §14
 > Test plan: [`../test-plan.md`](../test-plan.md)
 
-**101 tickets · 263.5h · none over the 3h cap.** Three tickets added this pass (`T-C1-99`–`101`, block O, "see it — detail by reference") and two adjusted (`T-C1-09` +0.5h, `T-C1-10` −0.5h) for the Product Owner's minimal re-cut of delivery slice 1 — see **Delivery slices** below.
-**2 tickets are foundation** work with `story: —` — the six `incident` libraries and the context schema/module wiring. Everything else in the workspace is **priced once into `C10`** and is not re-paid here.
+**102 tickets · 268.5h · five tickets now exceed the 3h cap, each with a recorded exception.** One ticket added this pass (`T-C1-102`, `FR-INC-20`, no story yet) on top of the three added by the previous pass (`T-C1-99`–`101`, block O, "see it — detail by reference") and the `T-C1-09`/`T-C1-10` re-cut for delivery slice 1 — see **Delivery slices** below.
+**2 tickets are foundation** work with `story: —` — the six `incident` libraries and the context schema/module wiring. `T-C1-102` also carries `story: —` but is **not** foundation (it has a persona and observable behavior); see its own `## Context` and the **third pass** note below.
 **12 tickets are blocked** by six findings: **F24** (1), **F25** (2), **F27** (1), **F28** (2), **F29** (3), **F30** (3). None of those decisions is made in this backlog.
+
+**This pass — ADR-014 (`ARCHITECTURE.md` §10) and `DATA-MODEL.md` §8.5/M14–M16.** `incident_ticket`'s assessment, matrix-version and lifecycle columns are nullable in the target schema, a matrix version is pinned at an Incident's **first derivation** rather than at creation, and every column arrives with the migration of the first behavior that writes it, backfilled exactly where it lands `NOT NULL` on a table that already has rows. Nine tickets changed to carry this out; net effect **+2.5h** (263.5h → 266.0h), all inside blocks B (net 0h — one ticket lighter, one heavier), D, E, F and I:
+
+| Ticket | Change | Est. |
+|---|---|---:|
+| `T-C1-06` | Scope narrowed to exactly the first `DATA-MODEL.md` §8.5 column group (`id`, `reference`, `short_description`, `description`, `origin_channel` — enum without `phone` — `reporter_user_id`, `service_id`, audit/version columns); gains the mapper's null-read / reject-on-save rule for every not-yet-introduced slot; a new "reload gives null/false, no lifecycle column" AC; and a flagged, unresolved `ci-cd-expert` risk (first entity ever registered, webpack bundles only `dist/apps/api`). | 3h → 3h |
+| `T-C1-04` | No longer creates the `reference` column (moved to `T-C1-06`, whose migration now needs it to prove "every field round-trips"); keeps only the sequence, the adapter, the concurrency proof and an **open architect finding** — `DATA-MODEL.md` §3.7 bans policy triggers but names no other way to enforce immutability "at the database level". | 3h → 2.5h |
+| `T-C1-07` | Note only: this slice's use case sets no lifecycle state (none exists yet) and hands `SlaPolicyPort.attachFor()` an Incident with `priority: null`, which is `C7`'s open question, not this ticket's. | 3h → 3h |
+| `T-C1-11` | Gains the `logged_by_user_id` migration (nullable, no backfill) and a flagged build-order question: its own existing AC has an agent recording Impact/Urgency at logging, ahead of the columns and mutators `T-C1-30` (block D) introduces. | 2.5h → 3h |
+| `T-C1-21` | Confirmed, not changed in substance: this is the `category_id` migration (nullable, no backfill), now cited against ADR-014/§8.5 explicitly. | 3h → 3h |
+| `T-C1-27` | "Applied at creation" corrected to "applied at first derivation" throughout (Context, Scope, AC1) — an unassessed Incident has no Priority and is governed by no matrix yet (§8.5, M15). | 3h → 3h |
+| `T-C1-30` | Now also carries the assessment-columns migration (`base_impact`, `assessed_impact`, `urgency`, `priority`, `priority_overridden`, `priority_override_justification`, `priority_matrix_id` + four `CHECK`s) — chosen over `T-C1-27` because this is the first behavior that writes them. Recorded cap exception: splitting the migration from its only writer is an artificial split. | 3h → 3.5h |
+| `T-C1-43` | **Gap found and closed:** no block-E ticket owned the `competition_affects` + `competition_*` + `ck_incident_competition_flag` migration. Assigned here — the only write path for the flag. Recorded cap exception, same reasoning as `T-C1-30`. | 3h → 3.5h |
+| `T-C1-49` | Gains two Product Owner–mandated exit-from-`New` gates (Impact **and** Urgency assessed; affected Service set) composed alongside the existing categorization gate, plus a recorded, deliberately unresolved dependency: no ticket yet owns "an Incident cannot stay in `New` uncategorized indefinitely" — the Product Owner is drafting that rule into the PRD now. Recorded cap exception. | 3h → 3.5h |
+| `T-C1-50` | Confirmed as the lifecycle migration: `workflow_id`/`state_id`/`state_category` added nullable, backfilled (seeded initial state + one creation `incident_state_transition` row per existing ticket), then `SET NOT NULL`, plus `ck_incident_resolution` and `ck_incident_categorized_beyond_new`. Recorded cap exception. | 3h → 3.5h |
+| `T-C1-51` | AC and Context wording only: the composed gate list now names the two new `T-C1-49` gates alongside the categorization gate. | 2.5h → 2.5h |
+| `T-C1-73` | Gains the assignment-side half of the Impact/Urgency rule: assignment (first or repeat) is refused while either is unassessed. | 2.5h → 3h |
+
+Of the three Product Owner decisions relayed by the pass above, two are now numbered: the exit-from-`New` and assignment gates landed as **`FR-INC-19`**, and the "no indefinite `New`" rule landed as **`FR-INC-20`**, both in `PRD.md` §14.10, in the same wave as `ADR-014`'s own second pass below. `phone` dropped from `origin_channel_enum` is confirmed by the PRD's own `FR-OMN-02` wording. Only `loggedAt`/`loggedBy` feeding `created_at`/`created_by` remains unnumbered — correctly so, since it is an ADR-014 persistence rule (rule 4), never a product requirement.
+
+**Second pass — `FR-INC-19`/`FR-INC-20` land in the PRD (§14.10); `DATA-MODEL.md` gains `state_category = 'new'` (M17) and the reference-immutability trigger is decided (M18).** In parallel with this pass, the Product Owner added `FR-INC-19` (the triage gate, now numbered) and `FR-INC-20` (the untriaged-period rule, now numbered, still dependent on undecided **PRD assumption A11**), and the architect updated `DATA-MODEL.md` (§3.2, §3.5, §3.7, §8.1, §8.5, §16, §18 M14–M18, §19, §20.3) and `ARCHITECTURE.md`'s `ADR-014`. Seven tickets changed and one is new; net effect **+2.5h** (266.0h → 268.5h):
+
+| Ticket | Change | Est. |
+|---|---|---:|
+| `T-C1-04` | Closes the open architect finding from the first pass: the immutability mechanism is decided (a column-immutability guard trigger, M18). Migration now explicitly creates `incident.incident_reference_seq` (`NO CYCLE`), `incident.fn_reject_reference_update()` and `tg_incident_ticket_reference_immutable`; `down` drops all three. AC rewritten to a direct SQL `UPDATE` run **as `postgres`** (the role every environment connects as), proving the trigger and not a `REVOKE`. Order re-justified rather than changed: `T-C1-06`'s own round-trip AC is `INSERT`+`SELECT` only, never an `UPDATE` of `reference`, so it does not need this ticket's trigger to exist first — see finding **H2** below. Deciding the mechanism removed the exploratory scope the first pass carried for three candidate mechanisms. | 2.5h → 2h |
+| `T-C1-06` | Adds `update: false` to the `reference` mapping — defence in depth alongside `T-C1-04`'s trigger (M18). Context cross-references the closed H2 finding. | 3h → 3h |
+| `T-C1-49` | "Product Owner decisions... not yet a numbered FR" replaced by an explicit `FR-INC-19` citation; adds that the domain must read the non-configurable state **category** `new` (M17), never a state's configurable code; the "no indefinite `New`" rule is now `FR-INC-20`, delegated to the new `T-C1-102` rather than left as an unidentified pending dependency. | 3.5h → 3.5h |
+| `T-C1-50` | `state_category_enum` gains `new` (M17); adds `ck_incident_workflow_state_new_is_initial`; backfill target corrected from `open` to `new`; `ck_incident_categorized_beyond_new` renamed and widened to **`ck_incident_triaged_beyond_new`** (category, Impact, Urgency, Priority and Service, per `FR-INC-19`), confirmed as the last of the three migrations it reads from; gap found and closed — `ix_incident_untriaged` and `ix_incident_worklist` added (`DATA-MODEL.md` §16 specified them from the first pass; no ticket had built either). | 3.5h → 3.5h |
+| `T-C1-51` | "Pending a PRD update" replaced by an explicit `FR-INC-19` citation. | 2.5h → 2.5h |
+| `T-C1-72` | **Corrected this pass:** the persisted `incident_ticket.assigned_group_id`/`assigned_user_id`/`assigned_at` columns and `ck_incident_assessed_before_assignment` were never this ticket's — `DATA-MODEL.md` lists them on `incident_ticket`, not on the append-only history table this ticket migrates, and ADR-014 rule 3 puts a column's migration with its first writer. Moved to `T-C1-73`. This ticket keeps the value object, the append-only history and its own migration, with its AC re-scoped to the aggregate's in-memory derivation. | 3h → 3h |
+| `T-C1-73` | Gains the migration `T-C1-72` no longer carries: `assigned_group_id`, `assigned_user_id`, `assigned_at` + `ck_incident_assessed_before_assignment`, sequenced after `T-C1-30`. "Pending a PRD update" replaced by `FR-INC-19`. Recorded cap exception, same reasoning as `T-C1-30`/`T-C1-43`/`T-C1-49`/`T-C1-50`. | 3h → 3.5h |
+| `T-C1-102` (**new**) | `FR-INC-20`'s mechanism: validated, fail-fast-at-boot configuration for the untriaged period (no in-code default — PRD assumption A11 is undecided) and an "overdue for triage" query over `T-C1-50`'s `ix_incident_untriaged`. `story: —`; reported as a finding for `business-analyst` — see the test plan's own Findings note. | — → 2.5h |
+
+**`FR-INC-19` was deliberately *not* given its own new ticket.** The task that prompted this pass asked whether to widen `T-C1-25` to `FR-INC-19` or mint a new ticket. Verified against the tickets: `FR-INC-19`'s exit-from-`New` gate is already `T-C1-49`'s (Impact/Urgency/Service, composed with `T-C1-25`'s own categorization gate) and its DB check is `T-C1-50`'s; its assignment gate is `T-C1-73`'s domain guard and `ck_incident_assessed_before_assignment`. Minting a fourth ticket or widening `T-C1-25` (which is specifically `FR-INC-03`'s categorization gate, not the assessment/Service gates `FR-INC-19` adds) would have duplicated existing scope. The correction made instead was tracing: `FR-INC-19` is now in the `requirements:` front matter of `T-C1-49`, `T-C1-50`, `T-C1-51` and `T-C1-73`.
+
+**`T-C1-11`'s flagged build-order question is resolved, not moved.** Its own AC on an agent recording Impact/Urgency at logging cannot literally persist before `T-C1-30`'s mutators exist — and `T-C1-06`'s mapper (ADR-014 rule 4) would reject a save that tried. Resolution: the command accepts and authorizes the values but does not yet forward them to the aggregate; the Incident persists exactly as unassessed as `T-C1-06`/`T-C1-07` already produce. Wiring the dormant fields once `T-C1-30` ships is flagged as a finding for the architect, since `T-C1-30`'s own ticket does not currently mention picking them up. No estimate change (3h).
 
 **Delivery is now cut by vertical slice, not by block order — see Delivery slices below.** The Product Owner has re-cut delivery across `C1` and `C10` into three thin, end-to-end slices, approved by the user. **No ticket file changed and no ID moved for this.** The claim that used to stand here — *"the numbering is the implementation order"* — is corrected: the numbering is stable and mostly reflects a reasonable build order **within** a block, but which slice ships first is a delivery decision, not something this file's ID order ever decided. `T-C1-01` is still the first ticket **of Block A**; it is not necessarily the first ticket built end to end. Where the order departs from the story sequence **within a block**, the reason is stated below that block, exactly as before.
 
@@ -21,7 +57,7 @@ Approved by the user, from the Product Owner's cut. Three vertical, end-to-end s
 | **2** (unchanged) | An agent triages and moves it | `T-C1-20`–`25`, `49`–`52` |
 | **3** (unchanged) | It is resolved and the requester confirms | `T-C1-53`–`64` |
 
-**This slice's `C1` total, recalculated from the files: 13 tickets · 31.5h.** Combined with the `C10` side (`docs/backlog/C10/tickets/README.md`), the whole slice is **41.0h**, matching the Product Owner's own figure. An earlier pass of this note double-counted `T-C10-72` (a seed migration nothing in this slice reads, since authentication is deferred and `Incident.reporter_user_id` is a soft reference with no foreign key) and reported 43.0h; that ticket moved back out of the slice — see `C10`'s README, block M.
+**This slice's `C1` total, recalculated from the files: 13 tickets · 30.5h** (was 31.0h after the first ADR-014 pass, 31.5h before it; `T-C1-04` dropped a further 0.5h this second pass — deciding the immutability mechanism removed exploratory scope, see the second-pass table above). Combined with the `C10` side (`docs/backlog/C10/tickets/README.md`), the whole slice is **40.0h**. `C10`'s own README stated a stale `41.0h` figure through both `C1` passes — **corrected in this pass** (see that document's own Delivery slices section) since the discrepancy was flagged, not fixed, by the previous pass. An earlier pass of this note double-counted `T-C10-72` (a seed migration nothing in this slice reads, since authentication is deferred and `Incident.reporter_user_id` is a soft reference with no foreign key) and reported 43.0h; that ticket moved back out of the slice — see `C10`'s README, block M.
 
 **Four deviations the user has explicitly approved for this slice** — full detail in `C10`'s **Delivery slices** section, since two of the four are `C10`-owned (no real auth; the audit-subscriber window). The two that land on `C1` tickets directly:
 
@@ -78,19 +114,19 @@ Source: `ARCHITECTURE.md` §5.1 and §5.5; epic map § `C1`, *What actually rema
 
 ---
 
-## Block B · Base record and intake — 17 tickets · 46.5h · phase disputed 0/1 (F6)
+## Block B · Base record and intake — 17 tickets · 46.0h · phase disputed 0/1 (F6)
 
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
 | [T-C1-03](T-C1-03.md) | `TicketReference` policy and the `nextReference()` repository port | US-C1-05 | domain | backend-engineer | 2h |
-| [T-C1-04](T-C1-04.md) | Reference-number sequence, unique constraint, immutability and migration | US-C1-05 | infrastructure | backend-engineer | 3h |
+| [T-C1-04](T-C1-04.md) | Reference-number sequence, immutability trigger, adapter and concurrency proof | US-C1-05 | infrastructure | backend-engineer | 2h |
 | [T-C1-05](T-C1-05.md) | `Incident` aggregate root and its creation invariants | US-C1-01 | domain | backend-engineer | 3h |
 | [T-C1-06](T-C1-06.md) | TypeORM `Incident` entity, mapper, repository adapter and migration | US-C1-01 | infrastructure | backend-engineer | 3h |
 | [T-C1-07](T-C1-07.md) | `LogIncidentUseCase` for a requester, reporter taken from the session | US-C1-01 | application | backend-engineer | 3h |
 | [T-C1-08](T-C1-08.md) | Intake contracts and server-side rejection of priority-bearing fields | US-C1-01 | contracts + infrastructure | backend-engineer | 2.5h |
 | [T-C1-09](T-C1-09.md) | `incident/data-access` — Incident API service and signal store | US-C1-01 | data-access | frontend-engineer | 2.5h |
 | [T-C1-10](T-C1-10.md) | Requester intake form — plain language, mobile, WCAG 2.1 AA | US-C1-01 | feature + ui | frontend-engineer | 3h |
-| [T-C1-11](T-C1-11.md) | `LogIncidentOnBehalfUseCase` — reporter, contact channel and acting actor | US-C1-02 | application | backend-engineer | 2.5h |
+| [T-C1-11](T-C1-11.md) | `LogIncidentOnBehalfUseCase` — reporter, contact channel and acting actor | US-C1-02 | application + infrastructure | backend-engineer | 3h |
 | [T-C1-12](T-C1-12.md) | Agent single-flow intake surface with no loss of typed data | US-C1-02 | feature | frontend-engineer | 3h |
 | [T-C1-13](T-C1-13.md) | Reporter lookup with an explicit reporter-must-exist path | US-C1-02 | feature + data-access | frontend-engineer | 2.5h |
 | [T-C1-14](T-C1-14.md) | `CompetitionSubject` value object over the twelve-value closed subject type | US-C1-03 | domain | backend-engineer | 2.5h |
@@ -102,7 +138,9 @@ Source: `ARCHITECTURE.md` §5.1 and §5.5; epic map § `C1`, *What actually rema
 
 **Order note — `US-C1-05` before `US-C1-01`.** Reference numbering is built first even though it is the fifth story. `US-C1-05` requires the reference to be assigned **in the same transaction** as creation, so no Incident can ever exist without one; building intake first would create records that then need a retrofitted number and a data migration to give them one.
 
-**Order note — finding H2, `T-C1-04` after `T-C1-06`, not before it.** This block's table lists `T-C1-03 → 04 → 05 → 06` because that is ID order, but `T-C1-04`'s own `## Scope` says its migration adds the reference column to a table `T-C1-06` creates — *"the Incident table itself, created by `T-C1-06` — this migration is sequenced after it"*. Building `T-C1-04` at its ID position would migrate a column onto a table that does not exist yet. The real build order is **`03 → 05 → 06 → 04`**: the port (`03`), the aggregate (`05`), the Incident table (`06`), then the reference column and its constraint (`04`). No ticket file changes and no ID moves — the table above stays in ID order as an index; the corrected order is what **Delivery slices** (above) and any implementer must follow.
+**Order note — finding H2, `T-C1-04` after `T-C1-06`, not before it.** This block's table lists `T-C1-03 → 04 → 05 → 06` because that is ID order, but `T-C1-04` no longer creates or touches any column on `incident_ticket` at all — since the first ADR-014 pass, `T-C1-06`'s own table-creating migration carries `reference` (ADR-014 forced the move: a table-creating migration that omitted it would leave rows with no reference). Building `T-C1-04` at its ID position would create a sequence for a column that does not exist yet. The real build order is **`03 → 05 → 06 → 04`**: the port (`03`), the aggregate (`05`), the Incident table with its `reference` column (`06`), then the sequence, the immutability trigger, the `nextReference()` adapter and the concurrency proof (`04`). No ticket file changes and no ID moves — the table above stays in ID order as an index; the corrected order is what **Delivery slices** (above) and any implementer must follow.
+
+**Re-verified this second pass — `T-C1-06` writing a row before `T-C1-04`'s trigger exists is safe.** `DATA-MODEL.md` §8.5 now decided the immutability mechanism (a trigger, M18) and states it must exist "in the table-creating migration, or in a migration that runs before the first code path able to write a row." `T-C1-06`'s own round-trip acceptance criterion does write a row — but only through an `INSERT` and a `SELECT`, never an `UPDATE` of `reference`, so it never exercises the one thing the trigger guards against. The trigger only has to precede the first **production-reachable** write path, `T-C1-07`'s `LogIncidentUseCase`, which already sits after `T-C1-04` in this order. `CREATE TRIGGER … ON incident.incident_ticket` also cannot run before the table exists, which rules out the alternative of moving `T-C1-04` ahead of `T-C1-06` — that would be a circular dependency, not a reordering. The order stands as `03 → 05 → 06 → 04`, unchanged from the first pass; only the justification is restated more precisely. See `T-C1-04`'s and `T-C1-06`'s own `## Context` for the full reasoning.
 
 **Blocked — F29.** `T-C1-10`, `T-C1-14` and `T-C1-16` carry `blocked_by: F29`. `FR-INC-01` is ambiguous about whether a requester may set the **structured** competition subject. This backlog reads it as *requesters supply free text, agents set the structured reference*. If the Product Owner confirms the opposite, the requester form, the picker placement and the permission on the subject write all change. Everything else in the block is unaffected.
 
@@ -127,7 +165,7 @@ Source: `ARCHITECTURE.md` §5.1 and §5.5; epic map § `C1`, *What actually rema
 
 ---
 
-## Block D · Prioritization — 10 tickets · 26h · phase 1 (MVP)
+## Block D · Prioritization — 10 tickets · 26.5h · phase 1 (MVP)
 
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
@@ -135,7 +173,7 @@ Source: `ARCHITECTURE.md` §5.1 and §5.5; epic map § `C1`, *What actually rema
 | [T-C1-27](T-C1-27.md) | Matrix persistence, configuration versioning, migration and fail-fast boot validation | US-C1-09 | infrastructure + app | backend-engineer | 3h |
 | [T-C1-28](T-C1-28.md) | Matrix configuration screen | US-C1-09 | feature | frontend-engineer | 3h |
 | [T-C1-29](T-C1-29.md) | `PriorityCalculator` domain service | US-C1-08 | domain | backend-engineer | 2.5h |
-| [T-C1-30](T-C1-30.md) | Server-side derivation, the not-yet-derived state and `PriorityChanged` | US-C1-08 | domain + application | backend-engineer | 3h |
+| [T-C1-30](T-C1-30.md) | Server-side derivation, the not-yet-derived state and `PriorityChanged` | US-C1-08 | domain + application + infrastructure | backend-engineer | 3.5h |
 | [T-C1-31](T-C1-31.md) | Server-authoritative Priority in the web client | US-C1-08 | data-access + feature | frontend-engineer | 2h |
 | [T-C1-32](T-C1-32.md) | Priority override domain rule: mandatory justification, derived value retained | US-C1-10 | domain | backend-engineer | 2.5h |
 | [T-C1-33](T-C1-33.md) | `OverridePriorityUseCase`, permission gate, persistence and contracts | US-C1-10 | application + infrastructure | backend-engineer | 3h |
@@ -148,7 +186,7 @@ Source: `ARCHITECTURE.md` §5.1 and §5.5; epic map § `C1`, *What actually rema
 
 ---
 
-## Block E · Competition-in-progress flag — 13 tickets · 33h · phase 1 (MVP)
+## Block E · Competition-in-progress flag — 13 tickets · 33.5h · phase 1 (MVP)
 
 The signature behavior of the product. The epic map calls `C1` *the only epic that owns a domain-differentiating behavior* and names this one. `FR-INC-05` has five falsifiable properties and each has its own ticket: mandatory justification forced in the domain (`T-C1-39`), a configurable Impact uplift that **re-derives** Priority through the matrix and never writes a Priority (`T-C1-36`, `T-C1-40`), deterministic ceiling behavior (`T-C1-41`), set/change/clear audited with the causal chain in **one** event (`T-C1-42`, `T-C1-46`), and agent-only-never-automatic (`T-C1-43` → `T-C1-45`).
 
@@ -161,7 +199,7 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 | [T-C1-40](T-C1-40.md) | The uplift raises assessed Impact and Priority is re-derived through the matrix | US-C1-11 | domain | backend-engineer | 2.5h |
 | [T-C1-41](T-C1-41.md) | Deterministic behavior at the Impact-scale ceiling | US-C1-11 | domain | backend-engineer | 2h |
 | [T-C1-42](T-C1-42.md) | One causal event carrying flag, justification, Impact and Priority transitions | US-C1-11 | domain + application | backend-engineer | 2.5h |
-| [T-C1-43](T-C1-43.md) | `SetCompetitionInProgressFlagUseCase` — the only write path, agent-authorized | US-C1-12 | application | backend-engineer | 3h |
+| [T-C1-43](T-C1-43.md) | `SetCompetitionInProgressFlagUseCase` — the only write path, agent-authorized | US-C1-12 | application + infrastructure | backend-engineer | 3.5h |
 | [T-C1-44](T-C1-44.md) | Server-side rejection of the flag field on every requester-reachable path | US-C1-12 | contracts + infrastructure | backend-engineer | 2.5h |
 | [T-C1-45](T-C1-45.md) | No automated write path exists — the system-actor refusal proof | US-C1-12 | domain + application | backend-engineer | 3h |
 | [T-C1-46](T-C1-46.md) | Clearing the flag removes the uplift and re-derives Priority | US-C1-13 | domain + application | backend-engineer | 3h |
@@ -176,12 +214,12 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 ---
 
-## Block F · Lifecycle — 10 tickets · 27h · phase 1 (MVP)
+## Block F · Lifecycle — 10 tickets · 28h · phase 1 (MVP)
 
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
-| [T-C1-49](T-C1-49.md) | Incident state model over the shared `StateModel` primitive | US-C1-15 | domain | backend-engineer | 3h |
-| [T-C1-50](T-C1-50.md) | Transition-rule configuration: persistence, migration and hot reload | US-C1-15 | infrastructure | backend-engineer | 3h |
+| [T-C1-49](T-C1-49.md) | Incident state model over the shared `StateModel` primitive | US-C1-15 | domain | backend-engineer | 3.5h |
+| [T-C1-50](T-C1-50.md) | Transition-rule configuration: persistence, migration and hot reload | US-C1-15 | infrastructure | backend-engineer | 3.5h |
 | [T-C1-51](T-C1-51.md) | `TransitionIncidentUseCase` with typed refusal and terminal-state protection | US-C1-15 | application | backend-engineer | 2.5h |
 | [T-C1-52](T-C1-52.md) | Lifecycle actions on the agent Incident view | US-C1-15 | feature + ui | frontend-engineer | 3h |
 | [T-C1-53](T-C1-53.md) | Resolution-code list: configurable, stable identifiers, translatable labels | US-C1-16 | domain + infrastructure | backend-engineer | 2.5h |
@@ -226,12 +264,12 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 ---
 
-## Block I · Assignment and escalation — 7 tickets · 18.5h · phase 1 (MVP)
+## Block I · Assignment and escalation — 7 tickets · 19.5h · phase 1 (MVP)
 
 | # | Title | Story | Layer | Agent | Est. |
 |---|---|---|---|---|---:|
 | [T-C1-72](T-C1-72.md) | `ResolverAssignment` and the append-only assignment history | US-C1-24 | domain + infrastructure | backend-engineer | 3h |
-| [T-C1-73](T-C1-73.md) | `ReassignIncidentUseCase` and the `IncidentAssigned` event | US-C1-24 | application + domain | backend-engineer | 2.5h |
+| [T-C1-73](T-C1-73.md) | `ReassignIncidentUseCase`, the `IncidentAssigned` event and the assignment migration | US-C1-24 | application + domain + infrastructure | backend-engineer | 3.5h |
 | [T-C1-74](T-C1-74.md) | Reassignment UI showing the full assignment path | US-C1-24 | feature + ui | frontend-engineer | 2.5h |
 | [T-C1-75](T-C1-75.md) | Functional escalation as a distinct kind, with its permission gate | US-C1-25 | domain + application | backend-engineer | 3h |
 | [T-C1-76](T-C1-76.md) | Escalated state visible in the agent work list | US-C1-25 | feature + ui | frontend-engineer | 2h |
@@ -239,6 +277,8 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 | [T-C1-78](T-C1-78.md) | SLA-threshold escalation as a system-actor action, idempotent per threshold | US-C1-26 | application | backend-engineer | 3h |
 
 **Boundary note.** Resolver Groups and management contacts are `C14` / `C10` and are **referenced through a port bound at the composition root, never imported**. Raising the SLA threshold event is `FR-SLA-07` (`C7`) and `FR-WFL-05` (`C12`); `T-C1-78` only performs the **action** on receiving it — and is one of the automated paths `T-C1-45` asserts can never touch the competition flag.
+
+**Corrected this second pass — the `assigned_*` migration moved from `T-C1-72` to `T-C1-73`.** `DATA-MODEL.md` §8.1 lists `incident_ticket.assigned_group_id`/`assigned_user_id`/`assigned_at` and `ck_incident_assessed_before_assignment` as columns and a check on `incident_ticket` itself, not on the append-only `incident_assignment_history` table `T-C1-72` migrates. ADR-014 rule 3 ("a column arrives with the first behavior that writes it") puts the migration with `T-C1-73`'s `ReassignIncidentUseCase`, the only writer — the same reasoning already used to place the assessment-columns migration on `T-C1-30` rather than `T-C1-27`'s matrix ticket, and the competition-flag migration on `T-C1-43` rather than a sibling block-E domain ticket. `T-C1-72` keeps its value object and its own history-table migration; `T-C1-73` now also carries a recorded 3h-cap exception, consistent with the other four.
 
 ---
 
@@ -325,6 +365,16 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 ---
 
+## Block P · Untriaged-period visibility — 1 ticket · 2.5h · phase 1 (MVP)
+
+| # | Title | Story | Layer | Agent | Est. |
+|---|---|---|---|---|---:|
+| [T-C1-102](T-C1-102.md) | Untriaged-period configuration and the "overdue for triage" indicator | — (no story yet, `FR-INC-20`) | application + infrastructure | backend-engineer | 2.5h |
+
+**New this pass — `FR-INC-19`/`FR-INC-20` (PRD §14.10).** `FR-INC-20` requires an Incident to become visibly overdue for triage past a configurable maximum period in `New`. Numbered last, at the next free ID, because ticket IDs are stable and appended — it belongs, logically, right after `T-C1-50` (block F), whose `state_category = 'new'` and `ix_incident_untriaged` it depends on. **Not foundation work** (`FR-INC-20` has a persona and observable behavior), but no `US-C1-nn` exists for it yet — `story: —` is a placeholder for a real gap, reported as a finding for `business-analyst` in the ticket's own `## Context` and in the test plan's Findings note, not an exemption. **Dependent on PRD assumption A11** (the production period value and default action on expiry) without inventing one: the ticket builds fail-fast configuration and the query mechanism only, the same pattern already used for the Priority matrix (`T-C1-27`) and auto-close (`T-C1-63`).
+
+---
+
 ## Sequencing risks carried forward
 
 Two findings are about **phasing**, not implementation. They block nothing, and they are recorded here because the sequence they imply is a Product Owner decision that this backlog cannot make.
@@ -341,26 +391,29 @@ Two findings are about **phasing**, not implementation. They block nothing, and 
 | Block | Tickets | Hours | Phase |
 |---|--:|--:|---|
 | A · Incident context foundation | 2 | 4.5 | disputed 0/1 |
-| B · Base record and intake | 17 | 46.5 | disputed 0/1 |
+| B · Base record and intake | 17 | 46.0 | disputed 0/1 |
 | C · Categorization | 6 | 15.5 | disputed 0/1 |
-| D · Prioritization | 10 | 26.0 | 1 (MVP) |
-| E · Competition-in-progress flag | 13 | 33.0 | 1 (MVP) |
-| F · Lifecycle | 10 | 27.0 | 1 (MVP) |
+| D · Prioritization | 10 | 26.5 | 1 (MVP) |
+| E · Competition-in-progress flag | 13 | 33.5 | 1 (MVP) |
+| F · Lifecycle | 10 | 28.0 | 1 (MVP) |
 | G · Closure | 6 | 15.0 | 1 (MVP) |
 | H · Collaboration | 7 | 18.5 | 1 (MVP) |
-| I · Assignment and escalation | 7 | 18.5 | 1 (MVP) |
+| I · Assignment and escalation | 7 | 19.5 | 1 (MVP) |
 | J · First Contact Resolution | 2 | 5.5 | 1 (MVP) |
 | K · Linking | 5 | 13.0 | 1 (MVP) |
 | L · Scope rule at intake | 3 | 8.5 | unphased |
 | M · Knowledge suggestions and deflection | 4 | 11.0 | unphased |
 | N · Phase 3 | 6 | 16.0 | 3 (§14.5) |
 | O · See it — detail by reference | 3 | 5.0 | disputed 0/1 |
-| **Total** | **101** | **263.5** | |
+| P · Untriaged-period visibility | 1 | 2.5 | 1 (MVP) |
+| **Total** | **102** | **268.5** | |
 
-**By phase.** disputed 0/1 (**F6**): 28 tickets · 71.5h · **the cut is not made here.** Phase 1 (MVP): 60 tickets · 156.5h. Unphased (**F9**): 7 tickets · 19.5h. Phase 3 (§14.5): 6 tickets · 16h.
+**By phase.** disputed 0/1 (**F6**): 28 tickets · 71.0h · **the cut is not made here.** Phase 1 (MVP): 61 tickets · 162.0h. Unphased (**F9**): 7 tickets · 19.5h. Phase 3 (§14.5): 6 tickets · 16h.
 
-**Foundation** (`story: —`): 2 tickets · 4.5h — the six `incident` libraries and the context schema/module wiring. Everything else is `C10`. (Block O's three tickets trace `US-C1-01` like the rest of block B — not foundation, even though new this pass.)
+**Tickets now at the 3h cap with a recorded exception (skill rule, not a sizing failure):** `T-C1-30`, `T-C1-43`, `T-C1-49`, `T-C1-50` and, new this second pass, `T-C1-73`, all at 3.5h — each bundles a migration with the one behavior that is its only writer, per the ADR-014 notes above; splitting any of them would leave a schema no code writes to yet, or a use case that cannot persist its own output.
 
-**Blocked:** 12 tickets — **F24** `T-C1-41` · **F25** `T-C1-86`, `T-C1-87` · **F27** `T-C1-68` · **F28** `T-C1-79`, `T-C1-80` · **F29** `T-C1-10`, `T-C1-14`, `T-C1-16` · **F30** `T-C1-32`, `T-C1-34`, `T-C1-47`.
+**Foundation** (`story: —`): 2 tickets · 4.5h — the six `incident` libraries and the context schema/module wiring. Everything else is `C10`. (Block O's three tickets trace `US-C1-01` like the rest of block B — not foundation, even though added by the first ADR-014 pass. `T-C1-102`, new this second pass, also carries `story: —` but is likewise **not** foundation — see its own `## Context` and block P above.)
 
-**By agent:** `backend-engineer` 71 · `frontend-engineer` 27 · `—` 3. The three are the six-library scaffolding, which spans both platforms, and two API-E2E specs (`T-C1-64`, `T-C1-71`) — e2e-harness work on the backend platform (`apps/api-e2e`, `platform:backend`, `type:e2e`), which neither dev agent owns.
+**Blocked:** 12 tickets — **F24** `T-C1-41` · **F25** `T-C1-86`, `T-C1-87` · **F27** `T-C1-68` · **F28** `T-C1-79`, `T-C1-80` · **F29** `T-C1-10`, `T-C1-14`, `T-C1-16` · **F30** `T-C1-32`, `T-C1-34`, `T-C1-47`. `T-C1-102`'s dependency on PRD assumption **A11** is not counted here: unlike these six findings, it blocks no *mechanism*, only the production configuration value — see block P.
+
+**By agent:** `backend-engineer` 72 · `frontend-engineer` 27 · `—` 3. The three are the six-library scaffolding, which spans both platforms, and two API-E2E specs (`T-C1-64`, `T-C1-71`) — e2e-harness work on the backend platform (`apps/api-e2e`, `platform:backend`, `type:e2e`), which neither dev agent owns. `T-C1-102` (new this pass) is `backend-engineer`, folded into the 72.

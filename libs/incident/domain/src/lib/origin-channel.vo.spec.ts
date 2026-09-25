@@ -14,6 +14,13 @@ describe('OriginChannel', () => {
     ['an unlisted channel', 'sms'],
     ['a mixed-case channel', 'Portal'],
     ['the empty string', ''],
+    // `phone` is not a channel of its own (Product Owner decision): a phone
+    // contact is agent-logged, and no FR-OMN-01 requirement backs a
+    // separate `phone` member.
+    [
+      'phone, since a phone contact is agent-logged, not its own channel',
+      'phone',
+    ],
   ])('rejects %s', (_case, code) => {
     expect(() => OriginChannel.fromCode(code)).toThrow(
       InvalidOriginChannelError,

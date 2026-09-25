@@ -3,18 +3,23 @@ import { DomainError, describeValue } from '@sport-itsm/shared-domain';
 /**
  * The closed set of intake channels, `origin_channel_enum` in
  * `DATA-MODEL.md` §3.4 / §20.3. Only `portal` and `agent_logged` are
- * reachable in the MVP (FR-OMN-01); `email`, `in_app` and `phone` are
- * declared because the native PostgreSQL enum this type mirrors already
- * declares them (`DATA-MODEL.md` §20.3, "Enum `origin_channel_enum`") — a
- * later Omnichannel-expansion ticket wires a use case to them, it does not
- * add them to this closed set.
+ * reachable in the MVP (FR-OMN-01); `email` and `in_app` are declared
+ * because the native PostgreSQL enum this type mirrors already declares
+ * them (`DATA-MODEL.md` §20.3, "Enum `origin_channel_enum`") — a later
+ * Omnichannel-expansion ticket wires a use case to them, it does not add
+ * them to this closed set.
+ *
+ * **`phone` is deliberately absent** (Product Owner decision): `FR-OMN-01`
+ * enumerates portal, email, in-app and agent-logged "(phone/chat)" — a
+ * phone contact is agent-logged, not its own intake channel, and no
+ * requirement backs a separate `phone` member. Do not reintroduce it
+ * without a PRD change.
  */
 export const ORIGIN_CHANNEL_CODES = [
   'portal',
   'agent_logged',
   'email',
   'in_app',
-  'phone',
 ] as const;
 
 export type OriginChannelCode = (typeof ORIGIN_CHANNEL_CODES)[number];

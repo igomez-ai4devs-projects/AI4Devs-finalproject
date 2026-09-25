@@ -198,7 +198,7 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | C8 | **Service Catalog Management** | `service-catalog` | Publish Service Offerings with forms, eligibility rules and fulfillment workflows. |
 | C9 | **Knowledge Management & Self-Service Portal** | `knowledge` | Deflect demand and standardize resolution through curated Knowledge Articles. |
 | C10 | **Identity & Access Management (RBAC)** | `identity-access` | Authenticate users and enforce least-privilege, persona-aligned authorization. |
-| C11 | **Omnichannel Intake** | cross-cutting (`incident`/`service-request`) | Normalize demand from portal, email, in-app and phone into one ticket model. |
+| C11 | **Omnichannel Intake** | cross-cutting (`incident`/`service-request`) | Normalize demand from portal, email, in-app and agent-logged entries (phone, chat) into one ticket model. |
 | C12 | **Workflow & Automation Engine** | cross-cutting | Automated categorization, routing, assignment and task orchestration. |
 | C13 | **Major Incident Management** | `incident-management` (sub-capability) | Command, escalate and communicate high-impact failures disrupting competitions in progress. |
 | C14 | **Assignment & Queue Management** | cross-cutting | Support groups, queues and prioritized agent work lists. |
@@ -265,10 +265,10 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| FR-INC-01 | The system MUST allow an authenticated requester or an agent to log an Incident capturing: reporter, contact channel, short description, detailed description, affected service, **affected competition subject** (Tournament, League, Group/Division, Bracket, Fixture/Match, Standings/Ranking, Registration, Roster, Team, Player Account, Schedule, Result), affected competition instance, and optional attachments. The requester MAY describe competition context in free text, but MUST NOT be able to set priority-bearing fields directly. | M |
+| FR-INC-01 | The system MUST allow an authenticated requester or an agent to log an Incident capturing: reporter, **origin channel** (the channel through which the Incident arrived, as defined in FR-OMN-02 — not a preferred means of contacting the requester), short description, detailed description, affected service (**optional at logging**, because the requester may not know which service is failing; required before the Incident can leave `New`, FR-INC-19), **affected competition subject** (Tournament, League, Group/Division, Bracket, Fixture/Match, Standings/Ranking, Registration, Roster, Team, Player Account, Schedule, Result), affected competition instance, and optional attachments. The requester MAY describe competition context in free text, but MUST NOT be able to set priority-bearing fields directly. | M |
 | FR-INC-02 | The system MUST assign every Incident a unique, human-readable reference number at creation and never reuse it. | M |
 | FR-INC-03 | The system MUST support a configurable categorization taxonomy (Category → Subcategory → Item) and MUST require a category before an Incident can leave the `New` state. | M |
-| FR-INC-04 | The system MUST derive **Priority** from a configurable **Impact × Urgency** matrix, and MUST allow an authorized agent to override the derived Priority with a mandatory justification recorded in the audit trail. | M |
+| FR-INC-04 | The system MUST derive **Priority** from a configurable **Impact × Urgency** matrix, and MUST allow an authorized agent to override the derived Priority with a mandatory justification recorded in the audit trail. Until both Impact and Urgency have been assessed, the Incident has **no Priority**: the system MUST present it as not yet prioritized and MUST NOT substitute a default Priority. **Matrix version.** The first derivation of an Incident's Priority MUST use the matrix version in force **at the moment of that first derivation** — not the version in force when the Incident was logged — and every later re-derivation of that Incident (a change of Impact, Urgency or the competition-in-progress flag, FR-INC-05) MUST keep using that same version, even after a newer version has been published (NFR-CFG-02; decision recorded in §14.10). | M |
 | FR-INC-05 | The system MUST allow an agent, at logging or triage, to flag that the Incident **affects a competition in progress**, with a mandatory justification. Setting the flag MUST raise the assessed **Impact** by a configurable amount, which re-derives Priority through the Impact × Urgency matrix. The flag MUST be set, changed and cleared **only by explicit agent action** — never automatically, and never by the requester — and every change MUST be recorded in the audit trail. | M |
 | FR-INC-06 | The system MUST manage the Incident lifecycle through the states: `New → Assigned → In Progress → Pending (customer / third party / change) → Resolved → Closed`, plus `Cancelled`, with configurable allowed transitions. | M |
 | FR-INC-07 | The system MUST prevent transition to `Resolved` unless a resolution code and resolution notes are provided. | M |
@@ -283,6 +283,8 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | FR-INC-16 | The system SHOULD suggest relevant Knowledge Articles at intake time based on the description and category, and MUST record when a suggestion led to abandonment of the submission (deflection). | S |
 | FR-INC-17 | The system SHOULD detect and propose duplicate/related Incidents affecting the same service and competition subject within a configurable time window. | S |
 | FR-INC-18 | The system MUST record First Contact Resolution when an Incident is resolved by L1 within the first interaction without reassignment. | M |
+| FR-INC-19 | **Triage gate.** In addition to the category required by FR-INC-03, the system MUST prevent an Incident from leaving the `New` state unless **Impact** and **Urgency** have been assessed (and therefore Priority derived, FR-INC-04) and an **affected service** has been recorded. The system MUST also prevent an Incident from being **assigned** to a Resolver Group or to an individual agent — whether by manual assignment, self-assignment (FR-QUE-03), reassignment (FR-INC-12) or an assignment rule (FR-WFL-02/03) — until Impact and Urgency have been assessed. Both gates apply whatever lifecycle transitions are configured (FR-INC-06, FR-WFL-01); configuration can add conditions, never remove these. A rejected attempt MUST tell the actor which mandatory element is missing. | M |
+| FR-INC-20 | **No indefinite rest in `New`.** An Incident MUST NOT remain in the `New` state without a category indefinitely. The system MUST apply a **configurable maximum untriaged period** to every Incident in `New`, and an Incident that exceeds it without a category MUST become visibly **overdue for triage** to the Service Desk. The period is measured and acted upon through the time-based rules of FR-WFL-05; any action beyond that visibility (reminder, functional or hierarchical escalation under FR-INC-13) is configured through those rules rather than fixed here. The period value and the default action on expiry are open points (§10 A11, §14.10). | M |
 
 #### 7.1.1 C13 — Major Incident Management (sub-capability)
 
@@ -431,8 +433,8 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| FR-OMN-01 | The system MUST accept demand from the Self-Service Portal, email-to-ticket, in-app help and agent-logged (phone/chat) entries, normalizing all into a single ticket model with a unique reference. | M (portal + agent-logged) / S (email, in-app) |
-| FR-OMN-02 | Every ticket MUST record its **origin channel** for reporting. | M |
+| FR-OMN-01 | The system MUST accept demand from the Self-Service Portal, email-to-ticket, in-app help and agent-logged entries, normalizing all into a single ticket model with a unique reference. An **agent-logged** entry is one an agent records on the requester's behalf from a contact received outside the self-service channels — a phone call, a chat or any other direct contact with the Service Desk. | M (portal + agent-logged) / S (email, in-app) |
+| FR-OMN-02 | Every ticket MUST record its **origin channel** for reporting: the channel through which the ticket arrived — the "contact type" of ITSM practice. The origin channel takes exactly one of four values: **portal**, **email**, **in-app** or **agent-logged**. Phone and chat are **not** separate channels: a ticket raised by phone or chat is agent-logged. The origin channel describes how the ticket arrived; it is **not** a preferred means of contacting the requester, which no requirement in this PRD defines. | M |
 | FR-OMN-03 | Email replies to a ticket notification MUST be appended as public comments to the originating ticket rather than creating a new ticket. | S |
 | FR-OMN-04 | Intake MUST capture the requester identity; anonymous submissions are not permitted. | M |
 
@@ -586,7 +588,7 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | ID | Requirement |
 | --- | --- |
 | NFR-CFG-01 | Categories, the Impact × Urgency priority matrix, SLA policies, catalog offerings, workflows, approval chains, notification templates and roles MUST be configurable by a System Administrator without a software release. |
-| NFR-CFG-02 | Configuration changes MUST take effect on new records without corrupting in-flight records governed by the previous configuration. |
+| NFR-CFG-02 | Configuration changes MUST take effect on new records without corrupting in-flight records governed by the previous configuration. A record is **governed** by a configuration from the moment that configuration is **first applied** to it, which is not necessarily its creation: a record not yet governed by a given configuration takes the version in force when that configuration is first applied, and keeps that version thereafter (e.g. the Impact × Urgency matrix governs an Incident only from its first Priority derivation, FR-INC-04). |
 | NFR-CFG-03 | The system MUST expose its own operational health so that Sport ITSM outages are detectable independently of user reports. |
 
 ---
@@ -648,6 +650,7 @@ Capabilities map 1:1 to the capability list in `readme.md` §1.2. Each carries a
 | A8 | Competitions may span multiple time zones and languages. | i18n and time-zone requirements are already accounted for (§8.5). |
 | A9 | Historical support data is not migrated; Sport ITSM starts from a clean baseline. | Baselines in §9 must be established during the first operating quarter. |
 | A10 | The data controller has a **designated authority outside Sport ITSM** (data protection officer, legal or equivalent) able to decide whether a personal-data erasure request is lawful, to verify that the requester is the data subject, and to apply any legal exemption — and to record that decision as the approval that gates `FR-IAM-09`. | `FR-IAM-09` has no one to gate it. Sport ITSM would either execute erasure on an unverified request, or refuse every request and leave the K9 obligation unmet. The product does **not** close this gap by adjudicating lawfulness itself: that is a legal determination, outside the scope of an ITSM platform (§3). If the assumption fails, the response is to appoint the authority, not to extend the product. |
+| A11 | The service organization will set the **maximum untriaged period** in `New` (FR-INC-20), and the default action taken when it expires, before Phase 1 goes live. This PRD deliberately states no value: none has been given by the business, and the right value depends on the Service Desk coverage schedule (A4, A7). | FR-INC-20 has nothing to enforce, and an uncategorized Incident can again rest in `New` indefinitely — unprioritized, unassigned (FR-INC-19) and outside every Priority-based work list and KPI. |
 
 ---
 
@@ -759,7 +762,7 @@ _Exit criterion:_ an authenticated user with a role exists, and every action tak
 
 | Capability | MVP inclusion |
 | --- | --- |
-| **Incident Management** | Full lifecycle FR-INC-01 → 13, FR-INC-18. Portal + agent-logged intake. **FR-INC-15** — scope-rule enforcement at intake (see below). |
+| **Incident Management** | Full lifecycle FR-INC-01 → 13, FR-INC-18, and the triage gate and untriaged-period rule FR-INC-19, 20 (§14.10). Portal + agent-logged intake. **FR-INC-15** — scope-rule enforcement at intake (see below). |
 | **Major Incident Management** | FR-MIM-01, 02, 03 (declaration, protocol, child linking). |
 | **Service Request Management** | FR-SRQ-01 → 09, 11, for the **seven** MVP catalog offerings. The seventh is the personal-data erasure request added with FR-IAM-09; it is MVP for the same reason FR-IAM-09 is — the obligation binds from the first real personal data, and a request the product must evidence as "received" needs a record to be received into. |
 | **Service Catalog** | FR-CAT-01 → 05. |
@@ -871,9 +874,31 @@ Until then, no artifact derived from this PRD may require access to be validated
 
 ### 14.9 Phasing completeness
 
-**Every active functional requirement in §7 now carries a phase.** As of this revision §14.2 → §14.6 assign all **149 active** `FR-` IDs (150 declared, less the retired `FR-CHG-07`), and §8 is governed in full by the general rule in §14.1. No requirement is unphased, and none is phased implicitly through prose that does not name its ID — the failure mode that previously hid `FR-OMN-02`, `FR-OMN-04` and `FR-NOT-06` behind parenthetical descriptions in the MVP table while leaving them, formally, committed to nothing.
+**Every active functional requirement in §7 now carries a phase.** As of this revision §14.2 → §14.6 assign all **151 active** `FR-` IDs (152 declared, less the retired `FR-CHG-07`), and §8 is governed in full by the general rule in §14.1. No requirement is unphased, and none is phased implicitly through prose that does not name its ID — the failure mode that previously hid `FR-OMN-02`, `FR-OMN-04` and `FR-NOT-06` behind parenthetical descriptions in the MVP table while leaving them, formally, committed to nothing.
 
-This is a standing invariant, not a one-off clean-up. **Any requirement added to §7 must receive a phase in the same revision that creates it** — as `FR-IAM-08` and `FR-IAM-09` did — and any requirement whose phase is genuinely undecidable must be recorded here as an explicit open decision, with the reason, rather than left silently absent. An unphased requirement is not a gap in a list; it is a commitment nobody has made, and from downstream the two are indistinguishable.
+This is a standing invariant, not a one-off clean-up. **Any requirement added to §7 must receive a phase in the same revision that creates it** — as `FR-IAM-08`, `FR-IAM-09`, `FR-INC-19` and `FR-INC-20` did — and any requirement whose phase is genuinely undecidable must be recorded here as an explicit open decision, with the reason, rather than left silently absent. An unphased requirement is not a gap in a list; it is a commitment nobody has made, and from downstream the two are indistinguishable.
+
+### 14.10 Recorded decision — Incident intake and triage (ADR-014 reconciliation)
+
+**Provenance.** Recorded 2026-09-26. These questions surfaced while implementing the `Incident` aggregate (ticket T-C1-05) and reconciling the data model with the rule that a logged Incident is persisted unassessed (engineering decision ADR-014 in `docs/product/ARCHITECTURE.md` §10). The PRD did not answer them; the Product Owner decided them, and they are recorded here so that no downstream artifact infers a different reading. The decisions are normative; the requirement texts cited carry them.
+
+| # | Decision | Carried by |
+| --- | --- | --- |
+| D1 | The "contact channel" captured at logging is the **origin channel** — how the Incident arrived (the ITSM "contact type"). It takes one of four values: portal, email, in-app, agent-logged. There is **no separate phone channel**: an Incident raised by phone or chat is agent-logged. No preferred means of contacting the requester is introduced. | FR-INC-01, FR-OMN-01, FR-OMN-02, §16 |
+| D2 | An Incident **may not rest in `New` without a category indefinitely**. A configurable maximum untriaged period applies; its value and the default action on expiry are not decided (A11). | FR-INC-20, §10 A11 |
+| D3 | **Impact and Urgency — and therefore the derived Priority — are mandatory to leave `New` and to assign** the Incident to a Resolver Group or an agent. | FR-INC-19 |
+| D4 | An Incident logged while matrix version *n* was in force and first assessed after version *n+1* was published derives its Priority under ***n+1*** — the version in force at the first derivation — and keeps that version for every later re-derivation. Before the first derivation no matrix governs the record, so NFR-CFG-02 has nothing to protect. | FR-INC-04, NFR-CFG-02 |
+| D5 | The **affected service is optional at logging** (the requester may not know which service is failing) but **mandatory to leave `New`**. | FR-INC-01, FR-INC-19 |
+
+**Requirements changed in this revision.** FR-INC-01, FR-INC-04, FR-OMN-01 and FR-OMN-02 were clarified in place; NFR-CFG-02 gained the definition of when a record becomes governed by a configuration; **FR-INC-19** and **FR-INC-20** were added at the end of the `FR-INC` series, both `Must` and Phase 1 (§14.3). No ID was renumbered, reused or retired, and no other priority changed. FR-INC-03 is unchanged: FR-INC-19 extends its exit gate rather than restating it.
+
+**Open points — to be decided by the Product Owner, not by downstream artifacts.** Until decided, the requirement texts apply exactly as written, with no exception inferred.
+
+1. **Untriaged period.** The value of FR-INC-20's maximum untriaged period and the default action on expiry beyond visibility (A11).
+2. **Exit from `New` to `Cancelled`, and conversion.** As written, FR-INC-03 and FR-INC-19 gate **every** exit from `New`, including cancellation of a duplicate or unfounded Incident and conversion to a Service Request (FR-INC-14). Whether those exits are exempt from the category, Impact/Urgency and affected-service conditions is undecided.
+3. **Rule-based routing at intake.** FR-WFL-03 maps category, affected subject or channel to a Resolver Group or queue. Under FR-INC-19 an assignment rule cannot assign an unassessed Incident to a Resolver Group. Whether placing an unassessed Incident in an intake or triage queue counts as assignment is undecided.
+4. **SLA policy before the first Priority derivation.** FR-SLA-01 sets targets per priority and FR-SLA-02 attaches a policy at creation, but a newly logged Incident has no Priority (FR-INC-04). Which policy — and therefore which response target — applies until the first derivation is undecided. FR-INC-20's untriaged period is a separate measure and does not answer it.
+5. **Competition-in-progress flag set at logging.** FR-INC-05 allows the flag at logging and raises the assessed Impact by a configured amount. How that uplift applies when Impact has not yet been assessed is undecided.
 
 ---
 
@@ -927,6 +952,7 @@ This is a standing invariant, not a one-off clean-up. **Any requirement added to
 | **MTTA** | Mean Time to Acknowledge / first response. |
 | **MTTR** | Mean Time to Resolution. |
 | **OLA** | Operational Level Agreement — internal target underpinning an SLA. |
+| **Origin channel** | The channel through which a ticket arrived (the ITSM "contact type"): portal, email, in-app or agent-logged. Phone and chat contacts are agent-logged. Not a preferred means of contacting the requester (FR-OMN-02). |
 | **Problem** | The underlying cause of one or more Incidents. |
 | **RCA** | Root Cause Analysis. |
 | **Release** | A packaged, deployable set of authorized Changes to the SCMS platform. |
@@ -937,3 +963,4 @@ This is a standing invariant, not a one-off clean-up. **Any requirement added to
 | **Session** | A continuous period of authenticated use by one user on one device. Bounded by an inactivity period and by a maximum lifetime (FR-IAM-06) and endable by the user at will (FR-IAM-08); its assurance level is fixed in §14.8. |
 | **SLA** | Service Level Agreement — response/resolution commitment. |
 | **SPOC** | Single Point of Contact — the Service Desk's role for platform users. |
+| **Triage** | The agent's assessment of a logged Incident — category, Impact, Urgency (and hence Priority) and affected service. All four are required to leave `New`; Impact and Urgency are also required before assignment (FR-INC-03, FR-INC-19). |

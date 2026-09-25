@@ -2,9 +2,15 @@
 
 > Companion to [`ARCHITECTURE.md`](ARCHITECTURE.md) (bounded contexts §4, tactical model §6.2, **ADR-005**), [`COMPONENTS.md`](COMPONENTS.md) (§5 Persistence), [`PROJECT-STRUCTURE.md`](PROJECT-STRUCTURE.md) (where entities, mappers and migrations live) and section **3. Modelo de Datos** of [`../readme.md`](../readme.md). Behavior — what each field *means* to the business — is owned by [`PRD.md`](PRD.md); every table below traces to a functional requirement ID.
 
-> ## Reading notice — target model, nothing is built yet
+> ## Reading notice — target model; only schema namespaces are built
 >
-> **`apps/api` exists as a NestJS scaffold, but nothing below it does: no `libs/`, no TypeORM entity, no data source, no migration file and no database.**
+> **This document is the target model. What exists today (verified in `apps/api/src/migrations/` on 2026-09-26) is the migration chain and two schema namespaces — no table, no enum type, no sequence, no constraint and no TypeORM entity:**
+>
+> - The data source `apps/api/src/data-source.ts` (`synchronize: false`, `migrationsRun: false`) and the migration conventions in `apps/api/src/migrations/README.md` (`T-C10-16`, `T-C10-17`).
+> - `1790349248155-CreateIamSchemaAndExtensions` (`T-C10-17`) — the `iam` schema and the `citext` and `pg_trgm` extensions.
+> - `1790366187635-CreateIncidentSchema` (`T-C1-02`) — the `incident` schema, empty.
+>
+> Every table, type and constraint below is therefore still prescriptive ("shall be"). Detail and next steps: §19.
 
 ---
 
@@ -136,7 +142,40 @@ PostgreSQL 18 ships **`uuidv7()` in core** — no extension, the same availabili
 
 ### 3.2 Reference numbers
 
-`incident_ticket.reference` and `sr_request.reference` are human-readable, unique and **never reused** (FR-INC-02, NFR-DAT-01): `INC0000123`, `SRQ0000045`. Each record type owns a dedicated PostgreSQL `SEQUENCE` (`incident.incident_reference_seq`, `service_request.sr_reference_seq`) read by the repository adapter via `nextval`; sequences do not roll back with a failed transaction, which is exactly the desired "never reused" semantic (gaps are acceptable, reuse is not).
+`incident_ticket.reference` and `sr_request.reference` are human-readable, unique and **never reused** (FR-INC-02, NFR-DAT-01): `INC0000123`, `SRQ0000045`. Each record type owns a dedicated PostgreSQL `SEQUENCE` (`incident.incident_reference_seq`, `service_request.sr_reference_seq`), declared `NO CYCLE` explicitly, read by the repository adapter via `nextval`; sequences do not roll back with a failed transaction, which is exactly the desired "never reused" semantic (gaps are acceptable, reuse is not).
+
+**Four mechanisms, one per failure mode.** The reference is guaranteed by the database, not by a check a race or a defect can defeat:
+
+| Guarantee | Mechanism | Defeats |
+|---|---|---|
+| Unique | `uq_incident_reference` / `uq_sr_request_reference` | Two concurrent creations allocating the same value |
+| Never re-issued | The sequence (`NO CYCLE`), plus the absence of hard deletes on tickets (§3.6) — a cancelled Incident keeps its row and therefore its number | Reuse after cancellation, rollback or deletion |
+| Present from creation | `NOT NULL` from the first row that can exist (§8.5) | A ticket persisted without its reference |
+| **Immutable** | A column-immutability guard trigger — the one sanctioned trigger category (§3.7) | An `UPDATE` that changes an existing reference, from any writer |
+
+**Immutability — the mechanism, and why it is a trigger.** Immutability compares the row **before** and **after** an update. A `CHECK` sees only the new row, so it cannot express it; the two in-database alternatives were weighed and rejected:
+
+- **Column privileges (`REVOKE UPDATE (reference)`).** In PostgreSQL a column-level `REVOKE` has no effect while the role holds table-level `UPDATE`; the rule would have to be written as a table-wide `REVOKE UPDATE` plus a `GRANT UPDATE (col, …)` listing every *other* column — a list every later migration on the table must remember to extend (§8.5 adds columns group by group), and one that silently loses a column when it forgets. More decisively, privileges do not bind the table owner or a superuser, and **every environment that exists today connects as `postgres`** (`docker/docker-compose.dev.yml`, `docker/docker-compose.e2e.yml`, `.env.example`): the guarantee would be absent exactly where the acceptance suite runs, so "rejected at the database level" could be neither enforced nor proved. The application role that §14.2 assumes (`sport_itsm_app`) is not provisioned yet (§19).
+- **Domain and mapper only.** `TicketReference` is an immutable value object with no mutator on the aggregate, and the entity column is mapped `update: false`, so TypeORM never emits it in an `UPDATE`. Both are kept as defence in depth, but neither is a database guarantee: raw SQL, a fixture, a backfill or a defective adapter bypasses both.
+
+The trigger, per record type (shown for `incident`):
+
+```sql
+CREATE FUNCTION incident.fn_reject_reference_update() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'incident_ticket.reference is immutable'
+    USING ERRCODE = 'integrity_constraint_violation';
+END $$;
+
+CREATE TRIGGER tg_incident_ticket_reference_immutable
+  BEFORE UPDATE OF reference ON incident.incident_ticket
+  FOR EACH ROW
+  WHEN (OLD.reference IS DISTINCT FROM NEW.reference)
+  EXECUTE FUNCTION incident.fn_reject_reference_update();
+```
+
+It fires for every role, the owner and a superuser included, holds regardless of application version, writes nothing, reads nothing but the row, and encodes no policy — which is exactly the §3.7 test for what may live in the database. The migration that creates it drops both the trigger and the function in `down`. `sr_request` receives the same guard (`service_request.fn_reject_reference_update`, `tg_sr_request_reference_immutable`) in the migration that creates its `reference` column. Decision **M18** (§18).
 
 ### 3.3 Timestamps and auditing columns
 
@@ -163,6 +202,7 @@ Every table carries:
 | Column | `snake_case`; foreign keys end in `_id`; booleans read as assertions (`is_major`, `competition_affects`, `requires_approval`); instants end in `_at`; durations carry their unit (`response_target_minutes`, `elapsed_paused_seconds`) |
 | Constraint | `pk_<table>`, `fk_<table>_<column>`, `uq_<table>_<columns>`, `ix_<table>_<columns>`, `ck_<table>_<rule>` |
 | Enum type | `<schema>.<name>_enum` (`incident.origin_channel_enum`) |
+| Guard trigger / function | `tg_<table>_<column>_immutable` / `<schema>.fn_reject_<column>_update` — only for the column-immutability guards §3.7 sanctions (§3.2) |
 | Migration | `apps/api/src/migrations/<timestamp>-<PascalCaseName>.ts` (readme §2.3.3) |
 
 The schema-per-context split is not cosmetic: it makes the boundary rule visible in the database, lets `GRANT`/`REVOKE` be scoped per context (used to enforce audit immutability, §14) and makes a future context extraction a schema dump rather than a table-by-table archaeology.
@@ -173,7 +213,7 @@ The rule is **who is allowed to change the value set**:
 
 | Mechanism | Used when | Examples |
 |---|---|---|
-| **Native PostgreSQL enum type** | The value set is **closed** and can only change with a code change, because the domain branches on it. Adding a value is a migration *and* a domain change, which is the desired friction. | `origin_channel_enum` (portal, agent_logged, email, in_app, phone), `note_visibility_enum` (public, internal), `impact_enum` / `urgency_enum` (1–5), `priority_enum` (P1–P4), `link_type_enum`, `sla_target_type_enum`, `sla_instance_state_enum`, `approval_decision_enum`, `dispatch_state_enum`, `actor_type_enum`, `record_type_enum` |
+| **Native PostgreSQL enum type** | The value set is **closed** and can only change with a code change, because the domain branches on it. Adding a value is a migration *and* a domain change, which is the desired friction. | `origin_channel_enum` (portal, agent_logged, email, in_app — no `phone`: a phone or chat contact is `agent_logged`, FR-OMN-02), `note_visibility_enum` (public, internal), `impact_enum` / `urgency_enum` (1–5), `priority_enum` (P1–P4), `link_type_enum`, `sla_target_type_enum`, `sla_instance_state_enum`, `approval_decision_enum`, `dispatch_state_enum`, `actor_type_enum`, `record_type_enum` |
 | **Lookup table** (`id uuid PK`, `code` UK, `active`, `sort_order`, + `*_translation` child) | The value set is **administratively configurable without a release** (NFR-CFG-01) and/or must be **translatable without changing its stable identifier** (NFR-I18N-05) | `catalog_category`, `incident_resolution_code`, `iam_role`, `iam_permission`, `incident_workflow_state`, `ntf_template`, `sla_support_schedule` |
 
 Two consequences stated honestly:
@@ -181,7 +221,7 @@ Two consequences stated honestly:
 - **PostgreSQL enum values can be added but not removed or reordered** without a rewrite migration. That is accepted for the closed sets above and is precisely why anything an administrator may retire is a lookup table instead.
 - **Historical reporting semantics are protected** (NFR-DAT-03) because records store the lookup **id**, never the label. Renaming "Scoring & Results" changes one row in `catalog_category_translation` and zero historical facts.
 
-Workflow state is the interesting case: `incident_ticket.state_id` references `incident_workflow_state` (a lookup), **not** an enum, because FR-WFL-01 requires the lifecycle to be configurable without code. The ticket also stores `state_category` (a native enum: `open`, `pending`, `resolved`, `closed`, `cancelled`) as a denormalized, non-configurable classification, so that queries and reporting never depend on customer configuration.
+Workflow state is the interesting case: `incident_ticket.state_id` references `incident_workflow_state` (a lookup), **not** an enum, because FR-WFL-01 requires the lifecycle to be configurable without code. The ticket also stores `state_category` (a native enum: `new`, `open`, `pending`, `resolved`, `closed`, `cancelled`) as a denormalized, non-configurable classification, so that queries and reporting never depend on customer configuration. `new` is exactly the untriaged entry state: FR-INC-19 makes the exit gate from `New` non-removable by configuration, so the fact "this Incident is still in `New`" must be as non-configurable as the gate it anchors, and row-local so a `CHECK` can read it (§8.1, M17). `open` is every other active state (`Assigned`, `In Progress` and any configured equivalent).
 
 ### 3.6 Deletes, retention and erasure
 
@@ -195,9 +235,11 @@ Workflow state is the interesting case: `incident_ticket.state_id` references `i
 
 ### 3.7 Schema evolution
 
-**Migrations only.** `synchronize` is `false` in every environment, without exception (CLAUDE.md, COMPONENTS.md §5). The schema changes exclusively through TypeORM migrations generated against `apps/api/src/data-source.ts`, reviewed as code, and applied through the documented commands; migrations auto-run only when `NODE_ENV=development` and go through a controlled deploy step everywhere else, because the API scales horizontally and concurrent startup migrations are a corruption hazard (ADR-004).
+**Migrations only.** `synchronize` is `false` in every environment, without exception (CLAUDE.md, COMPONENTS.md §5). The schema changes exclusively through TypeORM migrations generated against `apps/api/src/data-source.ts`, reviewed as code, and applied through the documented commands. Migrations **never** run on application boot, in any environment (`migrationsRun: false` in `apps/api/src/data-source.ts`): they are an explicit step — `pnpm migration:run` locally and in the acceptance suite, Render's pre-deploy command on stage (ADR-013) — because the API scales horizontally and concurrent startup migrations are a corruption hazard (ADR-004).
 
-No business rule ever lives in a trigger, a stored procedure or a check that encodes a policy decision. `CHECK` constraints are used only for **structural invariants that must hold regardless of application version** (a resolved ticket has a resolution code; an SLA target is positive; a competition subject has either an identifier or a label). Everything else lives in TypeScript, in the domain layer, where it is testable without a database.
+No business rule ever lives in a trigger, a stored procedure or a check that encodes a policy decision. `CHECK` constraints are used only for **structural invariants that must hold regardless of application version** (a resolved ticket has a resolution code; an SLA target is positive; a competition subject has either an identifier or a label; an Incident outside `New` has been triaged, because FR-INC-19 makes that gate non-removable by configuration). Everything else lives in TypeScript, in the domain layer, where it is testable without a database.
+
+**The one sanctioned trigger category: column-immutability guards.** A structural invariant that compares the row before and after an update — "this column never changes once written" — cannot be a `CHECK`, which sees only the new row. For that invariant alone, a `BEFORE UPDATE OF <column>` trigger whose only effect is to raise when `OLD.<column> IS DISTINCT FROM NEW.<column>` is permitted. It must write nothing, read nothing beyond the row, carry no condition other than the change itself, and be named per §3.4. The only instances in the model are the reference-number guards (§3.2, M18). A trigger that sets a value, derives a field, reads another table or depends on a configurable condition remains forbidden; so does any use of a guard trigger for a rule the domain can change.
 
 ---
 
@@ -608,14 +650,14 @@ erDiagram
         varchar_20 reference UK "INC0000123 - never reused, FR-INC-02"
         varchar_255 short_description
         text description
-        origin_channel_enum origin_channel "portal, agent_logged, email, in_app, phone - FR-OMN-02"
+        origin_channel_enum origin_channel "portal, agent_logged, email, in_app - FR-OMN-02"
         uuid reporter_user_id "soft ref to iam.iam_user"
         uuid logged_by_user_id "soft ref - agent who logged it on behalf"
         uuid service_id "soft ref to catalog.catalog_service"
         uuid category_id "soft ref to catalog.catalog_category - required to leave New"
         uuid workflow_id FK "pinned at creation - NFR-CFG-02"
         uuid state_id FK "configurable lifecycle - FR-WFL-01"
-        state_category_enum state_category "open, pending, resolved, closed, cancelled"
+        state_category_enum state_category "new, open, pending, resolved, closed, cancelled - new is the untriaged entry state"
         pending_reason_enum pending_reason "customer, third_party, change - FR-INC-06"
         uuid priority_matrix_id FK "nullable - pinned at first derivation - NFR-CFG-02"
         impact_enum base_impact "nullable - agent assessed at triage, before uplift"
@@ -827,13 +869,13 @@ erDiagram
 | `reference` | `varchar(20)` | no | yes | `INC` + zero-padded sequence value; immutable, never reused (FR-INC-02, NFR-DAT-01) |
 | `short_description` | `varchar(255)` | no | no | Work-list title |
 | `description` | `text` | no | no | Full report; may contain requester free text about competition context (FR-INC-01) |
-| `origin_channel` | enum | no | no | `portal` and `agent_logged` in the MVP; `email` / `in_app` phase 3 (FR-OMN-01/02) |
+| `origin_channel` | enum | no | no | How the Incident arrived — one of `portal`, `agent_logged`, `email`, `in_app`; a phone or chat contact is `agent_logged`. Not a preferred means of contacting the requester. `portal` and `agent_logged` in the MVP; `email` / `in_app` phase 3 (FR-OMN-01/02) |
 | `reporter_user_id` | `uuid` | no | no | **Soft** ref to `iam.iam_user`; anonymous intake is impossible (FR-OMN-04) |
 | `logged_by_user_id` | `uuid` | yes | no | Agent who logged on the reporter's behalf (phone/chat) |
 | `service_id` | `uuid` | yes | no | **Soft** ref to `catalog.catalog_service`; drives SLA policy resolution |
 | `category_id` | `uuid` | yes | no | **Soft** ref to `catalog.catalog_category` (leaf `item` level); required before leaving `New` (FR-INC-03) |
 | `workflow_id` / `state_id` | `uuid` | no | no | Hard FKs to the configured lifecycle in force for this ticket, pinned at creation (FR-WFL-01, NFR-CFG-02). Introduced with the lifecycle, with a lossless backfill (§8.5) |
-| `state_category` | enum | no | no | Denormalized, non-configurable classification so queries and KPIs never depend on customer configuration. Introduced with `state_id` (§8.5) |
+| `state_category` | enum | no | no | Denormalized, non-configurable classification so queries and KPIs never depend on customer configuration; `new` identifies the untriaged entry state that the triage gate and the untriaged-period sweep read (FR-INC-19/20, M17). Introduced with `state_id` (§8.5) |
 | `pending_reason` | enum | yes | no | `customer` / `third_party` / `change`; combined with the state's `sla_clock` it drives pause semantics (FR-INC-08) |
 | `priority_matrix_id` | `uuid` | yes | no | The matrix **version** that produced the priority — set at the **first** derivation and never changed afterwards, so in-flight tickets keep it (NFR-CFG-02, §8.5) |
 | `base_impact` | enum | yes | no | Agent's impact assessment **before** the competition uplift; `NULL` until triage (§8.5) |
@@ -872,12 +914,19 @@ erDiagram
 | `ck_incident_impact_pair` | `(base_impact IS NULL) = (assessed_impact IS NULL)` — the uplifted Impact exists exactly when the agent's assessment does (M4) |
 | `ck_incident_priority_derivation` | `(priority IS NULL) = (assessed_impact IS NULL OR urgency IS NULL)` — Priority exists exactly when both inputs do; no Priority without an assessment, no complete assessment without a Priority (FR-INC-04, US-C1-08) |
 | `ck_incident_priority_provenance` | `priority IS NULL OR priority_matrix_id IS NOT NULL` — every Priority names the matrix version that produced it (NFR-CFG-02) |
-| `ck_incident_categorized_beyond_new` | `state_category NOT IN ('pending','resolved','closed') OR category_id IS NOT NULL` — those categories are reachable only after exit from `New`, which FR-INC-03 gates on a category. `open` covers `New` itself and `cancelled` may be reached from `New`, so neither is constrained |
+| `ck_incident_triaged_beyond_new` | `state_category IN ('new','cancelled') OR (category_id IS NOT NULL AND assessed_impact IS NOT NULL AND urgency IS NOT NULL AND priority IS NOT NULL AND service_id IS NOT NULL)` — every exit from `New` requires a category (FR-INC-03) and an assessed Impact and Urgency, hence a derived Priority, and an affected Service (FR-INC-19). `priority` is already implied by `ck_incident_priority_derivation` and `base_impact` by `ck_incident_impact_pair`; `priority` is stated anyway so the gate reads as the requirement does. **`cancelled` is deliberately not constrained — pending PRD §14.10 open point 2**, see below. Replaces the former `ck_incident_categorized_beyond_new`, whose name no longer described its rule |
+| `ck_incident_assessed_before_assignment` | `(assigned_group_id IS NULL AND assigned_user_id IS NULL) OR (assessed_impact IS NOT NULL AND urgency IS NOT NULL)` — no Resolver Group and no agent holds an Incident whose Impact and Urgency are unassessed, whatever path assigned it (FR-INC-19: manual, self-assignment FR-QUE-03, reassignment FR-INC-12, assignment rule FR-WFL-02/03). Independent of state: it binds in `New` as well |
 | `ck_incident_subject` | `competition_subject_type IS NULL OR competition_subject_external_id IS NOT NULL OR competition_subject_label IS NOT NULL` |
 | `ck_incident_major` | `is_major = false OR (major_declared_by IS NOT NULL AND major_declared_at IS NOT NULL AND major_justification IS NOT NULL)` |
 | `ck_incident_csat` | `csat_score IS NULL OR csat_score BETWEEN 1 AND 5` |
 
-Deliberately **absent**: any check requiring an assessment (Impact, Urgency, Priority) at a given state. The PRD gates exit from `New` on a category (FR-INC-03) and on nothing else; whether an Incident may be assigned or worked while still unprioritized is a product rule that is not stated, and a `CHECK` is not the place to invent it (§3.7, §18 M14).
+**Why the two triage checks are schema invariants and not only domain rules.** §3.7 admits a `CHECK` only for an invariant that holds regardless of application version. FR-INC-19 states both gates as exactly that: they apply "whatever lifecycle transitions are configured", and "configuration can add conditions, never remove these". No configuration and no release can legitimately produce an Incident outside `New` without its triage elements, or an assigned Incident without Impact and Urgency — so a row that does is a defect, which is what these checks exist to stop. The **rules** still live in the domain (the transition guard and the assignment guard, with the typed error that tells the actor which element is missing); the checks are the safety net behind them. What the schema does not do is *choose* anything: it never decides which element is missing first, never orders the triage steps, and never encodes an open point.
+
+**Open points the checks deliberately do not decide** (PRD §14.10 — decided by the Product Owner, not here):
+
+- **Open point 2 — exit from `New` to `Cancelled`, and conversion (FR-INC-14).** As written, FR-INC-03 and FR-INC-19 gate every exit from `New`, including cancellation, and the domain applies them exactly as written until the Product Owner decides otherwise — the check infers no exception. The check nonetheless leaves `cancelled` unconstrained, because a safety net must hold under **every** outcome still open: were `cancelled` constrained and the exemption then granted, the database would reject rows the product allows and the domain change would be blocked on a schema migration; left unconstrained, both outcomes are representable and nothing breaks. If the Product Owner confirms that cancellation is gated, the check is tightened by dropping `'cancelled'` from its exempt list (a `CHECK` replacement, validated against existing rows). Conversion to a Service Request has no persisted terminal representation on `incident_ticket` yet (FR-INC-14 is `Should`, phase 3): whichever state category it lands in is designed with it, against this check and against `ck_incident_resolution` — a conversion cannot land in `closed` without a resolution code.
+- **Open point 3 — an intake or triage queue at registration (FR-WFL-03).** `ck_incident_assessed_before_assignment` holds under both outcomes. If placing an unassessed Incident in an intake queue **is** assignment, the gate applies and the check stands. If it is **not**, it must not be persisted in `assigned_group_id` / `assigned_user_id`: those columns are the assignment, feed the assignment history (FR-INC-12), the "without reassignment" test of FCR (FR-INC-18) and every per-group KPI, and a queue placement stored there would corrupt all three. Its representation — a queue column or a derived view over `state_category = 'new'` — is designed when the point is decided. Until then an assignment rule evaluated at creation meets the domain's assignment guard like any other path.
+- **Open points 4 and 5** (the SLA policy before the first derivation; the competition flag set before Impact is assessed) touch no check on this table: the flag columns are already held coherent by `ck_incident_competition_flag` independently of the assessment, and the SLA policy question belongs to `sla` (ADR-014 consequences).
 
 These are structural safety nets. The **rules** are enforced in the domain layer; the constraints exist so that a defect cannot persist a record that contradicts the model, and so a DBA reading the schema can see the invariants.
 
@@ -904,9 +953,9 @@ Three columns, no constraint, and that is the deliberate design:
 
 ### 8.5 A logged Incident is unassessed — nullability, and when each column arrives
 
-Recorded as **ADR-014** (ARCHITECTURE §10) and decisions **M14–M16** (§18). This section is the schema-level statement.
+Recorded as **ADR-014** (ARCHITECTURE §10) and decisions **M14–M17** (§18); the triage gate that closes the unassessed window is **FR-INC-19**, reconciled by the Product Owner in PRD §14.10. This section is the schema-level statement.
 
-**What an Incident is at the moment it is logged.** Reporter, origin channel, short and detailed description, optionally the affected Service, and its reference — nothing more (FR-INC-01/02, FR-OMN-02/04). Impact and Urgency are an agent's **triage** assessment (FR-INC-04/05, US-C1-02); Priority is **derived** from them and is never chosen by the requester (FR-INC-04, R8); the category is required only on **exit from `New`** (FR-INC-03, US-C1-07). The `Incident` aggregate is created in exactly that shape: category, Impact, Urgency and Priority absent, competition flag unset. The schema therefore represents an unassessed Incident as what it is:
+**What an Incident is at the moment it is logged.** Reporter, origin channel, short and detailed description, optionally the affected Service, and its reference — nothing more (FR-INC-01/02, FR-OMN-02/04). Impact and Urgency are an agent's **triage** assessment (FR-INC-04/05, US-C1-02); Priority is **derived** from them and is never chosen by the requester (FR-INC-04, R8); the category, the assessment (and therefore the Priority) and the affected Service are all required only on **exit from `New`** (FR-INC-03, FR-INC-19, US-C1-07), and the assessment is required before any **assignment** (FR-INC-19). The `Incident` aggregate is created in exactly that shape: category, Impact, Urgency and Priority absent, competition flag unset. The schema therefore represents an unassessed Incident as what it is:
 
 | Fact | Persisted as | Rejected alternative |
 |---|---|---|
@@ -917,6 +966,10 @@ Recorded as **ADR-014** (ARCHITECTURE §10) and decisions **M14–M16** (§18). 
 
 The explicit "not yet derived" value the API contract exposes (US-C1-08) is produced by the mapper and the contract **from** `priority IS NULL`; it is never stored. Coherence is held by `ck_incident_impact_pair`, `ck_incident_priority_derivation`, `ck_incident_priority_provenance` and the tightened `ck_incident_priority_override` (§8.1, §20.3).
 
+**Where the unassessed window ends — the triage gate (FR-INC-19).** Nullability is the shape of a logged Incident, not a permanent licence. Two checks bound it (§8.1): `ck_incident_triaged_beyond_new` requires category, Impact, Urgency, Priority and affected Service in every state category but `new` (and, pending PRD §14.10 open point 2, `cancelled`); `ck_incident_assessed_before_assignment` requires Impact and Urgency whenever a Resolver Group or an agent holds the Incident, in any state. Reading "outside `New`" row-locally is what the `new` state category is for (M17): under the former five-value enum, `New`, `Assigned` and `In Progress` all mapped to `open`, so the check could only constrain `pending`/`resolved`/`closed` and an unassessed Incident in `In Progress` would have passed it.
+
+**The untriaged period (FR-INC-20) — nothing new is persisted.** "Overdue for triage" is derived, never stored: an Incident is overdue when `state_category = 'new'`, `category_id IS NULL` and its time in `New` exceeds the configured maximum. Every input already exists — `state_category`, `category_id`, and the instant the Incident entered `New` (`created_at`, which the creation row of `incident_state_transition` repeats as `occurred_at`). The period and any action on expiry are FR-WFL-05 time-based rules, which persist as `incident_business_rule` rows with `event = 'scheduled'` (§8.4, §20.3); their values are PRD assumption A11 and are not seeded here. `ix_incident_untriaged` (§16) serves the sweep. A persisted `triage_overdue` flag or `triage_due_at` column was rejected: the first would be a stored copy of a derivation that changes whenever the configured period changes, the second would pin a period the PRD leaves configurable. One reading is left to the Product Owner and does not change the model: if a configured workflow lets an Incident **return** to `New`, whether the period restarts at the re-entry (read from the latest `incident_state_transition` into `new`) or keeps counting from `created_at` is not stated by FR-INC-20; both are answerable from existing columns.
+
 **Configuration versions — pinned when they first govern the record.** NFR-CFG-02 protects records *governed* by a configuration. The two versions on the ticket first govern it at different moments:
 
 - **`workflow_id` — pinned at creation.** Every Incident has a lifecycle state from the instant it exists (it rests in `New`, US-C1-07), so the lifecycle version governs it from birth. Target `NOT NULL` stands.
@@ -926,15 +979,20 @@ The explicit "not yet derived" value the API contract exposes (US-C1-08) is prod
 
 | Column group | Introduced with | Nullability on introduction | Backfill of existing rows |
 |---|---|---|---|
-| `id`, `reference` (+ `uq_incident_reference`), `short_description`, `description`, `origin_channel`, `reporter_user_id`, `service_id`, `created_at`, `updated_at`, `created_by`, `updated_by`, `version` | Logging an Incident (FR-INC-01/02) — the table-creating migration | Target | None — the table is new |
+| `id`, `short_description`, `description`, `origin_channel`, `reporter_user_id`, `service_id`, `created_at`, `updated_at`, `created_by`, `updated_by`, `version` | Logging an Incident (FR-INC-01) — the table-creating migration | Target | None — the table is new |
+| `reference` + `uq_incident_reference` + `incident.incident_reference_seq` + `tg_incident_ticket_reference_immutable` / `incident.fn_reject_reference_update()` | The reference number (FR-INC-02, §3.2) — in the table-creating migration, or in a migration that runs **before the first code path able to write a row** | Target (`NOT NULL`) | None — no row may ever exist without a reference, so there is nothing to backfill; a split that lets a row be written first is a sequencing defect, not a backfill case |
 | `logged_by_user_id` | Agent-logged intake (FR-OMN-01) | Target (nullable) | None |
 | `category_id` | Categorization (FR-INC-03) | Target (nullable) | None — `NULL` is true for every existing row |
 | `base_impact`, `assessed_impact`, `urgency`, `priority`, `priority_overridden`, `priority_override_justification`, `priority_matrix_id` + the four priority checks | Priority derivation / the matrix (FR-INC-04) | Target (nullable; `priority_overridden` `NOT NULL DEFAULT false`) | None — "not yet assessed" is true for every existing row |
 | `competition_affects` + `competition_*` + `ck_incident_competition_flag` | The competition flag (FR-INC-05) | Target (`competition_affects NOT NULL DEFAULT false`) | None — the default is true for every existing row |
-| `workflow_id`, `state_id`, `state_category` + `ck_incident_resolution`, `ck_incident_categorized_beyond_new` | The lifecycle (FR-INC-06, FR-WFL-01) — the migration that creates `incident_workflow*` and seeds the default version | Added nullable, backfilled, then `SET NOT NULL` **in the same migration** | **Required and exact:** every existing row → the seeded version's `is_initial` state (`new`, category `open`), plus one `incident_state_transition` creation row per ticket (`from_state_id NULL`, `occurred_at = created_at`, `actor_type = 'user'`, `actor_user_id = created_by`) |
-| All remaining columns (assignment, Major Incident, resolution, closure, FCR, reopen, CSAT) | Their own behaviors | Target (nullable or `NOT NULL` with a constant default) | None — the default or `NULL` is true for every existing row |
+| `workflow_id`, `state_id`, `state_category` + `ck_incident_resolution` (+ `ck_incident_workflow_state_new_is_initial` on `incident_workflow_state`) | The lifecycle (FR-INC-06, FR-WFL-01) — the migration that creates `incident_workflow*` and seeds the default version | Added nullable, backfilled, then `SET NOT NULL` **in the same migration** | **Required and exact:** every existing row → the seeded version's `is_initial` state (`new`, category `new`), plus one `incident_state_transition` creation row per ticket (`from_state_id NULL`, `occurred_at = created_at`, `actor_type = 'user'`, `actor_user_id = created_by`) |
+| `ck_incident_triaged_beyond_new` | The **last** of the three migrations whose columns it reads: categorization (`category_id`), priority derivation (`assessed_impact`, `urgency`, `priority`) and the lifecycle (`state_category`); `service_id` already exists. In the current delivery order that is the lifecycle migration | — (a constraint) | None. Added **validated** (never `NOT VALID`): if any row already violates it, the migration fails loudly instead of grandfathering the defect. When the lifecycle migration adds it, every row has just been backfilled to `new` and the check holds by construction |
+| `assigned_group_id`, `assigned_user_id`, `assigned_at` + `ck_incident_assessed_before_assignment` | Assignment (FR-INC-12, FR-QUE-03, FR-WFL-03) | Target (nullable) | None — no row is assigned before the columns exist, so the check holds by construction. It reads `assessed_impact` and `urgency`, so the priority-derivation migration must precede it |
+| All remaining columns (Major Incident, resolution, closure, FCR, reopen, CSAT) | Their own behaviors | Target (nullable or `NOT NULL` with a constant default) | None — the default or `NULL` is true for every existing row |
 
 **Why the lifecycle backfill is a fact, not a guess.** Before the lifecycle exists, no transition exists: no code path can move an Incident out of `New`. Every row written before that migration is therefore provably an Incident still in `New`, logged by `created_by` at `created_at` — which is exactly what the backfill writes. That is the test every late `NOT NULL` column must pass (ADR-014): if a lossless backfill cannot be stated, the column is nullable in the target instead. For the same reason **no seed row or placeholder state is written ahead of the state model**: until the aggregate holds a state, persistence would be inventing domain state the aggregate does not have (§2 item 3, ADR-005).
+
+**Why the triage gate is a sequencing constraint, not only a check.** The exit gate of FR-INC-19 needs a category, an assessment and a Service to be satisfiable. If a transition out of `New` were enabled before the categorization or the priority-derivation behavior existed, either the gate would be unsatisfiable (no Incident could ever leave `New`) or it would have to be skipped (and rows would leave `New` untriaged, which the later check would then reject at migration time). The behavior that enables the first exit from `New` therefore ships **after** categorization and priority derivation, and its domain guard enforces all of FR-INC-03 and FR-INC-19 from the first release that can move an Incident out of `New`.
 
 **The mapper's side of the rule.** While an aggregate slot has no column yet (category, assessment, flag, subject, assignment in the first slice), the mapper reads it as empty and **refuses to save** an aggregate in which it is not empty — a typed mapping error, never a silently dropped value.
 
@@ -1791,13 +1849,14 @@ The union of both ticket types in a single fact table is deliberate: every manag
 | Index | Table | Definition | Serves |
 |---|---|---|---|
 | `uq_incident_reference` | `incident_ticket` | unique `(reference)` | FR-INC-02, NFR-DAT-01 |
-| `ix_incident_worklist` | `incident_ticket` | `(priority, created_at)` **partial** `WHERE state_category IN ('open','pending')` | **NFR-PRF-02** — agent work list under 2 s at match-day volume (FR-QUE-02) |
-| `ix_incident_group_queue` | `incident_ticket` | `(assigned_group_id, state_category, priority)` partial on open states | FR-QUE-02/03 queue depth and self-assignment |
-| `ix_incident_mine` | `incident_ticket` | `(assigned_user_id, state_category, priority)` partial on open states | "My work list" |
+| `ix_incident_worklist` | `incident_ticket` | `(priority, created_at)` **partial** `WHERE state_category IN ('new','open','pending')` | **NFR-PRF-02** — agent work list under 2 s at match-day volume (FR-QUE-02) |
+| `ix_incident_group_queue` | `incident_ticket` | `(assigned_group_id, state_category, priority)` partial `WHERE state_category IN ('new','open','pending')` | FR-QUE-02/03 queue depth and self-assignment |
+| `ix_incident_mine` | `incident_ticket` | `(assigned_user_id, state_category, priority)` partial `WHERE state_category IN ('new','open','pending')` | "My work list" |
 | `ix_incident_reporter` | `incident_ticket` | `(reporter_user_id, created_at DESC)` | FR-IAM-03 — a requester sees only their own tickets |
 | `ix_incident_subject` | `incident_ticket` | `(competition_subject_type, competition_subject_external_id)` | **NFR-AUD-04** — every Incident affecting a competition in a period |
 | `ix_incident_competition_flag` | `incident_ticket` | `(created_at DESC)` **partial** `WHERE competition_affects` | PRD §9.2 domain KPIs on the flagged subset |
 | `ix_incident_confirmation` | `incident_ticket` | `(confirmation_due_at)` partial `WHERE state_category = 'resolved'` | FR-INC-09 auto-close sweep |
+| `ix_incident_untriaged` | `incident_ticket` | `(created_at)` **partial** `WHERE state_category = 'new'` | FR-INC-20 untriaged-period sweep (FR-WFL-05) and the "overdue for triage" view; no column is added for it (§8.5) |
 | `ix_incident_note_public` | `incident_work_note` | `(incident_id, created_at)` partial `WHERE visibility = 'public'` | NFR-SEC-04 requester timeline |
 | `ix_sla_sweep` | `sla_instance` | `(target_at)` **partial** `WHERE state = 'running'` | **NFR-PRF-04** — warning/breach raised within one minute, independent of total volume |
 | `uq_sla_instance_active` | `sla_instance` | unique `(record_type, record_id, target_type)` partial `WHERE superseded_at IS NULL` | FR-SLA-02 — exactly one live commitment |
@@ -1851,21 +1910,35 @@ Recorded honestly, because a reader should know which parts are traceable and wh
 | M11 | **No `iam_session` / refresh-token table** | **A normative product decision — neither scope nor statelessness.** PRD §14.8 adopts **device-bounded termination**, rejects centrally withdrawn access, and forbids any derived artifact from requiring per-request validation against a central session record or a stored record of live sessions. `FR-IAM-06`, `FR-IAM-08` (deliberate sign-out) and `FR-IAM-09` (permanent deactivation) are each satisfied on the device or at authentication time, never by a stored session (§6.4). **Correction to this row's former rationale:** it cited ARCHITECTURE §3.2 for "stateless JWT"; §3.2 fixes the credential format only, and "stateless" in that document (ADR-004) means horizontally scalable API *instances* — which a PostgreSQL-backed session table would never have contradicted, the state being in the shared database rather than in an instance | High — the ground is a normative PRD decision rather than a phase boundary. Still additive and confined to `iam` if it is ever reopened, which only the four reversal triggers of PRD §14.8, or federation under `FR-IAM-04`, can do |
 | M12 | **Attachments store an object-storage key, not the bytes** | Keeping binaries out of PostgreSQL protects backup/restore times and the SLA sweep's working set. The storage adapter itself is not designed here | Medium — the column is a key either way |
 | M13 | **`csat_score` on the ticket instead of a `csat_survey` table** | The MVP explicitly limits CSAT to *basic capture* (PRD §14.3); a survey aggregate would be speculative | High — extractable later |
-| M14 | **An unassessed Incident persists its assessment as `NULL`; `priority IS NULL` is "not yet derived"** (ADR-014, §8.5) | An Incident is logged before triage (FR-INC-04/05, US-C1-02/08). A sentinel level would be mistaken for an assessment — US-C1-08 forbids exactly that — and an extra enum member would leak into the matrix, SLA policy matching and every KPI. Four checks keep the nullable columns coherent. **No check requires an assessment at any state**: the PRD states no such gate, so none is invented here | High — tightening later is a `CHECK` plus a data audit |
+| M14 | **An unassessed Incident persists its assessment as `NULL`; `priority IS NULL` is "not yet derived"** (ADR-014, §8.5) | An Incident is logged before triage (FR-INC-04/05, US-C1-02/08). A sentinel level would be mistaken for an assessment — US-C1-08 forbids exactly that — and an extra enum member would leak into the matrix, SLA policy matching and every KPI. Four checks keep the nullable columns coherent. **The nullable window is bounded by FR-INC-19**, which the Product Owner added in PRD §14.10: `ck_incident_triaged_beyond_new` and `ck_incident_assessed_before_assignment` (§8.1) require the assessment outside `New` and before any assignment. The earlier statement of this row — "no check requires an assessment at any state, because the PRD states no such gate" — was true of the PRD it was written against and is superseded; the nullability decision itself is unchanged | High — tightening further (e.g. `cancelled`, PRD §14.10 open point 2) is a `CHECK` replacement validated against existing rows |
 | M15 | **`priority_matrix_id` is pinned at the first derivation, not at creation** (§8.5) | It belongs to the `Priority` value object (§2); NFR-CFG-02 protects records *governed* by a configuration, and no matrix governs an Incident before it has a Priority. `workflow_id`, by contrast, governs from birth and is pinned at creation | High — pinning at creation instead is a backfill to the version active at `created_at` |
 | M16 | **Columns arrive with the behavior that writes them; a late `NOT NULL` column must ship with a lossless backfill in the same migration** (ADR-014, §8.5) | Delivery is sliced vertically, so the ticket table exists long before workflow, matrix or triage do. Placeholder rows or states written ahead of the domain would be persistence inventing domain state (ADR-005). The lifecycle columns pass the test (every earlier row is provably in `New`); columns that cannot pass it are nullable in the target | Medium — the rule constrains every later migration on `incident_ticket` and `sr_request` |
+| M17 | **`state_category_enum` gains `new`, the category of the initial state and of no other** (§3.5, §8.1, §8.5) | FR-INC-19 gates every exit from `New` "whatever lifecycle transitions are configured", so "still in `New`" must be non-configurable and row-local for a `CHECK` and for the FR-INC-20 sweep to read it; under the five-value enum `New`, `Assigned` and `In Progress` were all `open`. `ck_incident_workflow_state_new_is_initial` stops configuration from classifying another state as `new` or the entry state as `open`. Precedent: `sr_state_category_enum` already starts at `new`. Consequences: work-list and queue indexes include `new` (§16); `reporting.state_category_enum` mirrors the new value, so an untriaged backlog becomes a first-class KPI bucket instead of hiding inside `open` | High today — no enum type exists yet; after the lifecycle migration, adding a value is cheap but removing it is a type rewrite (§3.5) |
+| M18 | **Reference immutability is enforced by a column-immutability guard trigger**, the one trigger category §3.7 sanctions (§3.2) | FR-INC-02 / NFR-DAT-01 require a reference never to change and T-C1-04 requires rejection at the database level. A `CHECK` cannot compare old and new rows; column privileges bind neither the table owner nor a superuser — every existing environment connects as `postgres` — and must be re-granted column by column as §8.5 grows the table; domain immutability plus an `update: false` mapping are kept as defence in depth but are not a database guarantee | High — dropping a trigger and its function is a one-step migration; revisit once a least-privileged application role exists (§19) |
 
 ---
 
 ## 19. Verification status
 
-**Nothing in this document has been executed.** There is no workspace, no `data-source.ts`, no migration, no database. The concrete next steps, in order:
+**Verified against the working tree on 2026-09-26.** The persistence plumbing exists; the model below it does not.
 
-1. Scaffold the Nx workspace and the `libs/<context>/infrastructure` libraries (ARCHITECTURE §5.5).
-2. Write the TypeORM persistence entities and mappers for `iam`, `audit` and `incident` first (phase 0 → phase 1 order).
-3. Confirm the identifier default resolves on the target server (`SELECT uuidv7();`) before generating any migration — the schema carries a PostgreSQL ≥ 18 floor (§3.1.1, ADR-012).
-4. `pnpm typeorm migration:generate -d apps/api/src/data-source.ts src/migrations/CreateFoundationTables`, review the generated SQL by hand — generated migrations are a draft, not an authority. TypeORM emits the column default it is given; the `uuidv7()` default is asserted in the review, not assumed.
-5. Verify the check constraints, partial indexes, partitions and `GRANT`/`REVOKE` statements that TypeORM does **not** generate; they are written as explicit migration steps.
+| Built | Where | Ticket |
+|---|---|---|
+| Nx workspace, `libs/incident/{domain,application,infrastructure,feature,ui,data-access}` and `libs/shared/{contracts,domain,util}` | ARCHITECTURE §5.5 | `T-C10-04`, `T-C10-08`, `T-C1-01` (with `T-C10-18`) |
+| Data source, `synchronize: false`, `migrationsRun: false`; migration conventions | `apps/api/src/data-source.ts`, `apps/api/src/migrations/README.md` | `T-C10-16`, `T-C10-17` |
+| Migration `1790349248155-CreateIamSchemaAndExtensions` — schema `iam`, extensions `citext` and `pg_trgm` | `apps/api/src/migrations/` | `T-C10-17` |
+| Migration `1790366187635-CreateIncidentSchema` — schema `incident`, empty | `apps/api/src/migrations/` | `T-C1-02` |
+| Development database (PostgreSQL 18, host port 5452) and the acceptance suite's ephemeral one (host port 5499), which runs the whole chain through `pnpm migration:run` | `docker/docker-compose.dev.yml`, `docker/docker-compose.e2e.yml` | CI/CD setup (ADR-013) |
+
+**Not built:** every table, enum type, sequence, check, index, trigger, partition and `GRANT`/`REVOKE` in this document, and every TypeORM entity and mapper (`libs/incident/infrastructure/src` exports nothing yet). The `Incident` aggregate and `TicketReference` exist in `libs/incident/domain` only. This section records what exists; it does not assert that any statement of §3–§18 has been exercised against a database.
+
+**Next steps, in order:**
+
+1. Confirm the identifier default resolves on the target server (`SELECT uuidv7();`) before the first table-creating migration — the schema carries a PostgreSQL ≥ 18 floor (§3.1.1, ADR-012). Not recorded as executed by any ticket so far.
+2. Create `incident_ticket` in the column groups of §8.5, beginning with the logging group and the reference-number mechanism of §3.2 (sequence, unique constraint, immutability guard trigger).
+3. `pnpm migration:generate <path/Name>` and review the generated SQL by hand — a generated migration is a draft, not an authority. TypeORM emits the column default it is given; the `uuidv7()` default is asserted in the review, not assumed.
+4. Write as explicit migration steps everything TypeORM does **not** generate: check constraints, partial indexes, partitions, the guard triggers of §3.2 and the `GRANT`/`REVOKE` statements of §14.2.
+5. **Provision a least-privileged application role.** Every environment connects today as `postgres`, the cluster superuser, so the privilege-based guarantees of §12.1 and §14.2 (`sport_itsm_app` without `UPDATE`/`DELETE` on append-only tables) would not bind the running application. Until the role exists, those guarantees are enforced by the absence of mutators on the ports only; this is why reference immutability uses a trigger instead (§3.2, M18).
 6. Prove NFR-PRF-02 and NFR-PRF-04 with `EXPLAIN (ANALYZE, BUFFERS)` against a seeded volume before claiming either.
 
 ---
@@ -2481,7 +2554,7 @@ Localization child of the `Category` aggregate: one row per category and locale,
 
 Aggregate root of the `Incident` aggregate (ADR-005): one row per Incident, carrying the inlined `TicketReference`, `Priority`, `CompetitionImpactFlag`, `CompetitionSubject`, `OriginChannel` and `ResolverAssignment` value objects as flat columns (§2). It is the persistence of FR-INC-01 → FR-INC-13 and FR-INC-18, and the only table in the context that carries `version` for optimistic locking.
 
-The columns below are the **target** shape. An Incident is logged **unassessed** — no category, Impact, Urgency or Priority — so every assessment column is nullable and held coherent by checks; and the table is built up column group by column group as the behaviors that write them ship, with the lifecycle columns backfilled losslessly when they arrive. Both rules, and the introduction order, are in §8.5 (ADR-014, M14–M16).
+The columns below are the **target** shape. An Incident is logged **unassessed** — no category, Impact, Urgency or Priority — so every assessment column is nullable and held coherent by checks; and the table is built up column group by column group as the behaviors that write them ship, with the lifecycle columns backfilled losslessly when they arrive. Both rules, and the introduction order, are in §8.5 (ADR-014, M14–M17). The unassessed window is bounded by the triage gate of FR-INC-19 (`ck_incident_triaged_beyond_new`, `ck_incident_assessed_before_assignment`).
 
 | Attribute | Type | Null | Key | Default | Description |
 |---|---|---|---|---|---|
@@ -2489,14 +2562,14 @@ The columns below are the **target** shape. An Incident is logged **unassessed**
 | `reference` | `varchar(20)` | NOT NULL | UK | — | `INC` + zero-padded `incident.incident_reference_seq` value; immutable, never reused (FR-INC-02, NFR-DAT-01) |
 | `short_description` | `varchar(255)` | NOT NULL | — | — | Work-list title of the reported Incident (FR-INC-01) |
 | `description` | `text` | NOT NULL | — | — | Full report; may contain requester free text about competition context (FR-INC-01) |
-| `origin_channel` | `origin_channel_enum` | NOT NULL | — | — | Intake channel; `portal` and `agent_logged` in the MVP (FR-OMN-01/02) |
+| `origin_channel` | `origin_channel_enum` | NOT NULL | — | — | Origin channel — how the Incident arrived, never a preferred contact means; a phone or chat contact is `agent_logged`. `portal` and `agent_logged` in the MVP (FR-INC-01, FR-OMN-01/02) |
 | `reporter_user_id` | `uuid` | NOT NULL | soft → iam.iam_user.id | — | Requester on whose behalf the Incident exists; anonymous intake is impossible (FR-OMN-04) |
 | `logged_by_user_id` | `uuid` | NULL | soft → iam.iam_user.id | — | Agent who logged the Incident on the reporter's behalf (phone/chat intake, FR-OMN-02) |
 | `service_id` | `uuid` | NULL | soft → catalog.catalog_service.id | — | Affected Service; drives SLA policy resolution (FR-INC-01, FR-SLA-02) |
 | `category_id` | `uuid` | NULL | soft → catalog.catalog_category.id | — | Leaf `item` of the taxonomy; required before the ticket may leave `New` (FR-INC-03) |
 | `workflow_id` | `uuid` | NOT NULL | FK → incident.incident_workflow.id | — | Lifecycle configuration version in force for this ticket, pinned at creation (FR-WFL-01, NFR-CFG-02). Introduced by the lifecycle migration: added nullable, backfilled to the seeded version, then `SET NOT NULL` (§8.5, M16) |
 | `state_id` | `uuid` | NOT NULL | FK → incident.incident_workflow_state.id | — | Current configurable lifecycle state (FR-INC-06, FR-WFL-01). Same introduction as `workflow_id`; existing rows backfilled to the `is_initial` state (§8.5) |
-| `state_category` | `state_category_enum` | NOT NULL | — | — | Denormalized, non-configurable classification so queries and KPIs never depend on customer configuration (§3.5). Same introduction; backfilled from the initial state's `category` |
+| `state_category` | `state_category_enum` | NOT NULL | — | — | Denormalized, non-configurable classification so queries and KPIs never depend on customer configuration (§3.5). Same introduction; backfilled from the initial state's `category`, which is `new` (`ck_incident_workflow_state_new_is_initial`, M17) |
 | `pending_reason` | `pending_reason_enum` | NULL | — | — | `customer` / `third_party` / `change`; with the state's `sla_clock` it drives clock-pause semantics (FR-INC-06, FR-INC-08) |
 | `priority_matrix_id` | `uuid` | NULL | FK → incident.incident_priority_matrix.id | — | The matrix **version** that produced `priority`; set at the first derivation and never changed afterwards, so in-flight tickets keep it (FR-INC-04, NFR-CFG-02, M15) |
 | `base_impact` | `impact_enum` | NULL | — | — | Agent's Impact assessment **before** the competition uplift (M4); `NULL` until triage (FR-INC-04, M14) |
@@ -2549,7 +2622,9 @@ The columns below are the **target** shape. An Incident is logged **unassessed**
 | `ck_incident_impact_pair` | CHECK | `(base_impact IS NULL) = (assessed_impact IS NULL)` (M4, M14) |
 | `ck_incident_priority_derivation` | CHECK | `(priority IS NULL) = (assessed_impact IS NULL OR urgency IS NULL)` (FR-INC-04, M14) |
 | `ck_incident_priority_provenance` | CHECK | `priority IS NULL OR priority_matrix_id IS NOT NULL` (NFR-CFG-02, M15) |
-| `ck_incident_categorized_beyond_new` | CHECK | `state_category NOT IN ('pending','resolved','closed') OR category_id IS NOT NULL` (FR-INC-03) — created with the lifecycle columns (§8.5) |
+| `ck_incident_triaged_beyond_new` | CHECK | `state_category IN ('new','cancelled') OR (category_id IS NOT NULL AND assessed_impact IS NOT NULL AND urgency IS NOT NULL AND priority IS NOT NULL AND service_id IS NOT NULL)` (FR-INC-03, FR-INC-19) — `cancelled` unconstrained pending PRD §14.10 open point 2 (§8.1); created by the last of the migrations that introduce the columns it reads (§8.5) |
+| `ck_incident_assessed_before_assignment` | CHECK | `(assigned_group_id IS NULL AND assigned_user_id IS NULL) OR (assessed_impact IS NOT NULL AND urgency IS NOT NULL)` (FR-INC-19) — holds under either outcome of PRD §14.10 open point 3 (§8.1); created with the assignment columns (§8.5) |
+| `tg_incident_ticket_reference_immutable` | Guard trigger | `BEFORE UPDATE OF reference … WHEN (OLD.reference IS DISTINCT FROM NEW.reference)` raises; function `incident.fn_reject_reference_update()` (FR-INC-02, NFR-DAT-01, §3.2, M18) |
 | `ck_incident_subject` | CHECK | `competition_subject_type IS NULL OR competition_subject_external_id IS NOT NULL OR competition_subject_label IS NOT NULL` |
 | `ck_incident_major` | CHECK | `is_major = false OR (major_declared_by IS NOT NULL AND major_declared_at IS NOT NULL AND major_justification IS NOT NULL)` |
 | `ck_incident_csat` | CHECK | `csat_score IS NULL OR csat_score BETWEEN 1 AND 5` |
@@ -2584,8 +2659,8 @@ The columns below are the **target** shape. An Incident is logged **unassessed**
 | `audit.audit_entry` | 1:N | polymorphic soft reference | Immutable activity history of the ticket |
 | `reporting.rpt_ticket_fact` | 1:1 | soft reference (cross-context, ADR-003) | Projection of the ticket into the read model |
 
-**Enum `origin_channel_enum`:** `portal`, `agent_logged`, `email`, `in_app`, `phone`.
-**Enum `state_category_enum`:** `open`, `pending`, `resolved`, `closed`, `cancelled`.
+**Enum `origin_channel_enum`:** `portal`, `agent_logged`, `email`, `in_app` — exactly the four origin channels of FR-OMN-02. There is **no `phone` member**: a ticket raised by phone or chat is `agent_logged` (PRD §14.10 D1). The same value set is used by `service_request.sr_request.origin_channel` and mirrored by `reporting.origin_channel_enum`.
+**Enum `state_category_enum`:** `new`, `open`, `pending`, `resolved`, `closed`, `cancelled`. `new` is the category of the workflow's initial state and of no other (`ck_incident_workflow_state_new_is_initial`); every exit from it is gated by FR-INC-03 and FR-INC-19 (M17).
 **Enum `pending_reason_enum`:** `customer`, `third_party`, `change`.
 **Enum `impact_enum`:** `1`, `2`, `3`, `4`, `5` (1 = highest).
 **Enum `urgency_enum`:** `1`, `2`, `3`, `4`, `5` (1 = highest).
@@ -2934,6 +3009,7 @@ Configurable lifecycle state of an Incident workflow version — the lookup that
 | `pk_incident_workflow_state` | PK | `(id)` |
 | `uq_incident_workflow_state_code` | UK(workflow_id, code) | A code is unique inside a workflow version |
 | `uq_incident_workflow_state_initial` | UK(workflow_id) | unique `(workflow_id)` **partial** `WHERE is_initial` — exactly one entry state per version |
+| `ck_incident_workflow_state_new_is_initial` | CHECK | `(category = 'new') = is_initial` — the initial state, and only it, is the untriaged `new` category, so the triage gate (FR-INC-19) cannot be evaded by configuring a second entry-like state or by classifying the entry state as `open` (M17) |
 | `fk_incident_workflow_state_workflow_id` | FK | → `incident.incident_workflow(id)` `ON DELETE CASCADE` |
 
 **Relationships.**
@@ -3122,7 +3198,7 @@ Aggregate root of the `ServiceRequest` aggregate: the persistence side of a Serv
 | `reference` | `varchar(20)` | NOT NULL | UK | — | `SRQ` + zero-padded `service_request.sr_reference_seq` value; immutable, never reused (FR-SRQ-01, NFR-DAT-01) |
 | `short_description` | `varchar(255)` | NOT NULL | — | — | Work-list title of the request |
 | `description` | `text` | NOT NULL | — | — | Free-text statement of what the requester needs (FR-SRQ-03) |
-| `origin_channel` | `origin_channel_enum` | NOT NULL | — | `'portal'` | Intake channel; `portal` and `agent_logged` in the MVP (FR-OMN-01/02) |
+| `origin_channel` | `origin_channel_enum` | NOT NULL | — | `'portal'` | Origin channel — how the request arrived; a phone or chat contact is `agent_logged`. `portal` and `agent_logged` in the MVP (FR-OMN-01/02) |
 | `requester_user_id` | `uuid` | NOT NULL | soft → iam.iam_user.id | — | Requester on whose behalf the request exists; anonymous intake is impossible (FR-OMN-04) |
 | `logged_by_user_id` | `uuid` | NULL | soft → iam.iam_user.id | — | Agent who logged the request on the requester's behalf (FR-OMN-02) |
 | `offering_id` | `uuid` | NOT NULL | soft → catalog.catalog_service_offering.id | — | The published Service Offering requested; a request exists only for a published offering (FR-SRQ-01, K6) |

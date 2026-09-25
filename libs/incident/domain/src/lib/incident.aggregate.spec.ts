@@ -98,6 +98,27 @@ describe('Incident.log()', () => {
       // never collapses them into one property (T-C1-05 Trap 5).
       expect('actor' in incident).toBe(false);
     });
+
+    it('records loggedAtEpochMs and loggedBy from the same occurredAt/actor the event carries', () => {
+      const { incident, events } = Incident.log(validCommand());
+
+      expect(incident.loggedAtEpochMs).toBe(CLOCK.now().getTime());
+      expect(incident.loggedBy.equals(ACTOR)).toBe(true);
+      expect(incident.loggedAtEpochMs).toBe(events[0].occurredAtEpochMs);
+      expect(incident.loggedBy.equals(events[0].actor)).toBe(true);
+    });
+
+    it('keeps reporterId and loggedBy distinct, even when a caller happens to pass the same identity for both', () => {
+      const { incident } = Incident.log(
+        validCommand({ reporterId: ACTOR, actor: ACTOR }),
+      );
+
+      expect(incident.reporterId.equals(ACTOR)).toBe(true);
+      expect(incident.loggedBy.equals(ACTOR)).toBe(true);
+      // An agent logging on a caller's behalf makes them different
+      // identities (T-C1-05 Trap 5) — Incident keeps the two properties
+      // separate even when a portal-style call happens to equate them.
+    });
   });
 
   describe('AC2 — a missing mandatory field is rejected with a typed, distinguishable error, and nothing is created', () => {
@@ -214,6 +235,19 @@ describe('Incident.log()', () => {
           'tampered';
       }).toThrow(TypeError);
       expect(incident.shortDescription).toBe('Cannot submit match roster');
+    });
+
+    it('rejects reassigning loggedAtEpochMs or loggedBy', () => {
+      const { incident } = Incident.log(validCommand());
+
+      expect(() => {
+        (incident as { loggedAtEpochMs: number }).loggedAtEpochMs = 0;
+      }).toThrow(TypeError);
+      expect(() => {
+        (incident as { loggedBy: Identity }).loggedBy = REPORTER;
+      }).toThrow(TypeError);
+      expect(incident.loggedAtEpochMs).toBe(CLOCK.now().getTime());
+      expect(incident.loggedBy.equals(ACTOR)).toBe(true);
     });
 
     it('rejects mutating the IncidentLogged payload', () => {

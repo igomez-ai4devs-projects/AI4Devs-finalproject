@@ -1,6 +1,6 @@
 # Test Plan — C1 · Incident Management
 
-> Sources: `docs/backlog/C1/user-stories.md` (32 stories, all greenfield) · `docs/backlog/C1/tickets/` (98 tickets) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9 · PRD §7.1, §14
+> Sources: `docs/backlog/C1/user-stories.md` (32 stories, all greenfield — predates `FR-INC-19`/`20`, see the Findings note added this pass) · `docs/backlog/C1/tickets/` (102 tickets — `T-C1-102` new this pass) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9, §10 (ADR-014) · `docs/product/DATA-MODEL.md` §3.2, §8.1, §8.5, §16, §18 (M14–M18) · PRD §7.1, §14, §14.10
 > This document is both the **BDD specification** and the **test strategy** for the epic. Every scenario below is written to seed a `.feature` file or a `*.spec.ts` directly.
 
 ## Context
@@ -262,11 +262,11 @@ Test stack: **Jest 29** (unit, integration) · **jest-preset-angular** (componen
 
 - Test data: three matrix fixtures · Dependencies: `@nestjs/testing` container, real DB · Covers: US-C1-09 (`T-C1-26`, `T-C1-27`)
 
-#### AT-C1-24 — In-flight Incidents keep the matrix version they were created under — P0 — type: Integration — impl: `backend-engineer`
+#### AT-C1-24 — In-flight Incidents keep the matrix version they were first derived under — P0 — type: Integration — impl: `backend-engineer`
 
-**Given** an Incident created under matrix version `1`
+**Given** an Incident first derived under matrix version `1`
 **When** the matrix is changed to version `2` and both that Incident and a new one are derived
-**Then** the first resolves version `1` and the second version `2`.
+**Then** the first still resolves version `1` and the second, once first derived, resolves version `2` — corrected by ADR-014 (`DATA-MODEL.md` §8.5, M15): the version is pinned at first derivation, not at creation, because an unassessed Incident has no Priority and is governed by no matrix yet.
 
 - Test data: two matrix versions, two Incidents · Dependencies: real DB · Covers: US-C1-09 (`T-C1-27`) · `NFR-CFG-02`
 
@@ -848,19 +848,75 @@ Test stack: **Jest 29** (unit, integration) · **jest-preset-angular** (componen
 
 ---
 
+### Added this pass — ADR-014 (`DATA-MODEL.md` §8.5, M14–M16)
+
+Numbered `AT-C1-88` → `90`, appended rather than inserted at their logical position, the same append-only convention block O's tickets already use — inserting mid-sequence would renumber every scenario after it and break the coverage-by-requirement table below.
+
+#### AT-C1-88 — A newly logged Incident persists and reloads with nothing later blocks would add — P0 — type: Integration — impl: `backend-engineer`
+
+**Given** an Incident logged with only reporter, contact channel, short description, detailed description and (optionally) an affected Service
+**When** it is saved and reloaded through the repository
+**Then** category, Impact, Urgency and Priority all read `null`, the competition-in-progress flag reads `false`, no lifecycle column exists to read, and saving an aggregate whose absent slots carry a non-empty value is refused by the mapper with a typed mapping error rather than silently written or dropped.
+
+- Test data: one minimal logging command · Dependencies: real PostgreSQL · Covers: US-C1-01 (`T-C1-06`) · ADR-014, `DATA-MODEL.md` §8.5
+- Why Integration: the claim is about what the schema and the mapper do with a real row, which a stubbed repository cannot show.
+
+#### AT-C1-89 — Impact, Urgency and the affected Service are required to leave `New`, alongside the category — P0 — type: Unit — impl: `backend-engineer`
+
+**Given** an Incident in `New` that is fully categorized but missing, in turn, Impact, Urgency and the affected Service
+**When** a transition out of `New` is attempted for each
+**Then** each is refused with a typed domain error naming the specific missing input, distinguishable from the categorization refusal and from one another; and an Incident with category, a full assessment and a Service set is permitted to proceed, subject to the other transition rules.
+
+- Test data: four in-memory Incidents · Dependencies: none — no HTTP, no DB · Covers: US-C1-07 (extended) (`T-C1-49`, `T-C1-51`) · `FR-INC-19` (PRD §14.10 — not yet reflected in `user-stories.md`, see the Findings note)
+- Why Unit: same reasoning as `AT-C1-18` — the gate must hold on every inbound path, which only a domain-level test proves independently of any adapter.
+
+#### AT-C1-90 — Assignment is refused while Impact or Urgency is unassessed — P0 — type: API-E2E — impl: `apps/api-e2e` (backend platform)
+
+**Given** an Incident with no Impact or Urgency assessed, and the same Incident once both are assessed
+**When** assignment to a Resolver Group is attempted for each
+**Then** the first is refused with a typed error naming the missing assessment and appends nothing to the history, and the second succeeds.
+
+- Test data: one Incident, assessed and unassessed states · Dependencies: running API, real DB · Covers: US-C1-24 (extended) (`T-C1-73`) · `FR-INC-19` (PRD §14.10 — not yet reflected in `user-stories.md`, see the Findings note)
+- Why API-E2E: the refusal must hold at the route the agent actually calls, not only inside the use case.
+
+### Added this second pass — `FR-INC-19`/`20` (PRD §14.10) and the reference-immutability trigger (`DATA-MODEL.md` §3.2, M18)
+
+Numbered `AT-C1-91` → `92`, appended for the same reason `AT-C1-88` → `90` were: inserting mid-sequence would renumber every scenario after it.
+
+#### AT-C1-91 — An Incident overdue for triage becomes visible, on a configured period — P1 — type: Integration — impl: `backend-engineer`
+
+**Given** an Incident in `New` with no category, older than a configured untriaged period, and a second one within that period
+**When** the overdue-for-triage query runs against `ix_incident_untriaged`
+**Then** the first is reported overdue and the second is not; an Incident that has left `New` or that already has a category is never reported overdue regardless of age.
+
+- Test data: three Incidents (overdue, within-period, categorized-and-old) on `FixedClock`, a test-fixture period value · Dependencies: real PostgreSQL, `ix_incident_untriaged` (`T-C1-50`) · Covers: `FR-INC-20` (`T-C1-102`) — no story yet, see the Findings note
+- Why Integration: the claim is about a real query against a real partial index and a real configured value, not something a stub can show; the *value* the business will configure (PRD assumption A11) is not asserted — only the mechanism, which is period-agnostic.
+- **Not blocked by A11.** Unlike `AT-C1-28`/`AT-C1-38`/`AT-C1-76`/etc., which wait on a Product Owner decision this plan cannot make, this scenario supplies its own test-fixture period the same way `AT-C1-53` (auto-close) supplies its own confirmation period — the mechanism is fully testable before the business sets a production value.
+
+#### AT-C1-92 — A persisted reference is rejected at the database level, even connected as `postgres` — P0 — type: Integration — impl: `backend-engineer`
+
+**Given** a persisted Incident and its immutable `reference`
+**When** a direct SQL `UPDATE` changing it is issued, connected as the `postgres` role — the role every environment today connects as
+**Then** the database rejects the write via `tg_incident_ticket_reference_immutable`, and the persisted `reference` is unchanged; the rejection holds even though `postgres` is the table owner and a superuser, which is exactly why a `REVOKE`-based guarantee was rejected in favor of a trigger.
+
+- Test data: one persisted Incident · Dependencies: real PostgreSQL, `T-C1-04`'s trigger and function · Covers: US-C1-05 (`T-C1-04`) · `DATA-MODEL.md` §3.2, M18
+- Why Integration: this is a database-level guarantee that a stubbed repository or an application-layer check cannot prove, and it must be proven for the superuser role specifically, since no least-privileged application role exists yet (`DATA-MODEL.md` §19).
+
+---
+
 ## Coverage summary
 
 | Type | Count | Priority split | Impl owner |
 | --- | --: | --- | --- |
-| Unit | 39 | P0:31 P1:8 | `backend-engineer` — 37 · `frontend-engineer` — 2 (`AT-C1-64`, `AT-C1-81`) |
-| Integration | 18 | P0:11 P1:7 | `backend-engineer` |
-| API-E2E | 20 | P0:17 P1:3 | `apps/api-e2e` — e2e-harness work, backend platform, `type:e2e` |
+| Unit | 40 | P0:32 P1:8 | `backend-engineer` — 38 · `frontend-engineer` — 2 (`AT-C1-64`, `AT-C1-81`) |
+| Integration | 21 | P0:13 P1:8 | `backend-engineer` |
+| API-E2E | 21 | P0:18 P1:3 | `apps/api-e2e` — e2e-harness work, backend platform, `type:e2e` |
 | E2E | 10 | P0:0 P1:10 | `apps/web-e2e` — e2e-harness work, frontend platform, `type:e2e` |
-| **Total** | **87** | **P0:59 P1:28** | |
+| **Total** | **92** | **P0:63 P1:29** | |
 
 `AT-C1-49` is counted once, under Unit, although it has an Integration half: the boundary assertion is a lint and graph check and the degradation assertion needs a running API.
 
-**Blocked:** 6 scenarios — `AT-C1-28` and `AT-C1-38` (**F30**), `AT-C1-31` (**F24**), `AT-C1-63` (**F27**), `AT-C1-76` (**F25**), `AT-C1-87` (**F28**). **Runnable acceptance today: 81 scenarios.** Two more run but must be read with a caveat: `AT-C1-75` and `AT-C1-77` rest on the **F25** assumption, and `AT-C1-74` passes on the Incident side while `FR-INC-14` stays unsatisfied without `C2`.
+**Blocked:** 6 scenarios — `AT-C1-28` and `AT-C1-38` (**F30**), `AT-C1-31` (**F24**), `AT-C1-63` (**F27**), `AT-C1-76` (**F25**), `AT-C1-87` (**F28**). **Runnable acceptance today: 86 scenarios** (81, plus the first pass's `AT-C1-88` → `90`, plus this second pass's `AT-C1-91` → `92`). Two more run but must be read with a caveat: `AT-C1-75` and `AT-C1-77` rest on the **F25** assumption, and `AT-C1-74` passes on the Incident side while `FR-INC-14` stays unsatisfied without `C2`.
 
 No scenario is unwritable. That differs from `C10`, where `AT-C10-54` could not be specified at all: every open decision in `C1` constrains an *outcome* the scenario can still name, rather than a destination nobody has chosen.
 
@@ -870,8 +926,8 @@ Component-level Jest tests for the Angular pieces (`T-C1-09`, `T-C1-10`, `T-C1-1
 
 | Requirement | Stories | Scenarios | Runnable today |
 |---|---|---|---|
-| `FR-INC-01` | US-C1-01, 02, 03, 04 | AT-C1-01 → 11 | ✅ 11 |
-| `FR-INC-02` | US-C1-05 | AT-C1-12 → 14 | ✅ 3 |
+| `FR-INC-01` | US-C1-01, 02, 03, 04 | AT-C1-01 → 11, `AT-C1-88` | ✅ 12 |
+| `FR-INC-02` | US-C1-05 | AT-C1-12 → 14, `AT-C1-92` | ✅ 4 — `AT-C1-92` added this second pass (reference-immutability trigger, M18) |
 | `FR-INC-03` | US-C1-06, 07 | AT-C1-15 → 19 | ✅ 5 |
 | `FR-INC-04` | US-C1-08, 09, 10 | AT-C1-20 → 28 | ⚠ 8 of 9 — `AT-C1-28` blocked by **F30** |
 | `FR-INC-05` | US-C1-11, 12, 13, 14 | AT-C1-29 → 40 | ⚠ 10 of 12 — `AT-C1-31` (**F24**), `AT-C1-38` (**F30**) |
@@ -888,6 +944,8 @@ Component-level Jest tests for the Angular pieces (`T-C1-09`, `T-C1-10`, `T-C1-1
 | `FR-INC-16` | US-C1-29, 30 | AT-C1-78 → 81 | ✅ 4, recording only — measurement is `C17` / `C9` |
 | `FR-INC-17` | US-C1-31 | AT-C1-82 → 84 | ✅ 3 |
 | `FR-INC-18` | US-C1-32 | AT-C1-85 → 87 | ⚠ 2 of 3 — **not testable to a definition** until **F28** is settled |
+| `FR-INC-19` | US-C1-07 (extended), US-C1-24 (extended) — no dedicated story yet | `AT-C1-89`, `AT-C1-90` | ✅ 2 — landed in PRD §14.10 this second pass (was an unnumbered Product Owner decision at the first pass); `user-stories.md` predates it, see the Findings note below |
+| `FR-INC-20` | none yet (`story: —`, `T-C1-102`) | `AT-C1-91` | ✅ 1, mechanism only — the production period value and default action on expiry are PRD assumption A11, deliberately undecided |
 
 ## Risk-based notes
 
@@ -912,6 +970,14 @@ Component-level Jest tests for the Angular pieces (`T-C1-09`, `T-C1-10`, `T-C1-1
 | **F28** | Define "the first interaction" for FCR. Until it is defined, `FR-INC-18` has **no testable definition** and must not be reported as delivered. | Product Owner | `T-C1-79`, `T-C1-80` · `AT-C1-87`, and the completeness of `AT-C1-85` |
 | **F29** | Confirm whether a requester may set the **structured** competition subject. This backlog reads `FR-INC-01` as free text for requesters, structured for agents. | Product Owner | `T-C1-10`, `T-C1-14`, `T-C1-16` · the form and permission halves of `AT-C1-03`, `AT-C1-06` and `AT-C1-08` |
 | **F30** | Decide whether a Priority override or the flag-driven re-derivation wins. The stories assume the override stands until explicitly returned; **two reasonable implementations produce different P1 counts**. | Product Owner | `T-C1-32`, `T-C1-34`, `T-C1-47` · `AT-C1-28`, `AT-C1-38` |
+| **A11** (PRD §10) | Set the production maximum untriaged period (`FR-INC-20`) and its default action on expiry. Not a defect and not a finding this backlog raised — the PRD states plainly that no value has been given by the business. `T-C1-102` builds the mechanism without it; `AT-C1-91` proves the mechanism on a test-fixture period, not the real one. | Product Owner / service organization | `T-C1-102` · `AT-C1-91` |
+
+## Findings for `business-analyst`
+
+`docs/backlog/C1/user-stories.md` predates `FR-INC-19` and `FR-INC-20` (PRD §14.10) — both landed in the PRD in the same pass as `ADR-014`, after the stories were written. Not edited here (this document does not own that file). Two follow-ups for the next `user-stories.md` regeneration:
+
+1. **`FR-INC-19`** (the triage gate on exit from `New` and on assignment) reads as a natural extension of the existing `US-C1-07` ("category is required before an Incident leaves `New`") and `US-C1-24` (reassignment) — confirm whether it needs its own `US-C1-nn`, or whether widening those two stories' acceptance criteria is enough. The tickets (`T-C1-49`, `T-C1-51`, `T-C1-73`) already implement the full requirement either way.
+2. **`FR-INC-20`** (no indefinite rest in `New`) has no story at all. `T-C1-102` was ticketed with `story: —` and a cited justification in its own `## Context`, per the architect-tech-lead skill's foundation-ticket rule — but `FR-INC-20` is not foundation work (it has a persona and observable behavior), so a real `US-C1-nn` should be authored for it and `T-C1-102` reparented to it in a later pass.
 
 **Sequencing risks, not blockers.** **F23** — the mitigation of risk R1 (`FR-INC-15`, block L) is unphased while the intake it protects is Phase 1; if it lands after intake, R1 has already materialized. **F26** — `FR-INC-16` deflection recording is being phased apart from `FR-KNW-06` deflection measurement. Both are recorded in [`tickets/README.md`](tickets/README.md) and both are Product Owner sequencing calls.
 
