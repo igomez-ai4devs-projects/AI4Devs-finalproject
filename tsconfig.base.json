@@ -17,6 +17,7 @@
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@sport-itsm/shared-contracts": ["libs/shared/contracts/src/index.ts"],
       "@sport-itsm/shared-domain": ["libs/shared/domain/src/index.ts"],
       "@sport-itsm/shared-util": ["libs/shared/util/src/index.ts"]
     }

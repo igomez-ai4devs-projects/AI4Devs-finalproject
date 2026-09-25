@@ -2009,3 +2009,164 @@ ejecutado se reporta como no ejecutado, jamás como pasado.
 Implementado ticket T-C10-17
 
 </br>
+
+**Prompt 12:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-11.md ·
+`libs/shared/contracts` — superficie base de DTOs, enums y códigos de error
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero **aquí no se escribe NestJS ni Angular**: es `platform:shared`,
+`type:contracts`, **solo tipos**. Manda `sport-itsm-architecture` (ADR-007, la fila `contracts` de
+la matriz §5.3), con `sport-itsm-engineering-principles` (YAGNI, nombres del lenguaje ubicuo) y
+`sport-itsm-workflow` para el cierre. No apliques idiomas de `sport-itsm-backend`.
+
+#### Por qué este ticket y por qué ahora
+Es el tercero de la rebanada 1 ("un requester registra una incidencia y la ve"). Es **el único
+acoplamiento permitido entre frontend y backend** (ADR-007, `ARCHITECTURE.md` §3.2): el `POST` de
+`T-C1-08`, el data-access de `T-C1-10` y el envelope de error que mostrará el formulario de
+`T-C1-09` se escriben contra lo que dejes aquí. Detrás de ti viene `T-C10-73` (dispatcher de
+eventos), que no depende de esta librería.
+
+#### Precondición
+    git status --porcelain                   # limpio antes de empezar
+    pnpm nx show projects                    # EXACTAMENTE: shared-domain, shared-util, api-e2e, web-e2e, api, web
+    node -e "console.log(Object.keys(require('./tsconfig.base.json').compilerOptions.paths))"
+                                             # exactamente ['@sport-itsm/shared-domain', '@sport-itsm/shared-util']
+    pnpm verify:boundaries                   # todas las sondas en verde, exit 0 — anota el número
+
+**El arnés de sondas es de un solo proceso a la vez.** `libs/__boundary-probe` funciona como lock:
+si ves "another run is in flight", **espera** — no borres el directorio.
+
+Este ticket no necesita base de datos ni Docker.
+
+#### El ticket es el contrato
+Lee `docs/backlog/C10/tickets/T-C10-11.md` entero; su "Out of scope" es vinculante. Lee además, y
+no de memoria:
+
+- **`ARCHITECTURE.md` §3.2** — la fila *Errors*: los errores de dominio se mapean a un envelope
+  **estable y declarado en el contrato**; *"error codes are part of the contract, error **text** is
+  not"*, y el cliente mapea códigos a claves de Transloco. Esa frase decide la forma del envelope.
+- **`ARCHITECTURE.md` §5.3** — fila `type:contracts`: solo `contracts` y `util`. Y la regla de
+  plataforma: `platform:shared` solo alcanza `platform:shared`.
+- **`ARCHITECTURE.md` §5.5** — el comando generador completo y los pasos posteriores.
+- **ADR-007** en `ARCHITECTURE.md` §10.
+- `libs/shared/util` y `libs/shared/domain` — cómo quedaron andamiadas las dos librerías hermanas.
+  Imita su forma.
+
+#### Trampa 1 — el comando del ticket está incompleto
+El Scope del ticket trae `pnpm nx g @nx/js:lib --name=shared-contracts --directory=... --tags=...`
+y **nada más**. Con eso, `@nx/js:lib` usa `--bundler=tsc` (le da `package.json` propio y un target
+`build` que CI ejecutará) y te puede ofrecer Vitest. **Usa el comando completo de
+`ARCHITECTURE.md` §5.5**, bloque *Shared kernel*, primera línea: `--importPath`, `--bundler=none`,
+`--unitTestRunner=jest`, `--linter=eslint`, `--testEnvironment=node`, `--useProjectJson=true`.
+Ejecútalo primero con `--dry-run --no-interactive` y revisa la lista. Después, los pasos que el
+generador no sabe hacer: `"types": []` en `tsconfig.lib.json` (§12, *layer purity*) y borrar la
+unidad de ejemplo.
+
+#### Trampa 2 — "pagination and correlation-identifier shapes" no están definidas en ningún sitio
+El Scope pide, además del envelope y del enum, *"the pagination and correlation-identifier
+shapes"*, citando `ARCHITECTURE.md` §3.2. **§3.2 no las define**: la única mención de correlación
+en el documento es la de logs de `nestjs-pino` (§9). Búscalas en `PRD.md`, `DATA-MODEL.md` y
+`ARCHITECTURE.md` antes de decidir, y cita lo que encuentres.
+
+Si no encuentras nada normativo, declara la forma **mínima y convencional** — sin campos
+especulativos —, documenta en el propio barrel o en un comentario de qué se deriva cada campo, y
+**repórtalo como hallazgo** para el arquitecto: el ticket cita una fuente que no dice lo que el
+ticket le atribuye. Para la paginación, en concreto: no inventes ordenación, filtros ni cursores si
+nada los pide; una página de resultados con su total y sus parámetros de petición basta. Para el
+identificador de correlación: decide si es un tipo (alias con nombre) y/o el nombre de la cabecera
+HTTP como constante, y justifícalo.
+
+#### Trampa 3 — "const enums" y el cliente Angular
+El AC admite "type declarations and `const` enums". Ojo: `apps/web/tsconfig.json` tiene
+`"isolatedModules": true`, y el builder de Angular compila fichero a fichero. Un `export const enum`
+consumido desde otra librería por alias de ruta puede comportarse distinto que un `enum` normal o
+que un objeto `as const` + tipo unión. Elige **una** representación para el enum de códigos de
+error y **demuestra** que ambos lados pueden consumirla: un import temporal desde `apps/web` y otro
+desde `apps/api` que usen un **valor** del enum (no solo el tipo), con `pnpm nx build web` y
+`pnpm nx build api` en verde. **Revierte ambos imports después.** Justifica la elección en el
+informe. Si eliges `as const`, verifica que eso sigue cumpliendo el AC "no runtime logic beyond type
+declarations and const enums" y dilo explícitamente: es un objeto literal congelado, no lógica, pero
+es tu responsabilidad argumentarlo, no la del revisor.
+
+#### Trampa 4 — el enum de códigos de error es exactamente cuatro
+`UNAUTHENTICATED`, `FORBIDDEN`, `VALIDATION_FAILED`, `NOT_FOUND`. Ni `CONFLICT`, ni
+`INTERNAL_ERROR`, ni `LICENSE_REQUIRED`, por muy obvios que parezcan: cada ticket posterior añade
+los suyos. Y ningún contrato de identidad (sign-in, asignación de roles…) ni de incidencia: son de
+`T-C10-27`, `T-C10-48`, `T-C10-52`, `T-C10-60` y de `C1`.
+
+Si el envelope necesita el detalle de un fallo de validación (qué campo, qué regla), recuerda §3.2:
+**el texto no es contrato**. Un detalle por campo con un código máquina sí; un mensaje traducido,
+no.
+
+#### Trampas ya pagadas — no las redescubras
+- **`--name=` como flag**, nunca posicional (ya está en §5.5).
+- **Jest 30.** Tras generar, `git diff package.json`: si el generador ha tocado `jest`, `ts-jest`,
+  `@types/jest` o `jest-environment-node`, restaura los pines exactos y reinstala. Lo ideal es que
+  `git diff package.json pnpm-lock.yaml` quede **vacío**: esta librería no añade dependencias. Y
+  nada de rangos `^`/`~`.
+- **`tsconfig.base.json`** pasa de dos entradas a exactamente **tres**. No toques nada más.
+- **`jest.config.ts`** con `displayName: 'shared-contracts'`. **No declares un target `test`** en
+  `project.json` (lo infiere `@nx/jest`) y **no pongas `passWithNoTests`**. Una librería de solo
+  tipos tiene poco que testear en runtime: si no escribes ningún spec, decide qué hacer con el
+  target `test` para que `pnpm nx run-many -t test` no se ponga rojo por "No tests found", y
+  justifícalo (un spec que verifique que el enum tiene exactamente los cuatro valores es legítimo;
+  un spec de decoración, no).
+- **`eslint.config.mjs` de proyecto**: las dos líneas que reexportan el raíz, como en `shared-util`.
+  Ni una regla añadida ni relajada.
+- **Prettier en Windows**: no hay `.gitattributes` y `core.autocrlf=true` deja CRLF en el árbol.
+  Comprueba **solo lo tuyo**: `pnpm prettier --check libs/shared/contracts tsconfig.base.json`. No
+  reformatees el repositorio.
+
+#### Lo que NO debes tocar
+- `libs/shared/util`, `libs/shared/domain`, `apps/**` (salvo los imports temporales de la trampa 3,
+  revertidos), el `eslint.config.mjs` raíz, `nx.json`, `tools/boundary-probes/`, `.github/`,
+  `docker/`, `CLAUDE.md`, `docs/**`, `.claude/**`, `prompts.md`. El ticket no se edita.
+- Ningún DTO con decoradores de `class-validator`: esos viven en `apps/api` y los crea el ticket que
+  los necesite.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1 — pureza.** `grep -rnE "class-validator|@nestjs|@angular|typeorm" libs/shared/contracts/src`
+   → vacío. Pega la salida.
+2. **AC2 — sin lógica.** Enseña el contenido completo de `libs/shared/contracts/src` y
+   `tsconfig.lib.json` con `"types": []`.
+3. **AC3 — la sonda.** Añade un import de `@sport-itsm/shared-contracts` en `libs/shared/domain`,
+   ejecuta `pnpm nx lint shared-domain` y pega el error de `@nx/enforce-module-boundaries`. **Revierte
+   la sonda** y vuelve a ejecutar `pnpm nx lint shared-domain` en verde. `git diff libs/shared/domain`
+   debe quedar vacío.
+4. **AC4 — tags y lint.** `pnpm nx show project shared-contracts --json`: exactamente los tres tags
+   `platform:shared`, `scope:shared`, `type:contracts`; `projectType: library`; sin target `build`.
+   Y `pnpm nx lint shared-contracts` en verde.
+5. **Trampa 3** — `pnpm nx build web` y `pnpm nx build api` en verde **con** los imports temporales de
+   un valor del enum; pega las salidas relevantes; revierte; `git diff apps` vacío.
+6. `pnpm nx show projects` → exactamente siete: los seis de antes más `shared-contracts`.
+7. `pnpm verify:boundaries` → el mismo número de sondas que en la precondición, todas en verde.
+   Ejecútalo **solo**. Después, `git diff tsconfig.base.json` muestra solo el alias nuevo.
+8. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde.
+9. `pnpm prettier --check libs/shared/contracts tsconfig.base.json` pasa.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- El comando generador exacto y qué borraste o ajustaste de su salida.
+- El contenido literal de cada tipo exportado, y por cada uno **de dónde sale** (sección y documento)
+  o, si no sale de ningún sitio, que es una decisión tuya y por qué es la mínima.
+- La representación elegida para el enum (trampa 3) y la prueba de que ambos lados la consumen.
+- Qué hiciste con el target `test`.
+- La salida de las nueve verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, que `ARCHITECTURE.md` §3.2 no define las
+  formas de paginación y correlación que el ticket le atribuye, que el comando del Scope del ticket
+  está incompleto respecto a §5.5, y qué notas de estado quedan obsoletas (`ARCHITECTURE.md` §12.3,
+  `PROJECT-STRUCTURE.md`).
+
+### Response:
+
