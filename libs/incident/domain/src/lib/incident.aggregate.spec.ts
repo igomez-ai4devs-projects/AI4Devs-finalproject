@@ -12,6 +12,7 @@ import {
   IncidentReporterRequiredError,
   IncidentShortDescriptionRequiredError,
   IncidentShortDescriptionTooLongError,
+  IncidentSnapshot,
   LogIncidentCommand,
 } from './incident.aggregate';
 import { OriginChannel } from './origin-channel.vo';
@@ -223,6 +224,123 @@ describe('Incident.log()', () => {
 
       expect(incident.affectedSubject).toBeNull();
       expect(incident.assignment).toBeNull();
+    });
+  });
+
+  describe('Incident.reconstitute() — T-C1-06 Trap 6, rebuilding from persistence', () => {
+    /** A snapshot that satisfies every mandatory field; tests override what they mean to break. */
+    const validSnapshot = (
+      overrides: Partial<IncidentSnapshot> = {},
+    ): IncidentSnapshot => ({
+      id: IDENTITY,
+      reference: REFERENCE,
+      loggedAtEpochMs: CLOCK.now().getTime(),
+      loggedBy: ACTOR,
+      reporterId: REPORTER,
+      originChannel: OriginChannel.fromCode('portal'),
+      shortDescription: 'Cannot submit match roster',
+      description:
+        'The roster submission form rejects a valid squad list with no error message.',
+      affectedServiceId: null,
+      categoryId: null,
+      impact: null,
+      urgency: null,
+      priority: null,
+      competitionAffectsInProgress: false,
+      affectedSubject: null,
+      assignment: null,
+      ...overrides,
+    });
+
+    it('rebuilds an Incident carrying exactly the snapshot state, and raises no event', () => {
+      const incident = Incident.reconstitute(validSnapshot());
+
+      expect(incident.id.equals(IDENTITY)).toBe(true);
+      expect(incident.reference.equals(REFERENCE)).toBe(true);
+      expect(incident.loggedAtEpochMs).toBe(CLOCK.now().getTime());
+      expect(incident.loggedBy.equals(ACTOR)).toBe(true);
+      expect(incident.reporterId.equals(REPORTER)).toBe(true);
+      expect(incident.originChannel.code).toBe('portal');
+      expect(incident.shortDescription).toBe('Cannot submit match roster');
+      expect(incident.affectedServiceId).toBeNull();
+      expect(incident.categoryId).toBeNull();
+      expect(incident.impact).toBeNull();
+      expect(incident.urgency).toBeNull();
+      expect(incident.priority).toBeNull();
+      expect(incident.competitionAffectsInProgress).toBe(false);
+      expect(incident.affectedSubject).toBeNull();
+      expect(incident.assignment).toBeNull();
+    });
+
+    it('produces an Incident indistinguishable in shape from one built by log(), field for field', () => {
+      const { incident: logged } = Incident.log({
+        id: IDENTITY,
+        reference: REFERENCE,
+        reporterId: REPORTER,
+        originChannel: OriginChannel.fromCode('portal'),
+        shortDescription: 'Cannot submit match roster',
+        description:
+          'The roster submission form rejects a valid squad list with no error message.',
+        actor: ACTOR,
+        correlationId: CORRELATION,
+        occurredAt: CLOCK.now(),
+      });
+
+      const reconstituted = Incident.reconstitute(validSnapshot());
+
+      expect(reconstituted).toEqual(logged);
+    });
+
+    it('carries the affected service when the snapshot has one', () => {
+      const incident = Incident.reconstitute(
+        validSnapshot({ affectedServiceId: SERVICE }),
+      );
+
+      expect(incident.affectedServiceId?.equals(SERVICE)).toBe(true);
+    });
+
+    it.each([
+      [
+        'a missing reporter',
+        { reporterId: undefined as unknown as Identity },
+        IncidentReporterRequiredError,
+      ],
+      [
+        'a missing origin channel',
+        { originChannel: undefined as unknown as OriginChannel },
+        IncidentOriginChannelRequiredError,
+      ],
+      [
+        'a missing short description',
+        { shortDescription: undefined as unknown as string },
+        IncidentShortDescriptionRequiredError,
+      ],
+      [
+        'a short description over 255 characters',
+        { shortDescription: 'x'.repeat(256) },
+        IncidentShortDescriptionTooLongError,
+      ],
+      [
+        'a missing detailed description',
+        { description: undefined as unknown as string },
+        IncidentDescriptionRequiredError,
+      ],
+    ])(
+      'rejects a corrupt row with %s, the same typed error log() uses',
+      (_case, overrides, errorType) => {
+        expect(() => Incident.reconstitute(validSnapshot(overrides))).toThrow(
+          errorType,
+        );
+      },
+    );
+
+    it('is frozen exactly like an Incident built by log()', () => {
+      const incident = Incident.reconstitute(validSnapshot());
+
+      expect(() => {
+        (incident as { shortDescription: string }).shortDescription =
+          'tampered';
+      }).toThrow(TypeError);
     });
   });
 

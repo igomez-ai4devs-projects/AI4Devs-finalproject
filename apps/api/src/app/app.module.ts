@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { configModuleOptions } from '../config/configuration';
 import { NodeEnvironment } from '../config/env.validation';
 import { loadEnvironment } from '../config/environment';
+import { DatabaseModule } from '../database/database.module';
 import { EventDispatchModule } from '../event-dispatch/event-dispatch.module';
 import { TestEventDispatchModule } from '../testing/test-event-dispatch.module';
 import { IncidentModule } from './incident/incident.module';
@@ -38,13 +39,16 @@ const testOnlyModules =
  * tokens to concrete adapters (ADR-003), plus the cross-cutting
  * `EventDispatchModule` that binds `EventPublisherPort` for all of them
  * (`T-C10-73`). `IncidentModule` (`T-C1-02`) is the first context module;
- * it is empty but wired, so later `incident` tickets add providers to it
- * rather than inventing a registration pattern.
+ * `T-C1-06` gives it its first real provider binding. `DatabaseModule`
+ * (`T-C1-06`) opens the one PostgreSQL connection every context's repository
+ * adapters share — imported once here, `@Global()` so no context module
+ * re-imports it.
  */
 @Module({
   imports: [
     ConfigModule.forRoot(configModuleOptions),
     EventDispatchModule,
+    DatabaseModule,
     IncidentModule,
     ...testOnlyModules,
   ],

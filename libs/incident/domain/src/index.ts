@@ -31,4 +31,5 @@ export type {
   LogIncidentCommand,
   LoggedIncident,
   IncidentLoggedPayload,
+  IncidentSnapshot,
 } from './lib/incident.aggregate';

@@ -1,54 +1,37 @@
 import { DataSource } from 'typeorm';
 import { join } from 'node:path';
-import { loadEnvironment } from './config/environment';
-
-const environment = loadEnvironment();
+import { buildDatabaseConnectionOptions } from './config/database-connection';
 
 /**
- * The TypeORM data source: the one description of how this application reaches
- * PostgreSQL, used both by the running API and by the TypeORM CLI that
- * generates, runs and reverts migrations.
+ * The TypeORM data source used by the TypeORM CLI (`migration:generate` /
+ * `run` / `revert` / `show`) to reach PostgreSQL.
  *
- * Two rules are structural here rather than conventional:
- *
- * - **`synchronize` is `false`, in every environment.** Schema changes happen
- *   through migrations only (`CLAUDE.md` §2/§3). There is no code path that
- *   sets it to `true`, not even for tests: a schema that can drift from its
- *   migrations is a schema nobody can reproduce.
- * - **`migrationsRun` is `false`.** Applying migrations is a controlled deploy
- *   step, never an unconditional side effect of a process starting — several
- *   API instances booting at once would otherwise race each other through the
- *   same migration chain.
- *
- * Connection values arrive already validated and coerced from the same schema
- * the API boots with, so the CLI cannot connect with a configuration the
- * application would have rejected.
+ * Connection values (`synchronize: false`, `migrationsRun: false`, host,
+ * credentials…) come from `buildDatabaseConnectionOptions()`
+ * (`config/database-connection.ts`), the single place that declares them —
+ * see that function's own doc comment for why, and for `T-C1-06`'s reported
+ * finding on this ticket's AC4. This file supplies only what the CLI
+ * specifically needs on top: entities and migrations, both registered by
+ * glob (`T-C1-06` Trap 3 — the running API registers entities differently;
+ * see `apps/api/src/database/database.module.ts`).
  */
 export const dataSource = new DataSource({
-  type: 'postgres',
-  host: environment.POSTGRES_HOST,
-  port: environment.POSTGRES_PORT,
-  username: environment.POSTGRES_USER,
-  password: environment.POSTGRES_PASSWORD,
-  database: environment.POSTGRES_DB,
-  synchronize: false,
-  migrationsRun: false,
+  ...buildDatabaseConnectionOptions(),
   // Every entity lives in its bounded context's own infrastructure library
   // (`libs/<context>/infrastructure/src/**/*.entity.ts`), never in `apps/api`
   // itself — `ARCHITECTURE.md` §6.3, §5.4. `apps/api/src` is *not* an ancestor
   // of `libs/`, so a single `join(__dirname, '..', '**', ...)` glob (as it
-  // read before this ticket) can only ever search inside `apps/api` and would
-  // never reach a context library; it was a placeholder for this ticket to
-  // resolve, per its own comment.
+  // read before `T-C1-02`) can only ever search inside `apps/api` and would
+  // never reach a context library.
   //
-  // `T-C1-02` registers only the `incident` entry below (no entity exists
-  // yet — the glob simply matches nothing today). Each later context adds its
-  // own array entry the same way, rather than this list ever growing a
-  // wildcard segment: a wildcard (`libs/*/infrastructure/src/...`) would also
-  // match any future non-context `libs/*/infrastructure` directory sight
-  // unseen, and the migrations glob below stays a single pattern only because
-  // every migration file already lives in one shared folder, which is not
-  // true of entities.
+  // `T-C1-06` adds the first real entry (`incident`, its first entity — see
+  // `libs/incident/infrastructure/src/lib/incident.entity.ts`). Each later
+  // context appends its own array entry the same way, rather than this list
+  // ever growing a wildcard segment: a wildcard (`libs/*/infrastructure/src/...`)
+  // would also match any future non-context `libs/*/infrastructure` directory
+  // sight unseen, and the migrations glob below stays a single pattern only
+  // because every migration file already lives in one shared folder, which is
+  // not true of entities.
   //
   // The path is built the same way in both places this file runs, with no
   // `if (environment === …)` branch:
@@ -61,18 +44,19 @@ export const dataSource = new DataSource({
   //   `/app/dist/apps/api` (`docker/backend/Dockerfile`). The same three
   //   `..` segments land on `/app/libs/incident/infrastructure/src/...` —
   //   still bounded under the image's `/app` root, not the filesystem root
-  //   (`T-C10-69`'s `/proc` incident), and, since nothing under `libs/` is
-  //   copied into the image (only `dist/apps/api` is), it resolves to a path
-  //   that does not exist and matches nothing, which is exactly what happens
-  //   locally today too (no entity has been written yet). No path alias
-  //   (`@sport-itsm/incident-infrastructure`) is imported here instead: `tsc`
-  //   does not rewrite path aliases when compiling this file in isolation
-  //   (`tsconfig.migrations.json` has no bundler behind it), so a compiled
-  //   `require('@sport-itsm/incident-infrastructure')` would fail in the
-  //   image. See the finding in this ticket's report: once `T-C1-06` adds the
-  //   first entity, the image will need that file compiled and copied into
-  //   `dist/`, or this data source will need a different strategy — not
-  //   solved here, since no entity exists yet to prove it against.
+  //   (`T-C10-69`'s `/proc` incident) — but nothing under `libs/` is copied
+  //   into the image (only `dist/apps/api` is), so **this glob matches
+  //   nothing inside the deployed image, and this data source is never used
+  //   to run migrations there either** (ADR-013 runs `migration:run:deploy`
+  //   against the compiled `dist/apps/api/data-source.js`, a separate build
+  //   artifact of this same file — same glob, same empty match). This data
+  //   source is a CLI-only tool; the entity that actually has to be present
+  //   at runtime is registered by class reference in
+  //   `apps/api/src/database/database.module.ts` instead — a different
+  //   `DataSource`, for a different consumer, built by
+  //   `buildDatabaseConnectionOptions()` with the same connection settings
+  //   (`T-C1-06` Trap 3, reported for `ci-cd-expert` to verify against the
+  //   actual deployed image).
   entities: [
     join(
       __dirname,

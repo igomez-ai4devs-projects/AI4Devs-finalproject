@@ -2897,3 +2897,189 @@ No instales dependencias. No hagas commit ni push.
 Implementado ticket T-C1-05
 
 </br>
+
+**Prompt 18:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-06.md ·
+Entidad TypeORM de `Incident`, mapper, adaptador de repositorio y migración
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (TypeORM 1.1, migraciones, DI por tokens),
+`sport-itsm-architecture` (ADR-005: entidad de persistencia separada del agregado, unidas por un
+mapper; §5.3: `type:infrastructure` puede depender de `domain`/`application`) y
+`sport-itsm-engineering-principles`. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Quinto del bloque 3 de la rebanada 1 (orden `03 → 05 → 06 → 04`). Es **la primera entidad y el primer
+adaptador de persistencia del proyecto**: todo lo que decidas aquí (dónde viven, cómo se registran,
+cómo llega el `DataSource` a Nest, cómo se prueban contra PostgreSQL) lo copiarán las seis entidades
+siguientes. Detrás vienen `T-C1-04` (secuencia, trigger de inmutabilidad y `nextReference()`) y
+`T-C1-07` (`LogIncidentUseCase`, primera escritura alcanzable en producción).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx test incident-domain             # verde
+    docker ps --filter name=sport-itsm-postgres-dev   # healthy, 0.0.0.0:5452->5432
+    POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres pnpm typeorm migration:show -d apps/api/src/data-source.ts
+                                             # [X] ...Iam... y [X] ...IncidentSchema...
+
+#### Trampas del entorno — ya pagadas, no las redescubras
+- Postgres de desarrollo en el **puerto de host 5452**. Variables globales de Windows `POSTGRES_*` de
+  otro proyecto (usuario `userdev`) pisan el `.env`: pasa los cinco valores **en la misma llamada
+  Bash** en cada comando de la CLI. `pnpm typeorm … -d …` lleva `-d`; los atajos `pnpm migration:*`
+  **ya lo llevan**, no añadas otro.
+- `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash si ejecutas Cypress.
+- Prettier en Windows: comprueba solo tus ficheros.
+
+#### El ticket es el contrato — léelo entero, incluido todo su `## Context`
+Fue reescrito por ADR-014 y dos pases posteriores. Lee además, del repo y no de memoria:
+- **`DATA-MODEL.md` §8.5** (tabla de introducción de columnas: este ticket es su primera fila), **§20.3**
+  (`incident_ticket`, `origin_channel_enum`), **§3.7** y **M18**; **ADR-014** en `ARCHITECTURE.md` §10.
+- `libs/incident/domain/src/lib/incident.aggregate.ts` (campos, `loggedAtEpochMs`, `loggedBy`, slots
+  ausentes), `origin-channel.vo.ts`, `incident-repository.port.ts` (`nextIdentity`, `nextReference`,
+  `findById`, `save`, token `INCIDENT_REPOSITORY`).
+- `apps/api/src/data-source.ts` (su comentario explica el glob de entidades de `T-C1-02` y por qué
+  **no** puede importar por alias), `apps/api/tsconfig.migrations.json`, `tools/build-api-runtime.mjs`,
+  `apps/api/webpack.config.js`, `apps/api/src/app/incident/incident.module.ts`,
+  `apps/api/src/migrations/README.md`.
+
+#### Trampa 1 — el AC4 contradice la fuente vigente
+El AC4 dice *"migrations auto-run only when `NODE_ENV=development`"*. **`DATA-MODEL.md` §3.7 (ya
+corregido) dice lo contrario**: las migraciones **nunca** corren al arrancar, en ningún entorno
+(`migrationsRun: false`), porque la API escala en horizontal y migrar en paralelo corrompe. **No
+implementes auto-run.** Demuestra `synchronize: false` y `migrationsRun: false` y **reporta el AC4 como
+contradicción** para `architect-tech-lead`.
+
+#### Trampa 2 — dónde vive cada pieza
+- Entidad, mapper, error de mapeo y `TypeOrmIncidentRepository` en **`libs/incident/infrastructure`**
+  (`type:infrastructure`), con la entidad en un fichero `*.entity.ts` para que el glob de `T-C1-02` la
+  encuentre desde la CLI. Nada de TypeORM en `libs/incident/domain` (AC3).
+- El binding `{ provide: INCIDENT_REPOSITORY, useClass/useFactory: … }` en `IncidentModule`
+  (`apps/api`), la raíz de composición (§6.3).
+- La migración en `apps/api/src/migrations/`, timestamp posterior a `1790366187635`, SQL explícito.
+- Quita `passWithNoTests` de `libs/incident/infrastructure/jest.config.ts` (este ticket trae su primer
+  spec, aunque el comentario diga `T-C1-04`).
+
+#### Trampa 3 — el registro de la entidad en la API arrancada: el glob no sirve en runtime
+Esta es la trampa grande, y el ticket la deja "flagged, not resolved". Verifícala tú:
+- `nx serve api` ejecuta el **bundle de webpack** `dist/apps/api/main.js`. El glob del data source
+  (`libs/incident/infrastructure/src/**/*.entity.{ts,js}`) resuelve, desde `dist/apps/api`, a los
+  ficheros **`.ts` fuente** del repo: TypeORM intentaría `require`-arlos en runtime (Node no carga
+  `.ts`) o, aunque cargaran, serían **otra clase** distinta de la que el bundle usa en el repositorio
+  → *"No metadata for entity"*. En la imagen (`/app/libs/...` no existe) directamente no encuentra nada.
+- Para la **API en ejecución**, la entidad tiene que registrarse **por referencia de clase** (un array
+  explícito importado de `@sport-itsm/incident-infrastructure`, que webpack sí resuelve y empaqueta).
+- Pero **`data-source.ts` no puede importar por alias**: `tsconfig.migrations.json` lo compila con `tsc`
+  para la imagen y `tsc` no reescribe alias (`T-C1-02` lo documentó en el propio fichero). La CLI de
+  migraciones no necesita entidades (las migraciones son SQL a mano).
+- **Diseña** cómo conviven los dos: p. ej. una factoría de opciones compartida (conexión validada,
+  `synchronize: false`, `migrationsRun: false`) que la CLI usa con el glob y la raíz de composición usa
+  con el array explícito — o la alternativa que justifiques. **Sin rama por entorno** y **sin duplicar**
+  la configuración de conexión.
+- **Demuéstralo en el bundle real**: la API construida (`pnpm nx build api` + arrancar `main.js`, o
+  `nx serve api`) contra el Postgres de desarrollo carga la metadata de la entidad (p. ej. log de
+  arranque, o una comprobación que no requiera endpoint). Si no lo puedes demostrar, dilo.
+- **Repórtalo para `ci-cd-expert`** con tu conclusión sobre la imagen desplegada.
+
+#### Trampa 4 — cómo llega el `DataSource` a Nest
+`@nestjs/typeorm` **no está instalado** y la API **no abre conexión al arrancar** hoy. Para inyectar el
+repositorio necesitas un `DataSource` inicializado en el contenedor de Nest.
+- Recomendación: un provider propio en `apps/api` (p. ej. `useFactory` que construye e `initialize()`-a
+  el `DataSource` con las opciones de la trampa 3, y lo destruye en el cierre de la aplicación), sin
+  dependencias nuevas. Si concluyes que hace falta `@nestjs/typeorm`, **para y repórtalo** antes de
+  instalar nada.
+- Consecuencia a documentar y reportar: desde este ticket **la API necesita PostgreSQL para arrancar**.
+  El harness `api-e2e` ya levanta su base efímera (5499) y aplica las migraciones antes de servir la API;
+  comprueba que sigue en verde.
+
+#### Trampa 5 — el puerto completo, con `nextReference()` todavía sin secuencia
+`TypeOrmIncidentRepository` implementa `IncidentRepositoryPort` entero, pero la secuencia
+`incident.incident_reference_seq` es de **`T-C1-04`**, que va después.
+- `nextIdentity()`: UUID v7. `crypto.randomUUID()` es v4 (no vale). El kernel no genera IDs. Opciones:
+  `SELECT uuidv7()` contra PostgreSQL 18 (core, ADR-012) desde el adaptador, u otra que justifiques sin
+  añadir dependencias. Devuelve `Identity`.
+- `nextReference()`: **no inventes** un contador ni una secuencia provisional. Lanza un error tipado
+  explícito ("disponible con `T-C1-04`") con su test, y repórtalo. `T-C1-04` lo implementará.
+- En los tests de round-trip, construye la referencia con `IncidentReferencePolicy.format(n)`.
+
+#### Trampa 6 — mapper y regla 4 de ADR-014
+- Columnas exactamente las del primer grupo de §8.5 (el ticket las lista). `origin_channel_enum` en el
+  esquema `incident` con **`portal`, `agent_logged`, `email`, `in_app`** (sin `phone`).
+- `reference` con **`update: false`** en la entidad y `uq_incident_reference`.
+- `created_at`/`created_by` ← `loggedAtEpochMs`/`loggedBy`. Decide y justifica `updated_at`
+  (`NOT NULL`) y `updated_by` (`NULL`) en el primer guardado sin inventar estado de dominio.
+  `version` como `@VersionColumn`. Timestamps en UTC (`timestamptz`).
+- Al cargar: los slots sin columna (`categoryId`, `impact`, `urgency`, `priority`,
+  `competitionAffectsInProgress`, `affectedSubject`, `assignment`) salen `null`/`false`. Al guardar: si
+  alguno trae valor, **error de mapeo tipado**, nunca descarte silencioso.
+- El agregado necesita poder **reconstituirse** desde persistencia sin pasar por `log()` (que emite
+  evento). Si no existe una vía, añádela en `libs/incident/domain` de forma mínima (p. ej. una factoría
+  `reconstitute` que valida invariantes y **no** emite eventos), con tests. Justifícalo: es la única
+  modificación permitida en el dominio.
+
+#### Trampa 7 — el test contra PostgreSQL real no puede romper CI
+El AC1 exige round-trip **contra PostgreSQL real, no un mock**. Pero `pnpm nx run-many -t test` corre en
+el job `verify` de CI **sin base de datos**: un spec de Jest que necesite Postgres dentro del target
+`test` lo pondría en rojo.
+- Mantén los tests unitarios del mapper (sin BD) en el target `test`.
+- Pon los tests contra BD en un **target aparte** (p. ej. `integration`) que levante la base efímera y la
+  destruya siempre, reutilizando el patrón de `apps/api-e2e` (`docker/docker-compose.e2e.yml`,
+  `--wait`, `pnpm migration:run` contra 5499, `tools/e2e/teardown-after.mjs`) — o la alternativa que
+  justifiques. Que **no** entre en `run-many -t test`.
+- Engancharlo a CI es de `ci-cd-expert`: **repórtalo**, no toques `.github/`.
+
+#### Lo que NO debes tocar
+`libs/shared/**`, `libs/incident/{application,feature,ui,data-access}`, `docker/**`, `.github/**`,
+`docs/**`, `.claude/**` (salvo tu memoria de agente), `package.json` (sin dependencias nuevas),
+`prompts.md`, `apps/api/src/event-dispatch/**`, `apps/api/src/testing/**`. En `libs/incident/domain`,
+solo la vía de reconstitución si hace falta. Ninguna columna, CHECK, secuencia ni trigger de tickets
+posteriores. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **Migración**: contra una base desechable vacía, `migration:run` aplica las tres migraciones; `\d
+   incident.incident_ticket` y `\dT+ incident.origin_channel_enum` muestran exactamente las columnas y
+   los cuatro valores. `migration:revert` retira solo la tuya sin residuos; run → revert → run idéntico.
+2. **AC1/AC2** — el target de integración: guardar y recargar un `Incident` recién registrado contra
+   PostgreSQL real; todos los campos iguales; slots ausentes `null`/`false`. Pega la salida y demuestra
+   que la base efímera se destruye también si el test falla.
+3. **Regla 4**: test unitario del mapper que rechaza guardar un slot sin columna con valor (error tipado).
+4. **AC3**: `grep -rnE "typeorm|@Entity|Column\(" libs/incident/domain/src` → vacío.
+5. **AC4**: `grep -rn "synchronize\|migrationsRun" apps/api/src libs/incident/infrastructure/src` → solo
+   `false`. Reporta la contradicción.
+6. **Trampa 3**: la API construida arranca contra el Postgres de desarrollo (5452) y la entidad está
+   registrada en el `DataSource` del bundle. Pega la evidencia.
+7. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde.
+8. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde **sin** base de datos corriendo
+   (demuéstralo: el target `test` no depende de Postgres) y `pnpm verify:boundaries` 10/10. El grafo:
+   `api -> incident-infrastructure -> incident-domain` y ninguna arista ilegal.
+9. `pnpm nx run api:build-migrations` en verde (la migración nueva compila a `dist/apps/api/migrations/`).
+10. Deja la base de **desarrollo** con las tres migraciones aplicadas; `pnpm prettier --check` sobre tus
+    ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Si no cabe en la estimación
+El ticket son 3h y las trampas 3, 4 y 7 son trabajo real. Si no cabe, **no recortes** la verificación
+contra PostgreSQL ni la demostración en el bundle: entrega lo que esté verificado, di exactamente qué
+falta y déjalo como hallazgo de estimación.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados al terminar;
+`sport-itsm-postgres-dev` `healthy` en 5452.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la migración literal; el diseño de registro de entidades y del
+  provider del `DataSource`.
+- Tus decisiones de las trampas 3 a 7, con su porqué.
+- La salida de las diez verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el AC4 contra §3.7, el registro de entidades
+  en la imagen (`ci-cd-expert`), el target de integración en CI (`ci-cd-expert`), `nextReference()`
+  pendiente de `T-C1-04`, y que la API ya necesita PostgreSQL para arrancar.
+
+### Response:
+

@@ -8,6 +8,11 @@ import type { EnvironmentVariables } from './config/env.validation';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
+  // `DatabaseModule` (`T-C1-06`) closes its `DataSource` from
+  // `onApplicationShutdown()`, which Nest only invokes for OS shutdown
+  // signals (SIGTERM/SIGINT) when shutdown hooks are explicitly enabled.
+  app.enableShutdownHooks();
+
   app.setGlobalPrefix(GLOBAL_PREFIX, { exclude: GLOBAL_PREFIX_EXCLUSIONS });
 
   // `whitelist` strips undeclared properties, `forbidNonWhitelisted` rejects

@@ -11,6 +11,7 @@
     "src/data-source.ts",
     "src/config/environment.ts",
     "src/config/env.validation.ts",
+    "src/config/database-connection.ts",
     "src/migrations/**/*.ts"
   ]
 }

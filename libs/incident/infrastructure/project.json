@@ -5,5 +5,46 @@
   "projectType": "library",
   "tags": ["platform:backend", "scope:incident", "type:infrastructure"],
   "// targets": "to see all targets run: nx show project incident-infrastructure --web",
-  "targets": {}
+  "targets": {
+    "// integration-*": "T-C1-06 Trap 7 — the round-trip-against-real-PostgreSQL spec (jest.integration.config.ts) needs a live database, so it never runs inside the Nx-inferred `test` target (no DB in CI's `verify` job). These three targets reuse the same ephemeral e2e stack `apps/api-e2e` already owns (docker/docker-compose.e2e.yml, host port 5499) rather than a second compose file — do not run this target concurrently with `nx e2e api-e2e` against the same stack (reported to ci-cd-expert).",
+    "integration-db-up": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker compose -f docker/docker-compose.e2e.yml up -d --wait --wait-timeout 90"
+      }
+    },
+    "integration-migrate": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["integration-db-up"],
+      "cache": false,
+      "options": {
+        "command": "pnpm migration:run",
+        "env": {
+          "NODE_ENV": "test",
+          "PORT": "3335",
+          "POSTGRES_HOST": "localhost",
+          "POSTGRES_PORT": "5499",
+          "POSTGRES_DB": "sport_itsm_e2e",
+          "POSTGRES_USER": "postgres",
+          "POSTGRES_PASSWORD": "postgres"
+        }
+      }
+    },
+    "integration": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["integration-migrate"],
+      "cache": false,
+      "options": {
+        "command": "node tools/e2e/teardown-after.mjs docker/docker-compose.e2e.yml -- \"pnpm exec jest --config=libs/incident/infrastructure/jest.integration.config.ts --runInBand\"",
+        "env": {
+          "POSTGRES_HOST": "localhost",
+          "POSTGRES_PORT": "5499",
+          "POSTGRES_DB": "sport_itsm_e2e",
+          "POSTGRES_USER": "postgres",
+          "POSTGRES_PASSWORD": "postgres"
+        }
+      }
+    }
+  }
 }

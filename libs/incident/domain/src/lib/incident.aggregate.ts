@@ -128,8 +128,14 @@ export interface LoggedIncident {
   readonly events: readonly DomainEvent<IncidentLoggedPayload>[];
 }
 
-/** The full, frozen state of an `Incident`, held privately behind readonly accessors. */
-interface IncidentProps {
+/**
+ * The full, frozen state of an `Incident`. Exported — unlike a purely private
+ * `IncidentProps` would be — because it is also the contract
+ * {@link Incident.reconstitute} accepts: the shape the infrastructure mapper
+ * (`T-C1-06`) must produce from a persisted row to rebuild an aggregate that
+ * never went through {@link Incident.log}.
+ */
+export interface IncidentSnapshot {
   readonly id: Identity;
   readonly reference: TicketReference;
   readonly loggedAtEpochMs: number;
@@ -217,7 +223,7 @@ export class Incident {
   readonly affectedSubject: null;
   readonly assignment: null;
 
-  private constructor(props: IncidentProps) {
+  private constructor(props: IncidentSnapshot) {
     this.id = props.id;
     this.reference = props.reference;
     this.loggedAtEpochMs = props.loggedAtEpochMs;
@@ -312,5 +318,53 @@ export class Incident {
     });
 
     return { incident, events: [event] };
+  }
+
+  /**
+   * Rebuilds an `Incident` from a previously persisted state, without
+   * running through {@link Incident.log} and without emitting
+   * `IncidentLogged` (`T-C1-06` Trap 6). `log()` is the only path that
+   * creates an Incident *and* records that creation as an event
+   * (`ARCHITECTURE.md` §6.2, ADR-008); reloading a row a use case already
+   * knows exists is not a new occurrence, so no event is produced and no
+   * clock or identity port is touched — every value in `snapshot` already
+   * came from storage.
+   *
+   * This is the one addition `T-C1-06` makes to `libs/incident/domain`: the
+   * infrastructure mapper needs a way back into the aggregate that does not
+   * exist yet, and every other write path (`categorize()`, `assign()`, …)
+   * still belongs to the ticket that adds the behavior it supports.
+   *
+   * Validates the same creation invariants `log()` does — a corrupt or
+   * truncated row is a defect worth failing loudly on, not silently
+   * tolerating — reusing the same typed errors so a caller cannot tell a
+   * failed reconstitution from a failed creation by error type alone.
+   *
+   * @throws {IncidentReporterRequiredError} when `snapshot.reporterId` is missing.
+   * @throws {IncidentOriginChannelRequiredError} when `snapshot.originChannel` is missing.
+   * @throws {IncidentShortDescriptionRequiredError} when `snapshot.shortDescription` is missing or blank.
+   * @throws {IncidentShortDescriptionTooLongError} when `snapshot.shortDescription` exceeds 255 characters.
+   * @throws {IncidentDescriptionRequiredError} when `snapshot.description` is missing or blank.
+   */
+  static reconstitute(snapshot: IncidentSnapshot): Incident {
+    if (snapshot.reporterId == null) {
+      throw new IncidentReporterRequiredError(snapshot.reporterId);
+    }
+    if (snapshot.originChannel == null) {
+      throw new IncidentOriginChannelRequiredError(snapshot.originChannel);
+    }
+    if (!isNonEmptyString(snapshot.shortDescription)) {
+      throw new IncidentShortDescriptionRequiredError(
+        snapshot.shortDescription,
+      );
+    }
+    if (snapshot.shortDescription.length > SHORT_DESCRIPTION_MAX_LENGTH) {
+      throw new IncidentShortDescriptionTooLongError(snapshot.shortDescription);
+    }
+    if (!isNonEmptyString(snapshot.description)) {
+      throw new IncidentDescriptionRequiredError(snapshot.description);
+    }
+
+    return new Incident(snapshot);
   }
 }
