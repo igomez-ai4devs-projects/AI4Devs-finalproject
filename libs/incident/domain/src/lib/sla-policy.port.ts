@@ -35,7 +35,7 @@ import { Incident } from './incident.aggregate';
  * decision, recorded here rather than in the use case, since the trade-off
  * is a property of what this port promises, not of how the use case happens
  * to sequence its calls.** `LogIncidentUseCase` calls `attachFor()` **after**
- * `save()` commits and **before** `publish()` — not before `save()`, as
+ * `save()` commits and **after** `publish()` — not before `save()`, as
  * `ARCHITECTURE.md` §8's sequence diagram draws it. Reasoning: `save()` is
  * this slice's only transaction boundary (Trap 2 — no unit-of-work exists),
  * so ordering SLA attachment before `save()` would let a not-yet-real SLA
@@ -44,15 +44,16 @@ import { Incident } from './incident.aggregate';
  * ticket with `priority: null` — Priority is not derived until block D). A
  * failure to attach SLA is therefore a strictly weaker event than a failure
  * to log the Incident, so it must never be allowed to prevent one. The
- * documented cost, symmetrical with `nextReference()`'s own "gaps are
- * acceptable" trade-off (`T-C1-06`): if `attachFor()` throws, the Incident
- * **is already persisted**, but `IncidentLogged` is **not** published for it
- * in that request — no audit entry, no notification — because this port is
- * a direct, synchronous dependency of the use case, not a post-commit event
- * subscriber, so `ARCHITECTURE.md` §9's subscriber-isolation guarantee
- * (ADR-008) does not extend to it by construction. See this ticket's
- * reported findings for the follow-up this leaves open once `T-C1-58` makes
- * the adapter real.
+ * `IncidentLogged` is published **before** this port is called, so a
+ * failure here can never cost the Incident its event — audit and
+ * notification subscribers (ADR-008, FR-AUD-01) always learn of a persisted
+ * Incident. If `attachFor()` throws, the Incident is persisted, its event is
+ * out, and the error propagates to the caller: this port is a direct,
+ * synchronous dependency of the use case, not a post-commit event
+ * subscriber, so `ARCHITECTURE.md` §9's subscriber-isolation guarantee does
+ * not extend to it by construction. What a failed attachment means for the
+ * Incident's SLA (retry, isolate, alert) is the follow-up this leaves open
+ * once `T-C1-58` makes the adapter real.
  */
 export interface SlaPolicyPort {
   /**

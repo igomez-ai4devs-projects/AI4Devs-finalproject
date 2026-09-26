@@ -247,7 +247,7 @@ describe('LogIncidentUseCase', () => {
   });
 
   describe('Call order (Trap 5)', () => {
-    it('authorizes, then allocates identity and reference, then saves, then attaches SLA, then publishes', async () => {
+    it('authorizes, then allocates identity and reference, then saves, then publishes, then attaches SLA', async () => {
       const actor = new StubActor(ACTOR_IDENTITY, true);
 
       await useCase.execute(VALID_INPUT, contextFor(actor));
@@ -257,8 +257,8 @@ describe('LogIncidentUseCase', () => {
         'nextReference',
         'clock.now',
         'save',
-        'attachFor',
         'publish',
+        'attachFor',
       ]);
     });
   });
@@ -292,7 +292,7 @@ describe('LogIncidentUseCase', () => {
       expect(slaPolicy.attachedTo).toHaveLength(0);
     });
 
-    it('propagates an SlaPolicyPort failure and never publishes, even though the Incident is already persisted', async () => {
+    it('propagates an SlaPolicyPort failure without costing the persisted Incident its IncidentLogged event', async () => {
       const actor = new StubActor(ACTOR_IDENTITY, true);
       slaPolicy.attachError = new Error('sla adapter unavailable');
 
@@ -301,7 +301,8 @@ describe('LogIncidentUseCase', () => {
       ).rejects.toThrow('sla adapter unavailable');
 
       expect(incidentRepository.saved).toHaveLength(1);
-      expect(eventPublisher.published).toHaveLength(0);
+      expect(eventPublisher.published).toHaveLength(1);
+      expect(eventPublisher.published[0][0].name).toBe('IncidentLogged');
     });
   });
 });

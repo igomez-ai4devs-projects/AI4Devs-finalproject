@@ -94,21 +94,25 @@ export interface LogIncidentResult {
  *    describes.
  * 4. **Persist.** `IncidentRepositoryPort.save()` is this slice's entire
  *    transaction boundary (`T-C1-07` Trap 2 — see below).
- * 5. **Attach SLA.** `SlaPolicyPort.attachFor()` runs *after* the commit,
- *    not before — see that port's own doc comment for the full reasoning
- *    (`T-C1-07` Trap 4) and the cost this ordering accepts: if it throws,
- *    the Incident is already persisted, `IncidentLogged` is not published
- *    for it in this call, and the exception propagates to this method's
+ * 5. **Publish.** `EventPublisherPort.publish()` runs exactly once, right
+ *    after `save()` resolved — "after commit" means "after `save()`
+ *    resolved" (Trap 2). It runs **before** the SLA step on purpose:
+ *    `IncidentLogged` is what audit and notification subscribe to (ADR-008),
+ *    so once the Incident exists its event must go out regardless of what
+ *    happens next. Ordering it after `attachFor()` would let an SLA-adapter
+ *    failure leave a persisted Incident with no event at all — no audit
+ *    entry, no notification (FR-AUD-01).
+ * 6. **Attach SLA.** `SlaPolicyPort.attachFor()` runs last, after the commit
+ *    and after publication — see that port's own doc comment (`T-C1-07`
+ *    Trap 4). If it throws, the Incident is persisted and `IncidentLogged`
+ *    has already been published; the exception propagates to this method's
  *    caller. This is a *synchronous* dependency of the use case, not a
  *    post-commit subscriber, so ADR-008's subscriber isolation does not
  *    apply to it — a failure here is this use case's own failure, not
  *    something to swallow silently (`sport-itsm-engineering-principles`:
- *    never swallow errors).
- * 6. **Publish.** `EventPublisherPort.publish()` runs last and exactly once,
- *    only once every prior step has resolved — "after commit" means "after
- *    `save()` resolved" (Trap 2), and here also after `attachFor()` resolved,
- *    so a subscriber acting on `IncidentLogged` never observes an Incident
- *    without whatever SLA commitment step 5 attached.
+ *    never swallow errors). The consequence: a subscriber acting on
+ *    `IncidentLogged` may observe the Incident before its SLA commitment is
+ *    attached, which no subscriber in this slice depends on.
  *
  * **No unit of work (`T-C1-07` Trap 2).** Today's write is a single `INSERT`
  * of a single aggregate, already atomic on its own; this class does not
@@ -163,8 +167,8 @@ export class LogIncidentUseCase {
     });
 
     await this.incidentRepository.save(incident);
-    await this.slaPolicy.attachFor(incident);
     this.eventPublisher.publish(events);
+    await this.slaPolicy.attachFor(incident);
 
     return { id: incident.id, reference: incident.reference };
   }
