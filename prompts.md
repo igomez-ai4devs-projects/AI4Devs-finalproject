@@ -3372,3 +3372,110 @@ No instales dependencias. No hagas commit ni push.
 Implementado ticket T-C1-07
 
 </br>
+
+**Prompt 21:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-74.md ·
+Proveedor de `Actor` fijo para la rebanada 1 — desechable
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Es **solo raíz de composición** (`apps/api`). Aplica `sport-itsm-backend`
+(NestJS 11, DI por tokens) y `sport-itsm-architecture` (§5.3, §6.3: `apps/api` es el único sitio que
+cruza contextos). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket, y por qué antes de `T-C1-08`
+El plan decía `T-C1-07 → T-C1-08 → T-C10-74`, pero el usuario ha **adelantado este ticket**: el endpoint
+`POST` de `T-C1-08` necesita un actor para llamar a `LogIncidentUseCase`, y si el controlador se
+registra sin nadie que lo aporte, Nest no arranca y `api-e2e` se pone en rojo. Este ticket deja el
+actor **disponible por inyección** para que `T-C1-08` lo consuma sin apaños. La rebanada 1 no tiene
+autenticación: es un actor fijo, desechable, que **`T-C10-39` borra entero** el día que exista el
+resolvedor real.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=incident-application,api   # verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas base de datos para lo principal.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (5 AC, `disposable: true`, la transferencia de `BOOTSTRAP_REQUESTER_ID` a `T-C10-72`).
+- `libs/incident/application/src/lib/incident-actor.ts` — **`IncidentActor`** (`identity`,
+  `canLogIncidentAsRequester()`), la vista del actor que `incident` declaró en `T-C1-07` porque el
+  `Actor` de `identity-access` (`T-C10-38`) no puede cruzar la regla de scope.
+- `libs/incident/application/src/lib/log-incident.use-case.ts` y su contexto `LogIncidentContext`
+  (`actor` + `correlationId`).
+- `apps/api/src/app/incident/incident.module.ts`, `apps/api/src/app/app.module.ts`,
+  `apps/api/src/app/incident/log-incident.dispatcher.spec.ts` (cómo se compone el caso de uso en un test).
+
+#### Trampa 1 — qué "Actor" construye
+No existe un tipo `Actor` en el código (su casa prevista, `libs/identity-access`, no existe). Lo que el
+único consumidor de esta rebanada necesita es **`IncidentActor`**. La clase fija implementa esa vista
+(identidad = `BOOTSTRAP_REQUESTER_ID`, `canLogIncidentAsRequester()` → `true`, valor estático, sin
+consultar ninguna tabla de roles). **No inventes** un tipo `Actor` genérico ni lo pongas en ninguna
+librería.
+
+#### Trampa 2 — cómo lo recibe `T-C1-08` sin atarse a esta clase
+El AC5 exige que `T-C10-39` pueda **borrar** esta clase sin adaptarla, y el ticket prohíbe que nada
+llegue a depender de que exista.
+- Expón el actor mediante un **token de inyección** propio de `apps/api` (p. ej. un "resolvedor del
+  actor de la petición" con una firma que ya admita el caso real: recibe el contexto de la petición y
+  devuelve el `IncidentActor`), declarado **separado** de esta clase. Este ticket enlaza el token a la
+  implementación fija; `T-C10-39` lo reenlazará a la real. El controlador de `T-C1-08` dependerá del
+  token, nunca de esta clase.
+- Diseña la firma pensando en `T-C10-39` (actor resuelto por petición, `ARCHITECTURE.md` §9), pero **sin
+  construir** nada de su lógica. Justifícalo.
+- Decide dónde se registra el binding (un módulo propio o `IncidentModule`) y que esté disponible para
+  el controlador de `T-C1-08`.
+
+#### Trampa 3 — `BOOTSTRAP_REQUESTER_ID`
+- En `apps/api/src/bootstrap/bootstrap-identities.ts` (o la ubicación única equivalente). Un **UUID v7
+  válido** (que pase `Identity.fromString` del kernel), declarado **una sola vez**: el AC2 exige que el
+  literal aparezca en exactamente un sitio del código. Usa el constante en los tests, nunca otro literal.
+- Comentario con la transferencia de propiedad a `T-C10-72` (lo que el ticket describe), sin hacerla.
+
+#### Trampa 4 — el AC3 sin tocar `T-C1-07`
+"`T-C1-07` executes against this fixed Actor … with no change to its own file": demuéstralo con un test
+en `apps/api` que componga `LogIncidentUseCase` con el actor que entrega el token (no instanciando la
+clase fija a mano), un repositorio en memoria y el resto de puertos stub, y compruebe que autoriza y
+persiste con `reporterId = BOOTSTRAP_REQUESTER_ID`. `git diff libs/incident/application` debe quedar
+vacío.
+
+#### Lo que NO debes tocar
+`libs/**` (ni `incident-application`: la vista del actor ya existe), `apps/api/src/{database,
+event-dispatch,testing,migrations}/**`, `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu
+memoria), `package.json`, `prompts.md`. **Ningún controlador, DTO, ruta, guard, token de sesión ni
+sign-in**: el endpoint es `T-C1-08`. No cablees `LogIncidentUseCase` en `IncidentModule` (también es
+`T-C1-08`). No siembres filas en `iam`. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1**: `grep -rn "<NombreDeTuClase>" apps libs` → solo su declaración y su binding; y ningún proyecto
+   `type:domain|application|contracts` la referencia (grafo o grep sobre `libs/`).
+2. **AC2**: `grep -rn "<el UUID literal>" apps libs` → exactamente una línea.
+3. **AC3**: el test de la trampa 4 en verde; `git diff --stat libs/incident/application` vacío.
+4. **AC5**: explica en el informe qué habría que borrar exactamente cuando llegue `T-C10-39` (debería ser
+   un fichero y una línea de binding) y confírmalo con el grep.
+5. La API construida arranca (`pnpm nx build api` y `node dist/apps/api/main.js`, o `nx serve api`) y
+   resuelve el token del contenedor. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; el token, su firma y dónde está enlazado.
+- Tus decisiones de las trampas 1 a 4.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, que el ticket habla de `Actor` y el código usa
+  `IncidentActor` (y lo que eso implica para `T-C10-39`), y el cambio de orden aprobado por el usuario.
+
+### Response:
+
