@@ -3218,3 +3218,157 @@ No instales dependencias. No hagas commit ni push. Contenedores desechables elim
 
 ### Response:
 
+Implementado ticket T-C1-04
+
+</br>
+
+**Prompt 20:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-07.md ·
+`LogIncidentUseCase` para un requester, con el reporter tomado de la sesión
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero la pieza central es **`type:application`: sin NestJS, sin TypeORM, sin
+HTTP**. Mandan `sport-itsm-architecture` (§5.3–§5.4, §6.3, §8, §9, ADR-003, ADR-008, ADR-009) y
+`sport-itsm-engineering-principles`. `sport-itsm-backend` solo para lo que toque `apps/api`. Cierra con
+`sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Primero del bloque 4 de la rebanada 1 (`T-C1-07 → T-C1-08 → T-C10-74`). Es el primer caso de uso del
+producto y la primera escritura alcanzable en producción: une el agregado (`T-C1-05`), el repositorio
+(`T-C1-06`/`T-C1-04`) y el dispatcher post-commit (`T-C10-73`). Detrás vienen el endpoint `POST`
+(`T-C1-08`) y el `Actor` fijo de la rebanada (`T-C10-74`), que **no debe obligar a cambiar este fichero**
+(AC3 de `T-C10-74`).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=incident-domain,incident-infrastructure,api   # verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas base de datos para lo principal (AC4: stubs). Si ejecutas el target `integration` o
+`api-e2e`: base efímera en 5499, no los lances a la vez; `unset ELECTRON_RUN_AS_NODE;` para Cypress.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero; `T-C10-74.md` (el `Actor` fijo) y `T-C10-38.md`/`T-C10-39.md` (el `Actor` real).
+- `libs/incident/domain`: `Incident.log()` (su `LogIncidentCommand` pide `id`, `reference`, `reporterId`,
+  `originChannel`, descripciones, `affectedServiceId?`, `actor`, `correlationId`, `occurredAt`),
+  `IncidentRepositoryPort` + `INCIDENT_REPOSITORY`.
+- `libs/incident/infrastructure/src/lib/typeorm-incident.repository.ts` — el doc-comment de
+  `nextReference()` sobre la transacción (`nextval` no se revierte).
+- `@sport-itsm/shared-domain`: `EventPublisherPort` + `EVENT_PUBLISHER`, `ClockPort`, `FixedClock`.
+- `apps/api/src/event-dispatch/` (dispatcher aislado, `T-C10-73`) y `apps/api/src/app/incident/incident.module.ts`.
+- `ARCHITECTURE.md` §8 (el diagrama de secuencia de LogIncident: "authorize actor - requester may log
+  own Incident") y §9 (autorización en el caso de uso, en términos de dominio).
+
+#### Trampa 1 — `Actor` no existe, y su casa prevista está prohibida para `incident`
+`T-C10-38` coloca `Actor` en **`libs/identity-access/domain`**, que no existe. Y aunque existiera, la
+**regla de scope** (§5.3) impide que `scope:incident` dependa de `scope:identity-access`.
+- **No crees `libs/identity-access`** ni muevas `Actor` al kernel compartido por tu cuenta.
+- Declara en `libs/incident/application` (o `domain`, justifícalo) el tipo **mínimo** que el caso de uso
+  necesita del actor, en el lenguaje de `incident`: su `Identity` y la capacidad de decidir si puede
+  registrar una incidencia. Autorización **deny-by-default** con un error tipado que nombre la operación
+  (siguiendo el espíritu de `T-C10-38`), sin inventar un catálogo de permisos.
+- **Repórtalo como hallazgo crítico para el arquitecto**: el `Actor` de `identity-access` no puede
+  cruzar la regla de scope; habrá que decidir si va al kernel compartido o si cada contexto declara su
+  vista del actor y `apps/api` adapta (patrón anticorrupción, como `CompetitionSubjectLookupPort`).
+
+#### Trampa 2 — "save in a single transaction" sin unidad de trabajo
+No existe ningún mecanismo de transacción, y la capa de aplicación **no puede importar TypeORM**.
+- Hoy la escritura es **un único `INSERT` de un único agregado**, que ya es atómico por sí mismo.
+  Recomendación: **no introduzcas** un puerto de unidad de trabajo (YAGNI); documenta que el límite
+  transaccional es el `save()` y que "después del commit" significa "después de que `save()` resuelva".
+- `nextReference()` usa `nextval`, que no se revierte: si `save()` falla, la referencia queda quemada
+  (huecos sí, reutilización nunca — §3.2). Documéntalo.
+- **Repórtalo**: el primer caso de uso con más de una escritura (p. ej. cuando `SlaPolicyPort` escriba
+  de verdad) necesitará un puerto de transacción.
+
+#### Trampa 3 — framework-free y cómo se inyecta
+- `LogIncidentUseCase` es una **clase TypeScript pura** con sus puertos por constructor: **nada de
+  `@Injectable`/`@Inject` ni ningún import de `@nestjs/*`** en `libs/incident/application` (CLAUDE.md §3).
+  Quien la construye con `useFactory` es la raíz de composición.
+- **Reloj**: `ClockPort` no tiene token de inyección (sí lo tiene `EventPublisherPort`). Añade
+  `export const CLOCK = Symbol('ClockPort')` **junto a `ClockPort` en `libs/shared/domain`**, exportado por
+  el barrel, exactamente como `EVENT_PUBLISHER` — es la única modificación permitida en el kernel.
+- **Correlación**: `DomainEvent` exige `correlationId`. Lo aporta el llamante (el adaptador HTTP de
+  `T-C1-08`) como parte del contexto de ejecución, junto al actor; el caso de uso no lo inventa.
+- **Cableado en `IncidentModule`**: decide si registras ya aquí el caso de uso (con `useFactory`) y un
+  adaptador de reloj del sistema en `apps/api`, o si lo dejas a `T-C1-08`. Si lo registras aquí, necesita
+  un `SlaPolicyPort` enlazado (trampa 4). Justifícalo.
+
+#### Trampa 4 — `SlaPolicyPort`
+- El ticket dice `attachFor()`; `ARCHITECTURE.md` §6.2 escribe `attachPolicyFor(ticketSnapshot):
+  SlaCommitment`. `SlaCommitment` es vocabulario de `C7`, que no existe. Declara el puerto en
+  `libs/incident/domain` con la firma **mínima** que no invente tipos de `sla` (p. ej. recibe el
+  `Incident` y no devuelve nada), con token, y **reporta** la discrepancia de nombre y la ausencia de
+  `SlaCommitment`.
+- `incident` nunca importa `sla` (§8). El adaptador real es `T-C1-58`.
+- Decide **cuándo** se llama (tras `save()` y antes de publicar, o después) y qué pasa si falla (la
+  incidencia ya está guardada). Justifícalo con ADR-008/NFR-AVL-03. Recuerda que recibe una incidencia
+  con `priority: null` (ADR-014): la política de SLA sin prioridad es pregunta abierta del PO (§14.10 p.4).
+- Si cableas el caso de uso en `IncidentModule` antes de `T-C1-58`, necesitas un enlace para el puerto:
+  **no escondas** un no-op como si fuera la implementación; si lo usas, que su nombre y su comentario
+  digan que es provisional hasta `T-C1-58`.
+
+#### Trampa 5 — el reporter y el orden de las llamadas
+- El reporter **es** el actor de la sesión; cualquier `reporterId` del comando se **ignora** (AC2). Lo
+  más limpio es que el comando del caso de uso ni siquiera tenga ese campo; si el AC2 exige demostrar
+  que se descarta, hazlo con un test sobre el tipo de entrada que venga del borde.
+- Orden: autorizar → `nextIdentity()` + `nextReference()` → `Incident.log()` con el instante del
+  `ClockPort` → `save()` → (SLA) → `publish(events)`. Si la autorización falla: ninguna llamada al
+  repositorio y ningún evento.
+- Devuelve lo que el borde necesita para responder (identidad y referencia), no el agregado.
+
+#### Trampa 6 — el AC3 (suscriptor que falla)
+El aislamiento lo garantiza el dispatcher de `T-C10-73`, que vive en `apps/api`: un test de
+`libs/incident/application` **no puede importarlo** (`type:application` no depende de `type:app`).
+- En la librería: tests con puertos stub (AC1, AC2, AC4, autorización denegada, orden de llamadas,
+  exactamente un `publish` después de `save`).
+- Para el AC3 con el dispatcher real: un test en `apps/api` que componga el caso de uso con el
+  `InProcessEventDispatcher` real, un repositorio en memoria y un suscriptor de `IncidentLogged` que
+  lanza, y compruebe que la incidencia queda guardada y el caso de uso devuelve éxito.
+
+#### Lo que NO debes tocar
+`libs/identity-access` (no la crees), `libs/incident/{infrastructure,feature,ui,data-access}`,
+`libs/shared/**` salvo el token `CLOCK`, `apps/api/src/{database,event-dispatch,testing}/**`,
+`docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria), `package.json`, `prompts.md`. Nada
+de controlador, DTO ni ruta HTTP (`T-C1-08`), ni del `Actor` fijo (`T-C10-74`). El ticket no se edita.
+Quita `passWithNoTests` de `libs/incident/application/jest.config.ts` (su comentario dice `T-C1-07`).
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-application`: AC1, AC2, AC4, autorización denegada (sin repositorio ni evento),
+   orden de llamadas, un solo `publish` tras `save`, fallo de `save` (sin `publish`). Pega el resumen.
+2. El test de AC3 en `apps/api` con el dispatcher real, en verde.
+3. Pureza: `grep -rnE "from '(@nestjs|typeorm|express|pg|node:)" libs/incident/application/src --include=*.ts`
+   → vacío; `libs/incident/application/tsconfig.lib.json` con `"types": []`.
+4. `grep -rn "new Date(" libs/incident/application/src libs/incident/domain/src --include=*.ts --exclude=*.spec.ts` → vacío.
+5. Grafo (`pnpm nx graph --file=tmp/graph.json`, luego bórralo): `incident-application` depende solo de
+   `incident-domain`, `shared-domain` (y `shared-util`/`shared-contracts` si los usas); ninguna arista a
+   `identity-access`, `sla` ni `apps`.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. Si cableaste el caso de uso en `IncidentModule`: la API construida arranca y resuelve el caso de uso
+   del contenedor. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde.
+8. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la firma pública del caso de uso, del tipo de actor y de `SlaPolicyPort`.
+- Tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las ocho verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el `Actor` frente a la regla de scope
+  (arquitecto), la transacción para el primer caso de uso con varias escrituras, `SlaPolicyPort` frente a
+  §6.2 y `SlaCommitment`, y la SLA de una incidencia sin prioridad.
+
+### Response:
+
+Implementado ticket T-C1-07
+
+</br>

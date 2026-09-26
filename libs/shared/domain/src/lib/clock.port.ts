@@ -15,3 +15,14 @@
 export interface ClockPort {
   now(): Date;
 }
+
+/**
+ * The injection token for `ClockPort` — the interface is erased at runtime,
+ * so a wiring container needs a value to key the binding on, exactly the
+ * pattern `EVENT_PUBLISHER` uses beside `EventPublisherPort` (`T-C1-07` Trap
+ * 3). `ClockPort` itself predates this token: nothing needed a container
+ * binding for it until a `type:application` use case (`LogIncidentUseCase`)
+ * took it as a constructor dependency. A `Symbol` is plain JavaScript: it
+ * names the dependency without importing any framework into the kernel.
+ */
+export const CLOCK = Symbol('ClockPort');

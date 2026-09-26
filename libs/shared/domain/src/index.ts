@@ -32,6 +32,7 @@ export {
 export { DomainEvent, InvalidDomainEventError } from './lib/domain-event';
 export type { DomainEventInput } from './lib/domain-event';
 export type { ClockPort } from './lib/clock.port';
+export { CLOCK } from './lib/clock.port';
 export { FixedClock } from './lib/fixed-clock';
 export type { EventPublisherPort } from './lib/event-publisher.port';
 export { EVENT_PUBLISHER } from './lib/event-publisher.port';

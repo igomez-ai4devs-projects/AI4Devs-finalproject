@@ -12,6 +12,8 @@ export {
 } from './lib/incident-reference.policy';
 export type { IncidentRepositoryPort } from './lib/incident-repository.port';
 export { INCIDENT_REPOSITORY } from './lib/incident-repository.port';
+export type { SlaPolicyPort } from './lib/sla-policy.port';
+export { SLA_POLICY } from './lib/sla-policy.port';
 export {
   ORIGIN_CHANNEL_CODES,
   OriginChannel,

@@ -1,8 +1,15 @@
 /**
- * `@sport-itsm/incident-application` — the public API of the `incident` context's
- * application library (`type:application`, ARCHITECTURE.md §5.1).
+ * `@sport-itsm/incident-application` — the public API of the `incident`
+ * context's application library (`type:application`, ARCHITECTURE.md §5.1).
  *
- * Scaffolded empty by T-C1-01: this barrel is the library's only legal import
- * surface, and nothing is exported until the first ticket adds real code here.
+ * This barrel is the library's only legal import surface — never deep-import
+ * past it, from inside this library or from any other.
  */
-export {};
+export { LogIncidentUseCase } from './lib/log-incident.use-case';
+export type {
+  LogIncidentInput,
+  LogIncidentContext,
+  LogIncidentResult,
+} from './lib/log-incident.use-case';
+export { IncidentLogAuthorizationError } from './lib/incident-actor';
+export type { IncidentActor } from './lib/incident-actor';
