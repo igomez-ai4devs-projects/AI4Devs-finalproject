@@ -3083,3 +3083,6 @@ No instales dependencias. No hagas commit ni push. Contenedores desechables elim
 
 ### Response:
 
+Implementado ticket T-C1-06
+
+</br>
