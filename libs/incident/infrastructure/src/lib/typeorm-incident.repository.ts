@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { Identity, TicketReference } from '@sport-itsm/shared-domain';
-import { Incident, IncidentRepositoryPort } from '@sport-itsm/incident-domain';
+import {
+  Incident,
+  IncidentReferencePolicy,
+  IncidentRepositoryPort,
+} from '@sport-itsm/incident-domain';
 import { IncidentEntity } from './incident.entity';
 import { IncidentMapper } from './incident.mapper';
-import { NextIncidentReferenceNotImplementedError } from './next-incident-reference-not-implemented.error';
 
 /**
  * The `IncidentRepositoryPort` outbound adapter (`ARCHITECTURE.md` §6.2/§6.3,
@@ -81,12 +84,42 @@ export class TypeOrmIncidentRepository implements IncidentRepositoryPort {
   }
 
   /**
-   * @throws {NextIncidentReferenceNotImplementedError} always — see that
-   * error's own doc comment. `T-C1-04` replaces this method with a real
-   * `nextval('incident.incident_reference_seq')` read.
+   * A fresh Incident reference, read from `incident.incident_reference_seq`
+   * (`T-C1-04`, `DATA-MODEL.md` §3.2, M18) and rendered through
+   * `IncidentReferencePolicy.format()`, which also validates the range —
+   * this method does not re-validate.
+   *
+   * **`bigint` conversion.** `nextval()` returns Postgres `bigint`, and the
+   * `pg` driver parses the `bigint` (OID 20) type as a **string**, not a
+   * `number` — silently coercing it with implicit `+row.value` risks
+   * `NaN`/precision surprises the driver deliberately avoids by not doing
+   * this itself. `Number(...)` is used explicitly here, and deliberately
+   * *not* guarded any further: `IncidentReferencePolicy.format()` already
+   * rejects a non-integer or out-of-range result with a typed
+   * `IncidentReferenceSequenceOutOfRangeError`, so a second range check here
+   * would just duplicate the policy's own job (DRY).
+   *
+   * **Not transactional — reported for `T-C1-07`.** `nextval()` is
+   * deliberately **not** rolled back with a failed transaction (`DATA-MODEL.md`
+   * §3.2: "gaps are acceptable, reuse is not") — this is the mechanism, not a
+   * limitation of this method. This method also does **not** build or accept
+   * any unit-of-work/transaction argument: no transaction mechanism exists
+   * anywhere in this codebase yet (it arrives with `T-C1-07`'s
+   * `LogIncidentUseCase`), and inventing one here would be scope this ticket
+   * does not own. The Scope's "within the caller transaction" wording
+   * describes how `T-C1-07` must eventually call this method — on the same
+   * connection/`QueryRunner` as the `INSERT` it guards, once that use case
+   * introduces one — not a requirement this method enforces today. Until
+   * then, `dataSource.query()` runs on whatever connection the pool hands
+   * back, same as `nextIdentity()`.
    */
   async nextReference(): Promise<TicketReference> {
-    throw new NextIncidentReferenceNotImplementedError();
+    const dataSource = await this.ensureInitialized();
+    const rows: Array<{ next_value: string }> = await dataSource.query(
+      "SELECT nextval('incident.incident_reference_seq') AS next_value",
+    );
+    const sequenceValue = Number(rows[0].next_value);
+    return IncidentReferencePolicy.format(sequenceValue);
   }
 
   async findById(id: Identity): Promise<Incident | null> {

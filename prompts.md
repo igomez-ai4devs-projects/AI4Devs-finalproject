@@ -3086,3 +3086,135 @@ No instales dependencias. No hagas commit ni push. Contenedores desechables elim
 Implementado ticket T-C1-06
 
 </br>
+
+**Prompt 19:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-04.md ·
+Secuencia de referencias, trigger de inmutabilidad, adaptador `nextReference()` y prueba de concurrencia
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (TypeORM 1.1, migraciones reversibles) y
+`sport-itsm-engineering-principles`. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Último del bloque 3 de la rebanada 1 (`03 → 05 → 06 → 04`). Cierra la garantía de FR-INC-02 y
+NFR-DAT-01 **en la base de datos**: referencias únicas, nunca reutilizadas y nunca modificadas. Tiene
+que estar antes de `T-C1-07` (`LogIncidentUseCase`), la primera escritura alcanzable en producción,
+que llamará a `nextReference()`.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=incident-domain,incident-infrastructure   # verde
+    docker ps --filter name=sport-itsm-postgres-dev   # healthy, 0.0.0.0:5452->5432
+    POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres pnpm typeorm migration:show -d apps/api/src/data-source.ts
+                                             # tres [X]: Iam, IncidentSchema, IncidentTicketTable
+
+#### Trampas del entorno — ya pagadas
+- Postgres de desarrollo en el **puerto de host 5452**; las variables globales `POSTGRES_*` de otro
+  proyecto pisan el `.env`: pasa los cinco valores **en la misma llamada Bash**. `pnpm typeorm … -d …`
+  lleva `-d`; los atajos `pnpm migration:*` ya lo llevan.
+- `libs/incident/infrastructure` tiene dos targets: `test` (unitario, **sin BD**, corre en CI) e
+  **`integration`** (base efímera en 5499 con `docker/docker-compose.e2e.yml`, migra, ejecuta
+  `*.integration-spec.ts` y la destruye siempre). **No lo ejecutes a la vez que `nx e2e api-e2e`**:
+  comparten el mismo stack efímero.
+- Los ficheros `*.entity.ts` no pueden importar alias `@sport-itsm/*` (la CLI de TypeORM no resuelve
+  alias). Las migraciones tampoco.
+- `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash si ejecutas Cypress.
+
+#### El ticket es el contrato
+Léelo entero: su `## Context` ya cierra el mecanismo de inmutabilidad (M18) y el orden respecto a
+`T-C1-06`. Lee además, del repo:
+- `DATA-MODEL.md` **§3.2** (referencias, secuencia `NO CYCLE`), **§3.7** (triggers: solo el guarda de
+  inmutabilidad) y **M18**; §20.3.
+- `libs/incident/infrastructure/src/lib/typeorm-incident.repository.ts` (hoy `nextReference()` lanza
+  `NextIncidentReferenceNotImplementedError`), sus specs y el integration spec, `incident.entity.ts`
+  (`reference` con `update: false`), `incident.mapper.ts`.
+- `libs/incident/domain/src/lib/incident-reference.policy.ts` (`INC` + 7 dígitos, rango 1–9.999.999,
+  error tipado si se sale).
+- `apps/api/src/migrations/README.md` y la migración `1790380866140-CreateIncidentTicketTable.ts`.
+
+#### Trampa 1 — la migración
+- Fichero `<timestamp>-<Nombre>.ts`, timestamp **posterior** a `1790380866140`, SQL explícito.
+- Crea, en el esquema `incident`: `incident_reference_seq` **`NO CYCLE`**,
+  `fn_reject_reference_update()` (`plpgsql`, lanza un error con un `SQLSTATE`/mensaje reconocible) y
+  `tg_incident_ticket_reference_immutable` (`BEFORE UPDATE OF reference … WHEN (OLD.reference IS
+  DISTINCT FROM NEW.reference)`). El `down` retira trigger, función y secuencia, **en ese orden**.
+- **Límite de la secuencia**: la política de dominio acepta 1–9.999.999 y lanza un error tipado si la
+  secuencia entrega más. Decide si la secuencia declara además `MAXVALUE 9999999` (fallo en la base de
+  datos antes que en el dominio) o se queda en el máximo por defecto, y **justifícalo** sin contradecir
+  §3.2. En ambos casos, `NO CYCLE`.
+
+#### Trampa 2 — `nextReference()` y "dentro de la transacción del llamante"
+- Implementa `nextReference()` con `SELECT nextval('incident.incident_reference_seq')` y
+  `IncidentReferencePolicy.format(n)`. Ojo: el driver `pg` devuelve `bigint` como **string**; conviértelo
+  con cuidado y deja que la política valide el rango.
+- **Borra** `NextIncidentReferenceNotImplementedError` y sus tests: ya no tienen sentido. Actualiza el
+  barrel.
+- El Scope dice "within the caller transaction", pero **todavía no existe ningún mecanismo de
+  transacción** (llega con `T-C1-07`). **No construyas una unidad de trabajo aquí.** Recuerda además
+  que `nextval` no es transaccional (no se devuelve con un rollback): justo la semántica de "nunca
+  reutilizada, se aceptan huecos" de §3.2. Documenta en el adaptador qué tendrá que respetar `T-C1-07`
+  y **repórtalo**.
+- La conexión del `DataSource` es **perezosa** (decisión aprobada en `T-C1-06`): no la cambies.
+
+#### Trampa 3 — los criterios de aceptación y lo que todavía no existe
+- **AC1 (concurrencia)**: no hay ninguna comprobación de unicidad en la aplicación que "quitar". Demuestra
+  que la garantía es de la base de datos: N asignaciones concurrentes (`Promise.all` sobre conexiones
+  distintas) producen N referencias distintas, **y** un `INSERT` forzado con una referencia duplicada
+  lo rechaza `uq_incident_reference`.
+- **AC2 (inmutabilidad)**: `UPDATE` SQL directo del `reference` de una fila existente, **como
+  `postgres`**, rechazado por el trigger (comprueba el error concreto). Y además: un `save()` normal de
+  una incidencia ya guardada (misma referencia) **no** dispara el trigger, gracias al `WHEN … IS
+  DISTINCT FROM` y al `update: false`.
+- **AC3 (cancelada y borrada)**: **no existe todavía el estado "cancelada"** (el ciclo de vida es
+  `T-C1-50`). Demuestra la parte de borrado (borrar una fila y comprobar que la siguiente referencia es
+  nueva) y la propiedad general (la secuencia nunca reutiliza un valor, ni tras un rollback). **Reporta**
+  la parte de "cancelada" como no demostrable hasta `T-C1-50`.
+- **AC4**: run → revert → run idéntico, sin residuos (`\ds incident.*`, `\df incident.*`, triggers de
+  `incident_ticket`).
+- Todo lo que necesite PostgreSQL va en `*.integration-spec.ts` (target `integration`), no en `test`.
+
+#### Lo que NO debes tocar
+`libs/incident/domain` (la política ya existe; si crees que debe cambiar, para y repórtalo),
+`libs/shared/**`, las demás librerías `incident-*`, `apps/api/src/database/**`,
+`apps/api/src/app/**`, `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria),
+`package.json`, `prompts.md`. Ni la columna `reference` ni `uq_incident_reference` (son de `T-C1-06`).
+El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. Base desechable vacía: `migration:run` aplica las **cuatro** migraciones; `\ds incident.*` muestra la
+   secuencia (con `NO CYCLE` visible en su definición), `\df incident.*` la función y la tabla tiene el
+   trigger. `migration:revert` retira solo la tuya, sin residuos; run → revert → run idéntico.
+2. `pnpm nx run incident-infrastructure:integration` en verde, con los tests de los AC1–AC3 descritos
+   arriba. Pega la salida.
+3. `pnpm nx test incident-infrastructure` en verde **sin BD** (unitarios del adaptador con el
+   `DataSource` simulado).
+4. `grep -rn "NextIncidentReferenceNotImplemented" libs apps` → vacío.
+5. En la base de **desarrollo** (5452): `migration:run` y `migration:show` → cuatro `[X]`; y una prueba
+   manual con `psql` de que un `UPDATE` de `reference` se rechaza (hazlo sobre una fila de prueba que
+   borres después).
+6. `pnpm nx run api:build-migrations` en verde; la migración nueva está en `dist/apps/api/migrations/`.
+7. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde (su `e2e-migrate` aplica las cuatro).
+8. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+9. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados;
+`sport-itsm-postgres-dev` `healthy` en 5452 con las cuatro migraciones aplicadas.
+
+#### Informa al terminar — en español
+- Ficheros creados, modificados y borrados; la migración literal (`up` y `down`).
+- Tus decisiones: `MAXVALUE`, conversión del `bigint`, qué debe respetar `T-C1-07` sobre la transacción.
+- La salida de las nueve verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la parte "cancelada" del AC3 (`T-C1-50`) y
+  la frontera de transacción para `T-C1-07`.
+
+### Response:
+

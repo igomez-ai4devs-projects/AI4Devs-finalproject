@@ -4,10 +4,13 @@ import {
   Identity,
   TicketReference,
 } from '@sport-itsm/shared-domain';
-import { Incident, OriginChannel } from '@sport-itsm/incident-domain';
+import {
+  Incident,
+  IncidentReferenceSequenceOutOfRangeError,
+  OriginChannel,
+} from '@sport-itsm/incident-domain';
 import { IncidentEntity } from './incident.entity';
 import { IncidentMapper } from './incident.mapper';
-import { NextIncidentReferenceNotImplementedError } from './next-incident-reference-not-implemented.error';
 import { TypeOrmIncidentRepository } from './typeorm-incident.repository';
 
 const IDENTITY = Identity.fromString('0192f3a4-5b6c-7d8e-8f90-123456789abc');
@@ -66,13 +69,45 @@ describe('TypeOrmIncidentRepository', () => {
   });
 
   describe('nextReference()', () => {
-    it('throws NextIncidentReferenceNotImplementedError — the sequence is T-C1-04 (T-C1-06 Trap 5)', async () => {
-      const repository = new TypeOrmIncidentRepository(
-        fakeDataSource(fakeOrmRepository()),
+    it('reads incident.incident_reference_seq via nextval() and renders it through IncidentReferencePolicy (T-C1-04)', async () => {
+      const dataSource = fakeDataSource(fakeOrmRepository());
+      (dataSource.query as jest.Mock).mockResolvedValue([{ next_value: '42' }]);
+      const repository = new TypeOrmIncidentRepository(dataSource);
+
+      const reference = await repository.nextReference();
+
+      expect(dataSource.query).toHaveBeenCalledWith(
+        "SELECT nextval('incident.incident_reference_seq') AS next_value",
       );
+      expect(reference.equals(TicketReference.fromString('INC0000042'))).toBe(
+        true,
+      );
+    });
+
+    it('converts the bigint-as-string value the pg driver returns, not just any numeric-looking string', async () => {
+      const dataSource = fakeDataSource(fakeOrmRepository());
+      // The `pg` driver parses a bigint (OID 20) column as a JS `string`,
+      // never a `number` — this fixture mirrors that shape rather than a
+      // driver-impossible `{ next_value: 42 }`.
+      (dataSource.query as jest.Mock).mockResolvedValue([
+        { next_value: '9999999' },
+      ]);
+      const repository = new TypeOrmIncidentRepository(dataSource);
+
+      const reference = await repository.nextReference();
+
+      expect(reference.value).toBe('INC9999999');
+    });
+
+    it('propagates IncidentReferencePolicy.format()`s typed error instead of re-validating the range itself', async () => {
+      const dataSource = fakeDataSource(fakeOrmRepository());
+      (dataSource.query as jest.Mock).mockResolvedValue([
+        { next_value: '10000000' },
+      ]);
+      const repository = new TypeOrmIncidentRepository(dataSource);
 
       await expect(repository.nextReference()).rejects.toThrow(
-        NextIncidentReferenceNotImplementedError,
+        IncidentReferenceSequenceOutOfRangeError,
       );
     });
   });

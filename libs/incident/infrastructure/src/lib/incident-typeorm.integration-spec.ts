@@ -128,7 +128,9 @@ describe('TypeOrmIncidentRepository — round trip against real PostgreSQL (T-C1
     expect(first.equals(second)).toBe(false);
   });
 
-  it('nextReference() is not yet available — T-C1-04 owns the sequence (T-C1-06 Trap 5)', async () => {
-    await expect(repository.nextReference()).rejects.toThrow();
+  it('nextReference() now allocates a real, database-backed reference (T-C1-04 implements incident.incident_reference_seq; superseded T-C1-06 Trap 5 expectation)', async () => {
+    const reference = await repository.nextReference();
+
+    expect(reference.prefix).toBe('INC');
   });
 });

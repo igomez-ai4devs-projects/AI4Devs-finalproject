@@ -10,5 +10,4 @@
 export { IncidentEntity } from './lib/incident.entity';
 export { IncidentMapper } from './lib/incident.mapper';
 export { IncidentMappingError } from './lib/incident-mapping.error';
-export { NextIncidentReferenceNotImplementedError } from './lib/next-incident-reference-not-implemented.error';
 export { TypeOrmIncidentRepository } from './lib/typeorm-incident.repository';
