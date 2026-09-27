@@ -4486,6 +4486,9 @@ al terminar y ningún contenedor efímero en marcha.
 
 ### Response:
 
+Implementado ticket T-C10-75
+
+</br>
 
 **Prompt 29:**
 
@@ -4607,3 +4610,6 @@ No instales dependencias. No hagas commit ni push. No lances el despliegue ni to
 
 ### Response:
 
+Implementado ticket T-C10-76
+
+</br>
