@@ -1,8 +1,23 @@
 import { Module } from '@nestjs/common';
-import { INCIDENT_REPOSITORY } from '@sport-itsm/incident-domain';
+import {
+  CLOCK,
+  EVENT_PUBLISHER,
+  EventPublisherPort,
+  ClockPort,
+} from '@sport-itsm/shared-domain';
+import {
+  INCIDENT_REPOSITORY,
+  IncidentRepositoryPort,
+  SLA_POLICY,
+  SlaPolicyPort,
+} from '@sport-itsm/incident-domain';
+import { LogIncidentUseCase } from '@sport-itsm/incident-application';
 import { TypeOrmIncidentRepository } from '@sport-itsm/incident-infrastructure';
 import { FixedRequesterActorResolver } from '../../bootstrap/fixed-requester-actor.resolver';
+import { SystemClock } from '../system-clock';
 import { INCIDENT_ACTOR_RESOLVER } from './incident-actor-resolver';
+import { IncidentController } from './incident.controller';
+import { ProvisionalNoopSlaPolicyAdapter } from './provisional-noop-sla-policy.adapter';
 
 /**
  * Composition-root slice for the `incident` bounded context
@@ -28,13 +43,52 @@ import { INCIDENT_ACTOR_RESOLVER } from './incident-actor-resolver';
  * `T-C10-39` migration path: that ticket repoints it to the real per-request
  * resolver adapter and deletes `FixedRequesterActorResolver` outright — see
  * that class's own doc comment.
+ *
+ * `T-C1-08` adds the rest: `IncidentController` (the first business HTTP
+ * route) and `LogIncidentUseCase` itself, bound with `useFactory` because it
+ * is a framework-free class the composition root constructs, never
+ * `@Injectable()` (`log-incident.use-case.ts`'s own doc comment). Its two
+ * remaining ports:
+ * - `CLOCK` → `SystemClock` (`../system-clock.ts`) — no adapter existed
+ *   before this ticket; it is the one legitimate `new Date()` call site
+ *   (ADR-009).
+ * - `SLA_POLICY` → `ProvisionalNoopSlaPolicyAdapter`
+ *   (`./provisional-noop-sla-policy.adapter.ts`) — explicitly a placeholder
+ *   until `T-C1-58` binds the real adapter against `sla/application`; see
+ *   that class's own doc comment for why a no-op cannot lose the
+ *   `IncidentLogged` event.
+ *
+ * `EVENT_PUBLISHER` is not bound here for the same reason `INCIDENT_REPOSITORY`
+ * *is*: it is global (`EventDispatchModule`, `@Global()`), so any test module
+ * that composes `IncidentModule` on its own — not through `AppModule` — must
+ * import `EventDispatchModule` alongside it for `LogIncidentUseCase`'s
+ * factory to resolve (`log-incident.fixed-actor.spec.ts` does exactly that).
  */
 @Module({
+  controllers: [IncidentController],
   providers: [
     { provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository },
     {
       provide: INCIDENT_ACTOR_RESOLVER,
       useClass: FixedRequesterActorResolver,
+    },
+    { provide: SLA_POLICY, useClass: ProvisionalNoopSlaPolicyAdapter },
+    { provide: CLOCK, useClass: SystemClock },
+    {
+      provide: LogIncidentUseCase,
+      useFactory: (
+        incidentRepository: IncidentRepositoryPort,
+        slaPolicy: SlaPolicyPort,
+        eventPublisher: EventPublisherPort,
+        clock: ClockPort,
+      ) =>
+        new LogIncidentUseCase(
+          incidentRepository,
+          slaPolicy,
+          eventPublisher,
+          clock,
+        ),
+      inject: [INCIDENT_REPOSITORY, SLA_POLICY, EVENT_PUBLISHER, CLOCK],
     },
   ],
 })

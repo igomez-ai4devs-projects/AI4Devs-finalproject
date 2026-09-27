@@ -17,6 +17,7 @@ import {
   LogIncidentUseCase,
 } from '@sport-itsm/incident-application';
 import { BOOTSTRAP_REQUESTER_ID } from '../../bootstrap/bootstrap-identities';
+import { EventDispatchModule } from '../../event-dispatch/event-dispatch.module';
 import { IncidentModule } from './incident.module';
 import {
   INCIDENT_ACTOR_RESOLVER,
@@ -38,6 +39,16 @@ import {
  * `git diff libs/incident/application` staying empty is the other half of
  * this AC — this file only ever imports from that library's public barrel,
  * never edits it.
+ *
+ * **`EventDispatchModule` import added by `T-C1-08`.** `IncidentModule` now
+ * also binds `LogIncidentUseCase` itself via `useFactory`, `inject:
+ * [..., EVENT_PUBLISHER, ...]` (Trap 5). In the real app `EVENT_PUBLISHER`
+ * is resolved globally because `AppModule` imports `EventDispatchModule`
+ * (`@Global()`); a `Test.createTestingModule` that composes `IncidentModule`
+ * on its own never pulls that global module in, so without this import
+ * `.compile()` fails to resolve `LogIncidentUseCase`'s dependency — nothing
+ * about this test's own assertions changes, only what makes the module
+ * graph as production-accurate as this narrower fixture can be.
  */
 
 const ALLOCATED_IDENTITY = Identity.fromString(
@@ -93,7 +104,7 @@ describe('LogIncidentUseCase composed with IncidentModule’s fixed actor bindin
     const repository = new InMemoryIncidentRepository();
 
     const moduleRef = await Test.createTestingModule({
-      imports: [IncidentModule],
+      imports: [EventDispatchModule, IncidentModule],
     })
       .overrideProvider(INCIDENT_REPOSITORY)
       .useValue(repository)

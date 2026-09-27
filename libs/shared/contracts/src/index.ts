@@ -30,7 +30,9 @@
  * What is exported and where each shape comes from — see each file's own
  * doc comment for the full citation:
  * - `ErrorCode`, `ErrorEnvelope`, `ValidationErrorDetail` — `ARCHITECTURE.md`
- *   §3.2, row *Errors*, and this ticket's Scope (the four seeded codes).
+ *   §3.2, row *Errors*, and `T-C10-11`'s Scope (the four seeded codes).
+ *   `T-C1-08` adds a fifth, `INTERNAL_ERROR` — see `error-code.ts`'s own doc
+ *   comment for why, and that ticket's report for the finding this raises.
  * - `PageRequest`, `PageResult` — **not normatively defined** where the
  *   ticket attributes them (§3.2 does not mention pagination); declared as
  *   the minimal conventional shape and reported as a finding.
@@ -38,6 +40,10 @@
  *   as a wire shape either; `DATA-MODEL.md`'s `correlation_id uuid` columns
  *   fix the value's shape, not the header name, which is this ticket's own
  *   minimal decision. Also reported as a finding.
+ * - `LogIncidentRequesterRequest`, `IncidentCreatedResponse` — requester
+ *   intake of an Incident (`T-C1-08`); see `incident-intake.contract.ts`'s
+ *   own doc comment for why these are not (yet) the `LogIncidentRequest` /
+ *   `IncidentDetailResponse` `ARCHITECTURE.md` §7.1 anticipates.
  */
 export { ErrorCode } from './lib/error-code';
 export type {
@@ -47,3 +53,7 @@ export type {
 export type { PageRequest, PageResult } from './lib/pagination';
 export type { CorrelationId } from './lib/correlation-id';
 export { CORRELATION_ID_HEADER } from './lib/correlation-id';
+export type {
+  LogIncidentRequesterRequest,
+  IncidentCreatedResponse,
+} from './lib/incident-intake.contract';

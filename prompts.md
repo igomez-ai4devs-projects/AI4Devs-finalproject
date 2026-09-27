@@ -3479,3 +3479,176 @@ No instales dependencias. No hagas commit ni push.
 
 ### Response:
 
+Implementado ticket T-C10-74
+
+</br>
+
+**Prompt 22:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-08.md ·
+Contratos de alta de incidencias y rechazo en servidor de los campos que determinan la prioridad
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (controladores finos, DTO validados,
+`ValidationPipe` global, filtro de excepciones), `sport-itsm-architecture` (ADR-007: `shared/contracts`
+es el único acoplamiento FE↔BE; §3.2: contrato de errores; §6.3) y `sport-itsm-engineering-principles`.
+Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el ticket que **abre la API al mundo**: la primera ruta de negocio del producto, `POST` de alta de
+incidencias. Une el contrato (`T-C10-11`), el caso de uso (`T-C1-07`), el actor fijo (`T-C10-74`, que el
+usuario adelantó precisamente para que este ticket lo consuma por inyección) y la persistencia
+(`T-C1-06`/`T-C1-04`). Detrás vienen la lectura por referencia (`T-C1-99`, `T-C1-100`) y el formulario
+(`T-C1-09`, `T-C1-10`, `T-C1-101`).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=shared-contracts,incident-application,api   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Trampas del entorno — ya pagadas
+- `api-e2e` levanta su PostgreSQL efímera (5499), aplica las migraciones y sirve la API con
+  `NODE_ENV=test`; el `DataSource` es **perezoso**: la primera petición que use el repositorio conecta.
+  `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash. No lo ejecutes a la vez que el target
+  `incident-infrastructure:integration` (mismo stack).
+- Postgres de desarrollo en 5452; las variables globales `POSTGRES_*` pisan el `.env`: pasa los valores
+  en la misma llamada si arrancas la API a mano contra él.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero. `ARCHITECTURE.md` §3.2 (*"error codes are part of the contract, error text is not"*;
+  el cliente mapea códigos a claves), §6.3, ADR-007.
+- `libs/shared/contracts` — `ErrorCode` (4 códigos), `ErrorEnvelope` (`error.code` + `details?` de
+  `ValidationErrorDetail { field, rule }`), `CORRELATION_ID_HEADER`, y su barrel (convención: solo tipos).
+- `libs/incident/application` — `LogIncidentUseCase`, `LogIncidentInput` (`originChannel`,
+  `shortDescription`, `description`, `affectedServiceId?`), `LogIncidentContext` (`actor`,
+  `correlationId`), `IncidentLogAuthorizationError`.
+- Errores de dominio de `libs/incident/domain` (`Incident.log()`: campo obligatorio ausente, longitud).
+- `apps/api/src/main.ts` (`ValidationPipe` con `whitelist`, `forbidNonWhitelisted`, `transform`),
+  `apps/api/src/app/incident/incident.module.ts` (bindings de `INCIDENT_REPOSITORY` e
+  `INCIDENT_ACTOR_RESOLVER`), `apps/api/src/app/incident/incident-actor-resolver.ts`.
+- `docs/backlog/C10/tickets/README.md` y `docs/backlog/C1/tickets/README.md`, sección *Delivery slices*:
+  desviaciones aprobadas para la rebanada 1 (sin auth, **i18n aplazada a un fichero de constantes**).
+
+#### Trampa 1 — "DTOs en `libs/shared/contracts`, validados con `class-validator`"
+El Scope lo pide así, pero **ADR-007 y la convención del barrel de `shared-contracts` (`T-C10-11`) lo
+prohíben**: los contratos son **solo tipos**, sin decoradores ni `class-validator`.
+- Declara en `libs/shared/contracts` los **tipos** de petición y respuesta del alta.
+- La **clase DTO decorada** vive en `apps/api` e **implementa** el tipo del contrato.
+- Reporta la contradicción para `architect-tech-lead`.
+
+#### Trampa 2 — qué campos acepta la petición del requester
+- El **origin channel no lo elige el cliente**: en el alta de un requester desde el portal es `portal`,
+  y lo fija el servidor (FR-OMN-02; un cliente no puede declararse `agent_logged`). El contrato del
+  requester **no** lleva ese campo. El alta por agente es `T-C1-11`.
+- Campos: descripción corta, descripción y servicio afectado opcional (UUID). Nada de reporter (lo pone
+  el actor), ni Impact, Urgency, Priority o flag de competición.
+- Valida en el DTO lo mismo que el dominio exige (obligatoriedad, no en blanco, longitud máxima de la
+  descripción corta, formato UUID del servicio): el rechazo tiene que ocurrir **en el borde**, antes de
+  llegar al agregado. El dominio sigue siendo la defensa final.
+- **AC1**: `forbidNonWhitelisted` ya rechaza propiedades no declaradas. Demuestra con **cuatro
+  peticiones** (una por campo: Impact, Urgency, Priority, flag de competición) que el resultado es
+  idéntico (misma respuesta de validación) y que **no se crea ninguna incidencia**.
+
+#### Trampa 3 — el filtro de excepciones de `T-C10-40` no existe
+El Scope cita "the exception filter established in `T-C10-40`", que no está hecho ni forma parte de la
+rebanada. Sin filtro, un error de validación sale con la forma por defecto de Nest y un error de dominio
+sale como 500.
+- Crea en `apps/api` un **filtro global mínimo** que produzca el `ErrorEnvelope` del contrato:
+  - errores del `ValidationPipe` → `400`, `VALIDATION_FAILED`, `details` con `{ field, rule }` por
+    propiedad y restricción (la `rule` es el nombre de la restricción, un identificador máquina, nunca
+    texto);
+  - errores de dominio de obligatoriedad/longitud de `Incident.log()` → `400`, `VALIDATION_FAILED`, con
+    el campo;
+  - `IncidentLogAuthorizationError` → `403`, `FORBIDDEN`;
+  - cualquier otro error → `500` **sin filtrar detalles internos** (nada de stack ni mensaje del error en
+    el cuerpo), registrado con `Logger` y el `correlationId`.
+- **No añadas códigos** al `ErrorCode` del contrato salvo que sea imprescindible; si decides que el 500
+  necesita uno, justifícalo y repórtalo (`T-C10-11` los limitó a cuatro a propósito).
+- Deja claro en el código y en el informe qué parte es el mínimo de este ticket y cuál es de `T-C10-40`.
+
+#### Trampa 4 — i18n aplazada y el AC2
+El AC2 pide que la respuesta "names the field and states what to do next, resolved in the language of
+the `Accept-Language` header". En la rebanada 1 la **i18n está aplazada** (desviación aprobada) y §3.2
+dice que **el texto no es contrato**.
+- La respuesta nombra el campo (`details[].field`) y la regla (`details[].rule`). El "qué hacer ahora"
+  en lenguaje humano lo resolverá el cliente a partir del código (`T-C1-10`, con su fichero de
+  constantes).
+- **No instales ni configures `nestjs-i18n`.** Si el backend necesita algún texto de cara al usuario,
+  va en **un único fichero de constantes exportado** en `apps/api` para esta feature, nunca literal
+  suelto.
+- **Reporta** la parte "resolved in the language of `Accept-Language`" del AC2 como no demostrable en
+  esta rebanada.
+
+#### Trampa 5 — cablear el caso de uso
+- `LogIncidentUseCase` es una clase pura: regístralo en `IncidentModule` con **`useFactory`** e
+  `inject: [INCIDENT_REPOSITORY, SLA_POLICY, EVENT_PUBLISHER, CLOCK]`.
+- **`CLOCK`**: no hay adaptador. Crea en `apps/api` un reloj del sistema que implemente `ClockPort` (es
+  el único sitio donde `new Date()` es legítimo) y enlázalo al token.
+- **`SLA_POLICY`**: el adaptador real es `T-C1-58`. Enlaza un adaptador **provisional explícito** (su
+  nombre y su comentario dicen que no hace nada hasta `T-C1-58`). Ahora el caso de uso publica
+  `IncidentLogged` **antes** de llamar a `attachFor()`, así que un no-op no pierde ningún evento.
+- `EVENT_PUBLISHER` es global (`EventDispatchModule`).
+
+#### Trampa 6 — el controlador
+- `POST /api/incidents` (prefijo global `/api` ya existente), **fino**: DTO → `LogIncidentInput`
+  (con `originChannel: 'portal'`), actor desde `INCIDENT_ACTOR_RESOLVER`, `correlationId` desde la
+  cabecera `CORRELATION_ID_HEADER` si viene (valida su forma) o uno generado si no, y devuélvelo en la
+  cabecera de la respuesta.
+- **AC3**: `201` con la referencia; el cuerpo solo lleva lo que el requester puede ver (la referencia; el
+  `id` interno solo si lo justificas). Considera la cabecera `Location` hacia la futura ruta de detalle
+  por referencia (`T-C1-100`) y decide.
+
+#### Trampa 7 — dónde se prueba cada cosa
+- Unitarios (sin BD): el DTO (cada restricción), el filtro (cada rama), el mapeo del controlador.
+- **API-E2E con Cypress/Cucumber en `apps/api-e2e`** (CLAUDE.md §2: nada de Supertest): escenarios para
+  AC1 (los cuatro campos, y que no se creó nada), AC2 (campo obligatorio ausente → campo y regla) y AC3
+  (`201` + referencia con forma `INC` + 7 dígitos). Contra la base efímera real. Para comprobar "no se
+  creó ninguna incidencia" sin endpoint de lectura, decide un método honesto (p. ej. que la siguiente
+  alta válida reciba la referencia siguiente a la esperada, o una comprobación contra la BD efímera
+  desde un paso de Cypress) y justifícalo.
+
+#### Lo que NO debes tocar
+`libs/incident/{domain,application,infrastructure}` (si crees que algo debe cambiar, para y repórtalo),
+`libs/shared/{domain,util}`, `apps/api/src/{database,event-dispatch,testing,migrations,bootstrap}/**`,
+`docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria), `package.json` (sin
+dependencias nuevas), `prompts.md`. Nada del alta por agente (`T-C1-11`) ni de la ruta de lectura
+(`T-C1-99`/`T-C1-100`). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api` y `pnpm nx test shared-contracts`: unitarios del DTO, el filtro y el controlador.
+2. **AC4**: `grep -rnE "incident|class-validator|@nestjs" libs/shared/contracts/src` → sin imports de
+   `incident-*` ni decoradores (pega la salida; el nombre del tipo puede contener "Incident").
+3. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde con los escenarios nuevos y los anteriores.
+   Pega la salida.
+4. Una petición manual real contra la API arrancada (contra la base efímera o la de desarrollo): un
+   `201` y un `400` por un campo de prioridad; pega las respuestas completas (estado, cabeceras
+   relevantes y cuerpo).
+5. El cuerpo de un `500` provocado no contiene stack ni mensaje interno (test unitario del filtro).
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados;
+`sport-itsm-postgres-dev` `healthy` en 5452.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; los tipos del contrato; la ruta, sus respuestas (`201`, `400`, `403`,
+  `500`) con ejemplos reales; el cableado del módulo.
+- Tus decisiones de las trampas 1 a 7, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo DTO en contratos frente a ADR-007, el filtro
+  mínimo frente a `T-C10-40`, la parte de i18n del AC2, el adaptador provisional de SLA hasta `T-C1-58`,
+  y cualquier código de error que falte en el contrato.
+
+### Response:
+
+Implementado ticket T-C1-08
+
+</br>

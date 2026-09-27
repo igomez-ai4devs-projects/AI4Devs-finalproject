@@ -6,3 +6,5 @@
 - [DataSource boot must stay lazy](project_datasource_boot_must_stay_lazy.md) — eager connect in a global module factory breaks the untouchable harness-gating spec; connect on first repository use instead.
 - [type:infrastructure libs need decorator tsconfig flags](feedback_infrastructure_libs_need_decorator_flags.md) — add experimentalDecorators+emitDecoratorMetadata to the lib's own tsconfig.json before writing entities/@Injectable adapters.
 - [identity-access Actor vs. the scope rule](project_actor_scope_conflict.md) — every context needing authorization declares its own minimal actor view; report the cross-context conflict each time, don't wait for the architect to resolve it.
+- [Global-provider testing-module gotcha](project_global_provider_testing_module_gotcha.md) — a context module's useFactory injecting a @Global() token breaks any narrow TestingModule importing just that context; add the global module to that test's imports too.
+- [No express types in apps/api](project_no_express_types_in_apps_api.md) — express/@types/express aren't resolvable from apps/api; use a local structural interface for @Res()/ArgumentsHost request-response typing instead.

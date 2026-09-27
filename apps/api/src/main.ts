@@ -3,6 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
 import { GLOBAL_PREFIX, GLOBAL_PREFIX_EXCLUSIONS } from './app/global-prefix';
+import { GlobalExceptionFilter } from './app/global-exception.filter';
+import {
+  flattenValidationErrors,
+  RequestValidationException,
+} from './app/request-validation.exception';
 import type { EnvironmentVariables } from './config/env.validation';
 
 async function bootstrap(): Promise<void> {
@@ -18,14 +23,26 @@ async function bootstrap(): Promise<void> {
   // `whitelist` strips undeclared properties, `forbidNonWhitelisted` rejects
   // the request outright rather than silently ignoring them, and `transform`
   // instantiates the DTO class so its declared types are real at runtime
-  // (`ARCHITECTURE.md` §6.3).
+  // (`ARCHITECTURE.md` §6.3). `exceptionFactory` replaces Nest's default
+  // `BadRequestException` (`{ statusCode, message: string[], error }`) with
+  // `RequestValidationException`, carrying the contract-shaped
+  // `{ field, rule }` details `GlobalExceptionFilter` expects (`T-C1-08`
+  // Trap 3) — without it, a validation failure would never reach the
+  // `ErrorEnvelope` `ARCHITECTURE.md` §3.2 promises.
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: (errors) =>
+        new RequestValidationException(flattenValidationErrors(errors)),
     }),
   );
+
+  // The minimum exception filter this delivery slice owes
+  // (`GlobalExceptionFilter`'s own doc comment) — `T-C10-40`'s real one does
+  // not exist yet.
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   // The port comes from the validated configuration, never from the raw
   // environment: by this point a missing or malformed `PORT` has already
