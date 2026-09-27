@@ -1,5 +1,7 @@
 import { Route } from '@angular/router';
 import { IncidentIntakeFormComponent } from './intake-form/incident-intake-form.component';
+import { IncidentDetailComponent } from './incident-detail/incident-detail.component';
+import { INCIDENT_MESSAGES } from './incident-messages';
 
 /**
  * Path segment for the requester intake form, relative to this library's own
@@ -18,13 +20,13 @@ export const INCIDENT_INTAKE_ROUTE_PATH = 'new';
  * reader (`T-C1-101`'s own route registration), so the two can never name
  * the segment differently.
  *
- * `T-C1-101` is **not built by this ticket**. Until it adds a sibling entry
- * to {@link incidentRoutes} below (`{ path: ':reference', component: ... }`),
- * a navigation to this URL matches no route inside this library's own
- * children, so the router backtracks out of the lazy-loaded `incidents`
- * match entirely and falls through to the shell's wildcard route
- * (`apps/web/src/app/app.routes.ts`), which redirects home. That is expected
- * and reported as a finding, not a bug in this ticket.
+ * `T-C1-101` registers the sibling entry below (`{ path: ':reference',
+ * component: IncidentDetailComponent }`) that resolves this URL. Before that
+ * ticket, a navigation here matched no route inside this library's own
+ * children, so the router backtracked out of the lazy-loaded `incidents`
+ * match entirely and fell through to the shell's wildcard route
+ * (`apps/web/src/app/app.routes.ts`), which redirects home — `T-C1-10`'s own
+ * acceptance suite documented that as an expected, temporary gap.
  */
 export const incidentDetailUrl = (reference: string): string =>
   `/incidents/${reference}`;
@@ -36,14 +38,25 @@ export const incidentDetailUrl = (reference: string): string =>
  * rather than resolving to an empty child (`T-C1-10` Trap 4) — a requester
  * landing on this prefix overwhelmingly means "I want to report something".
  *
- * `T-C1-101` adds a sibling route here (`path: ':reference'`, reusing
- * {@link incidentDetailUrl}'s own segment shape) once the detail screen
- * exists; it does not touch the entries already declared below.
+ * **Order matters (`T-C1-101` Trap 3).** `:reference` is declared *after*
+ * `INCIDENT_INTAKE_ROUTE_PATH` ('new'), never before it. The Angular router
+ * tries a lazy-loaded library's children in array order and resolves the
+ * first match; `:reference` matches any single path segment, including the
+ * literal `new`. Listing it first would make `/incidents/new` resolve to the
+ * detail screen with `reference: 'new'` instead of the intake form, silently
+ * breaking `T-C1-10`'s own route. Keeping the static segment first is the
+ * standard Angular routing rule for a static path competing with a sibling
+ * parameterized one.
  */
 export const incidentRoutes: Route[] = [
   { path: '', pathMatch: 'full', redirectTo: INCIDENT_INTAKE_ROUTE_PATH },
   {
     path: INCIDENT_INTAKE_ROUTE_PATH,
     component: IncidentIntakeFormComponent,
+  },
+  {
+    path: ':reference',
+    component: IncidentDetailComponent,
+    title: INCIDENT_MESSAGES.detail.pageTitle,
   },
 ];

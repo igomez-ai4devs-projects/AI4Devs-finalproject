@@ -1,6 +1,37 @@
 import { Given, Then, When } from '@badeball/cypress-cucumber-preprocessor';
+import type { IncidentDetailResponse } from '@sport-itsm/shared-contracts';
 
 const INTAKE_URL = '**/api/incidents';
+
+function detailUrlPattern(reference: string): string {
+  return `**/api/incidents/${reference}`;
+}
+
+/**
+ * A stand-in "persisted state" for the detail intercepts below (T-C1-101).
+ * `originChannel` and `loggedAt` are the two values that prove the point
+ * these scenarios exist to prove — the requester never typed either one
+ * into the intake form (`incident-intake-form.component.ts`'s own doc
+ * comment: no field for it exists at all), so the detail screen showing them
+ * demonstrates it renders the server's own response, not an echo of the
+ * form. `reference` is overridden per call so the same fixture serves every
+ * scenario without a second reference ever colliding with the first.
+ */
+function persistedReportBody(reference: string): IncidentDetailResponse {
+  return {
+    reference,
+    loggedAt: '2026-01-15T08:30:00.000Z',
+    originChannel: 'portal',
+    shortDescription: 'Cannot submit match roster',
+    description: 'The roster submission form times out for every team.',
+    affectedServiceId: null,
+    categoryId: null,
+    impact: null,
+    urgency: null,
+    priority: null,
+    competitionAffectsInProgress: false,
+  };
+}
 
 Given('the viewport is 360px wide', () => {
   // 360px is the narrowest viewport `T-C1-10` AC2 requires this form to fit
@@ -73,13 +104,6 @@ Then('the Incident intake request is sent with the completed data', () => {
   });
 });
 
-Then(
-  "the browser settles back on the default route, since T-C1-101's detail screen does not exist yet",
-  () => {
-    cy.location('pathname').should('equal', '/');
-  },
-);
-
 Then('the error summary is exposed as an alert', () => {
   cy.wait('@logIncident');
   cy.get('[role="alert"].incident-intake__error-summary').should('be.visible');
@@ -92,4 +116,129 @@ Then('the error summary links to the {string} field', (field: string) => {
       'include',
       field === 'shortDescription' ? 'incident-short-description' : field,
     );
+});
+
+// --- T-C1-101: the detail screen ------------------------------------------
+
+Given(
+  'the Incident detail API returns a persisted report for reference {string}',
+  (reference: string) => {
+    cy.intercept('GET', detailUrlPattern(reference), {
+      statusCode: 200,
+      body: persistedReportBody(reference),
+    }).as(`getIncident-${reference}`);
+  },
+);
+
+Given(
+  'the Incident detail API reports no Incident for reference {string}',
+  (reference: string) => {
+    cy.intercept('GET', detailUrlPattern(reference), {
+      statusCode: 404,
+      body: { error: { code: 'NOT_FOUND' } },
+    });
+  },
+);
+
+Given(
+  'the Incident detail API rejects reference {string} as malformed',
+  (reference: string) => {
+    cy.intercept('GET', detailUrlPattern(reference), {
+      statusCode: 400,
+      body: {
+        error: {
+          code: 'VALIDATION_FAILED',
+          details: [{ field: 'reference', rule: 'matches' }],
+        },
+      },
+    });
+  },
+);
+
+Given(
+  'the Incident detail API is unreachable for reference {string}',
+  (reference: string) => {
+    cy.intercept('GET', detailUrlPattern(reference), {
+      forceNetworkError: true,
+    });
+  },
+);
+
+When(
+  'the requester visits the detail page for reference {string}',
+  (reference: string) => {
+    cy.visit(`/incidents/${reference}`);
+  },
+);
+
+Then(
+  'the browser lands on the detail page for reference {string}',
+  (reference: string) => {
+    cy.location('pathname').should('equal', `/incidents/${reference}`);
+  },
+);
+
+Then(
+  'the detail page shows the persisted report, not the values just typed',
+  () => {
+    cy.get('.incident-detail__fields').should('be.visible');
+    // Neither field the requester typed into the intake form carries an
+    // `originChannel` — it is server-assigned. Its presence on screen is
+    // this scenario's own proof that the detail screen renders the
+    // response, not an echo of what was submitted (AC1).
+    cy.contains('.incident-detail__fields', 'Self-service portal').should(
+      'be.visible',
+    );
+  },
+);
+
+Then('the detail page shows a not-found message', () => {
+  cy.get('.incident-detail__outcome').should(
+    'contain.text',
+    "couldn't find a report",
+  );
+});
+
+Then('the detail page shows an invalid-reference message', () => {
+  cy.get('.incident-detail__outcome').should(
+    'contain.text',
+    "isn't in the right format",
+  );
+});
+
+Then('the detail page shows a network-error message', () => {
+  cy.get('.incident-detail__outcome').should(
+    'contain.text',
+    'We could not reach the server',
+  );
+});
+
+/**
+ * Simulates an in-app SPA navigation from one detail reference to another
+ * (T-C1-101 Trap 2's "router reuses the component instance" path) without a
+ * full page reload. `cy.visit()` cannot do this — it always boots a fresh
+ * application. There is no in-app link this delivery slice renders between
+ * two reports (out of scope), so the only available trigger is the same one
+ * a `routerLink` ultimately relies on: a `pushState` followed by the
+ * `popstate` event Angular's `PathLocationStrategy` listens for.
+ */
+When(
+  'the requester navigates in-app to the detail page for reference {string}',
+  (reference: string) => {
+    cy.window().then((win) => {
+      win.history.pushState({}, '', `/incidents/${reference}`);
+      win.dispatchEvent(new win.PopStateEvent('popstate'));
+    });
+  },
+);
+
+Then(
+  'the detail page never shows reference {string} again',
+  (reference: string) => {
+    cy.get('body').should('not.contain.text', reference);
+  },
+);
+
+Then('the detail page shows reference {string}', (reference: string) => {
+  cy.get('.incident-detail__fields').should('contain.text', reference);
 });

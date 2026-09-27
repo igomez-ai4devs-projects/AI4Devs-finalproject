@@ -4195,3 +4195,138 @@ terminar.
 
 ### Response:
 
+Implementado ticket T-C1-10
+
+</br>
+
+**Prompt 27:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-101.md ·
+Componente de detalle de la incidencia — HTML semántico, enrutado por referencia
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Aplica **`sport-itsm-frontend`** (Angular 20.3: standalone, `OnPush`,
+signals, `inject()`, `@if`/`@for`/`@switch`, sin `NgModule`, accesibilidad escrita a mano) y
+`sport-itsm-architecture` (§5.3, §7.1). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es **el último ticket de la rebanada 1**. Con él, *"un requester registra una incidencia y la ve"* queda
+completo de extremo a extremo: el formulario (`T-C1-10`) redirige aquí y esta pantalla muestra lo que el
+servidor **persistió**, leído con `GET /api/incidents/{reference}` (`T-C1-100`) a través del
+`IncidentStore` (`T-C1-09`).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-data-access,incident-feature,web   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Trampas del entorno — ya pagadas
+- Cypress: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash si falla con "bad option --smoke-test".
+- Para arrancar la API a mano: Postgres de desarrollo en 5452; las variables globales `POSTGRES_*` pisan
+  el `.env`, pásalas en la misma llamada. `nx serve web` ya tiene el proxy `/api` → 3300. Antes de una
+  prueba manual comprueba que no haya procesos viejos en 3300/4200 y ciérralos al terminar.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero y sus dos desviaciones aprobadas.
+- `libs/incident/feature/src/lib/`: `incident-routes.ts` (`incidentDetailUrl()`, y el comentario que te
+  dice dónde registrar `path: ':reference'`), `incident-messages.ts` (el fichero de textos de la feature),
+  el componente del formulario (patrón de estilos con custom properties locales, foco, mensajes).
+- `libs/incident/data-access`: `IncidentStore` (`loadIncidentByReference`, `detailLoading`,
+  `detailError`, `incidentDetail`), `IncidentApiError` (`api-error` con `code`/`details`/`correlationId`;
+  `network-error`).
+- `libs/shared/contracts`: `IncidentDetailResponse` (sin `id`; `loggedAt` ISO UTC; `affectedServiceId`,
+  `categoryId`, `impact`, `urgency`, `priority` a `null`; `competitionAffectsInProgress`).
+- Lo que devuelve la API: `200`; `404 NOT_FOUND` (referencia bien formada inexistente, también `SRQ…`);
+  `400 VALIDATION_FAILED` con `{ field: 'reference', rule: 'matches' }` (forma inválida).
+- `apps/web-e2e/src/features/incident-intake.feature` y sus steps: su escenario de éxito **afirma hoy
+  que el navegador acaba en `/`** porque la ruta de detalle no existía.
+
+#### Trampa 1 — el fichero de textos ya existe
+El ticket nombra `i18n-strings.ts`, pero `T-C1-10` ya creó **`incident-messages.ts`** como el único fichero
+de textos de la feature. **Amplía ese**; no crees otro. Nada literal en la plantilla (AC4).
+
+#### Trampa 2 — no son tres estados, son más
+El Scope habla de cargando, no encontrado y cargado. La API y el store dan además: forma de referencia
+inválida (`400`), error del servidor (`500`) y error de red.
+- Renderiza **siempre** un estado explícito para cada caso; ninguno puede quedar en blanco ni lanzar.
+  Decide si la referencia mal formada se muestra como "no encontrada" o como "esta no es una referencia
+  válida", y justifícalo pensando en el usuario (lenguaje llano).
+- Si el error trae `correlationId`, muéstralo como "código para soporte", igual que el formulario.
+- **Estado anterior**: el store es `providedIn: 'root'`. Al entrar en la ficha de B después de haber visto
+  A, **no** puede verse ni un instante el detalle de A. Comprueba cómo resetea el store al empezar una
+  carga; si no lo hace y hace falta cambiarlo, **para y repórtalo** (no toques `data-access` sin decirlo).
+
+#### Trampa 3 — la ruta y el parámetro
+- Registra `path: ':reference'` en `incidentRoutes`, junto a `new` (ojo con el orden: `new` no puede
+  interpretarse como una referencia).
+- Lee el parámetro con el enlace de inputs del router (`withComponentInputBinding`, que hoy no está en
+  `app.config.ts`: si lo añades, es un cambio de `apps/web` y dilo) o con `ActivatedRoute`; justifícalo.
+  El componente tiene que reaccionar si la referencia cambia sin destruirse (de `/incidents/A` a
+  `/incidents/B`).
+- Un título de página (`title` de la ruta) desde el fichero de textos, si encaja.
+
+#### Trampa 4 — qué se muestra y cómo
+- Lista de campos con HTML semántico (`<dl>`/`<dt>`/`<dd>`), jerarquía de encabezados, estado de carga
+  con `role="status"` (AC3).
+- **Foco**: al llegar a la ficha (redirección desde el formulario), el foco va al encabezado principal
+  (`tabindex="-1"`), como dejó dicho `T-C1-10`.
+- `loggedAt` formateado **en la zona y el idioma del navegador** (NFR-I18N-03), no la cadena ISO en crudo.
+- `originChannel` como texto llano (`portal` → "Portal de autoservicio" o lo que pongas en el fichero de
+  textos), no el código.
+- Campos aún vacíos: Priority → "Todavía sin prioridad asignada" (o equivalente), Impact/Urgency/categoría
+  igual; flag de competición `false`. **No inventes** valores.
+- `affectedServiceId` y `categoryId` son UUID sin nombre (no hay catálogo): decide si los muestras, cómo, o
+  si solo muestras "no indicado" cuando son `null`, y justifícalo. **Repórtalo.**
+
+#### Trampa 5 — el AC1 de extremo a extremo y el E2E que cambia
+- Actualiza el escenario de éxito de `apps/web-e2e/.../incident-intake.feature`: ya **no** acaba en `/`,
+  acaba en `/incidents/<ref>` y muestra la ficha.
+- Añade escenarios de la ficha con `cy.intercept` (cargada, no encontrada, referencia inválida, error de
+  red, estado de carga, cambio de A a B sin parpadeo de A).
+- **AC1 de verdad** ("persisted state, not the values typed"): con `cy.intercept` solo pruebas lo que tú
+  devuelves. Demuéstralo al menos una vez contra la API real: API + web arrancadas a mano, un envío por el
+  formulario en el navegador (p. ej. ejecutando ese escenario de Cypress sin `intercept` contra los
+  servidores reales, o el método que justifiques), y la ficha muestra valores que solo pone el servidor
+  (`originChannel`, la fecha de registro, la referencia). Si no lo consigues, dilo; no lo des por hecho.
+
+#### Lo que NO debes tocar
+`libs/incident/{domain,application,infrastructure,data-access,ui}` (salvo lo que la trampa 2 te obligue a
+reportar), `libs/shared/**`, `apps/api/**`, `apps/api-e2e/**`, `docker/**`, `.github/**`, `docs/**`,
+`.claude/**` (salvo tu memoria), `package.json`, `prompts.md`. En `apps/web`, solo lo imprescindible
+(p. ej. `withComponentInputBinding` en `app.config.ts`), y dilo. Nada de acciones de edición. El ticket
+no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-feature` en verde: cada estado, el cambio de referencia sin parpadeo, el foco,
+   el formato de fecha, los campos vacíos. Pega el resumen.
+2. AC4: `grep` de literales entre comillas en la plantilla de la ficha → ninguno de cara al usuario (pega
+   la salida y explica cualquier coincidencia).
+3. `pnpm nx lint incident-feature` en verde; `grep -rnE "\*ngIf|\*ngFor|NgModule|::ng-deep|ngModel" libs/incident/feature/src` → vacío.
+4. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e web-e2e` en verde (escenarios nuevos y el de éxito del
+   formulario actualizado). Pega la salida.
+5. La prueba real del AC1 de la trampa 5: pega lo que muestra la ficha y cómo lo comprobaste. Cierra los
+   servidores después.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Ningún proceso de la API ni de la web escuchando al
+terminar.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; los estados que renderiza la ficha y el texto de cada uno.
+- Tus decisiones de las trampas 1 a 5, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo los UUID sin nombre, el AC3 del formulario
+  pendiente (si afecta aquí), cualquier cambio que haya necesitado el store y lo que quede para que la
+  rebanada 1 se dé por cerrada.
+
+### Response:
+
