@@ -3912,3 +3912,129 @@ la API escuchando al terminar; `sport-itsm-postgres-dev` `healthy` en 5452.
 Implementado ticket T-C1-100
 
 </br>
+
+**Prompt 25:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-09.md ·
+`incident/data-access` — servicio de API de incidencias y store basado en signals
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Es el **primer código Angular de negocio** del proyecto. Aplica
+**`sport-itsm-frontend`** (Angular 20.3, standalone, signals, `inject()`, `computed()`, `effect()` con
+moderación, `HttpClient` con interceptores funcionales, errores HTTP nunca tragados, estados de carga y
+error siempre definidos), `sport-itsm-architecture` (§5.3: `type:data-access` solo depende de
+`data-access`, `contracts` y `util`; §7.1) y `sport-itsm-engineering-principles`. `angular-developer` solo
+como referencia genérica: las skills del proyecto mandan. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Primer ticket del bloque 6, el último de la rebanada 1: el **frontend** de "registrar una incidencia y
+verla". El backend ya está completo (`POST /api/incidents` → `201 { reference }`;
+`GET /api/incidents/{reference}` → `200 IncidentDetailResponse`, `404`, `400`). Este ticket es el único
+sitio desde el que el frontend hablará con esa API; detrás vienen el formulario (`T-C1-10`) y la pantalla
+de detalle (`T-C1-101`), que **solo** consumirán este store.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-data-access,web,shared-contracts   # verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas la API arrancada: los tests usan `HttpTestingController`.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (su AC5 añade el `GET`, y aclara que la rebanada **no tiene autenticación**).
+- `libs/shared/contracts`: `LogIncidentRequesterRequest`, `IncidentCreatedResponse`,
+  `IncidentDetailResponse`, `ErrorEnvelope`, `ValidationErrorDetail`, `ErrorCode` (`VALIDATION_FAILED`,
+  `NOT_FOUND`, `FORBIDDEN`, `UNAUTHENTICATED`, `INTERNAL_ERROR`), `CORRELATION_ID_HEADER`.
+- `apps/api/src/app/incident/incident.controller.ts` y `apps/api-e2e/src/features/*.feature`: lo que la
+  API responde de verdad en cada caso (incluidos los cuerpos de `400` con `details` de un solo elemento
+  por campo, `stopAtFirstError`).
+- `apps/web/src/app/app.config.ts` (`provideHttpClient(withInterceptors([]))`), `apps/web/project.json`,
+  `libs/incident/data-access` (vacía; `jest.config.ts` con `passWithNoTests` cuyo comentario dice `T-C1-09`).
+- `ARCHITECTURE.md` §7.1 y la sección de frontend de `CLAUDE.md` §3.
+
+#### Trampa 1 — la URL de la API
+No hay configuración de entorno ni proxy en `apps/web`, y el API sirve bajo `/api` en otro puerto (3300).
+- **No codifiques host ni puerto** en la librería. Usa rutas relativas (`/api/incidents`) o un token de
+  inyección para la base, con un valor por defecto sensato, que el shell pueda sobrescribir. Justifícalo.
+- Que el navegador llegue de verdad a la API en desarrollo (proxy de `nx serve web` → 3300, o CORS) es
+  configuración de `apps/web`: **no la hagas aquí**; repórtala para `T-C1-10` (el primero que lo
+  necesitará en un navegador).
+
+#### Trampa 2 — el error tipado
+El AC2 y el AC5 exigen un error **tipado** que nunca se descarte. `HttpClient` entrega un
+`HttpErrorResponse` cuyo cuerpo, cuando viene de la API, es un `ErrorEnvelope`.
+- Define un tipo de error del lado cliente que distinga, al menos: error de la API con su `code` y sus
+  `details` (`VALIDATION_FAILED` con los campos para el formulario de `T-C1-10`; `NOT_FOUND` para la
+  pantalla de `T-C1-101`; el resto), y fallo sin respuesta de la API (red, CORS, cuerpo que no es un
+  `ErrorEnvelope`). Nada de `any`.
+- El `404` del detalle llena la señal de error, **no se propaga** al componente como excepción (AC5).
+- Sin textos para el usuario en esta librería (i18n aplazada a un fichero de constantes **por feature**, y
+  el texto lo pondrán los componentes): solo códigos.
+
+#### Trampa 3 — la forma del store
+- Estados **siempre definidos** para cada una de las dos operaciones (alta y detalle): cargando, error y
+  datos. Decide entre tres signals por operación o un estado discriminado del que se derivan con
+  `computed()`; lo que no puede ocurrir es un estado indefinido ni "cargando + error" a la vez.
+- **Condiciones de carrera**: si se pide el detalle de A y luego de B antes de que responda A, la
+  respuesta de A no puede pisar la de B. Si el usuario envía el formulario dos veces, decide qué pasa
+  (ignorar mientras hay una en curso, o cancelar la anterior) y justifícalo: un doble envío del `POST`
+  crea **dos** incidencias en el servidor.
+- Ámbito del store: `providedIn: 'root'` o proveído por la ruta/feature. Justifícalo pensando en que el
+  formulario redirigirá a la pantalla de detalle.
+- `effect()` solo si hay un motivo real; RxJS con moderación (signals primero). Nada de NgRx.
+- Expón lo que `T-C1-10` y `T-C1-101` necesitarán (p. ej. la referencia creada para navegar, el detalle
+  cargado, los errores por campo) como `computed()` de solo lectura; los signals escribibles no salen de
+  la librería.
+
+#### Trampa 4 — la cabecera de correlación
+La API acepta y devuelve `X-Correlation-Id` (`CORRELATION_ID_HEADER`). Decide si el cliente la envía
+(y cómo la genera) o solo la lee de la respuesta para poder citarla en un error, y justifícalo. No añadas
+interceptores en `apps/web` (fuera de alcance); si crees que debería ser un interceptor, repórtalo.
+
+#### Trampa 5 — fronteras y pureza
+- `incident-data-access` solo puede depender de `type:data-access`, `type:contracts` y `type:util`
+  (AC3). **No** puede importar `incident-domain` ni `shared-domain` (son `platform:backend`/de otro tipo):
+  la referencia es un `string` aquí. Si necesitas validar su forma en el cliente, hazlo localmente y dilo.
+- Quita `passWithNoTests` de `libs/incident/data-access/jest.config.ts`.
+- Nada de componentes, ni rutas, ni cambios en `apps/web` (salvo que sea imprescindible; si lo es, para y
+  repórtalo).
+
+#### Lo que NO debes tocar
+`apps/**`, `libs/incident/{domain,application,infrastructure,feature,ui}`, `libs/shared/**` (si el
+contrato necesita algo, para y repórtalo), `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu
+memoria), `package.json` (sin dependencias nuevas), `prompts.md`. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-data-access` (jest-preset-angular, `HttpTestingController`): para el alta y
+   para el detalle, éxito (datos, sin carga, sin error), `400` con `details` (error tipado con los
+   campos), `404` en el detalle (error `NOT_FOUND`, sin excepción), `500`, fallo de red (`status 0`), el
+   estado durante la carga, la condición de carrera del detalle y el doble envío del alta. Pega el resumen.
+2. **AC3**: `pnpm nx lint incident-data-access` en verde; y el grafo (`pnpm nx graph --file=tmp/graph.json`,
+   luego bórralo): `incident-data-access` depende solo de `shared-contracts` (y `shared-util` si lo usas).
+3. `grep -rn "any\b" libs/incident/data-access/src --include=*.ts` → sin `any` en tipos (o justifica cada uno).
+4. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde (incluye `web`) y `pnpm verify:boundaries` 10/10.
+5. `pnpm prettier --check libs/incident/data-access`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la API pública de la librería (servicio, store, tipos de error y
+  selectores `computed()`).
+- Tus decisiones de las trampas 1 a 5, con su porqué.
+- La salida de las cinco verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, la conexión real navegador → API (proxy o
+  CORS) para `T-C1-10`, y cualquier cosa que el contrato no dé y los componentes vayan a necesitar.
+
+### Response:
+
+Implementado ticket T-C1-09
+
+</br>
