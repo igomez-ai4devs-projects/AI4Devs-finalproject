@@ -133,4 +133,38 @@ describe('TypeOrmIncidentRepository — round trip against real PostgreSQL (T-C1
 
     expect(reference.prefix).toBe('INC');
   });
+
+  describe('findByReference() — T-C1-99 AC1/AC2, read side', () => {
+    it('reads back every field of a saved Incident by its exact reference', async () => {
+      const identity = await repository.nextIdentity();
+      const reference = IncidentReferencePolicy.format(101);
+      const { incident: logged } = Incident.log({
+        id: identity,
+        reference,
+        reporterId: REPORTER,
+        originChannel: OriginChannel.fromCode('email'),
+        shortDescription: 'League table shows a stale ranking',
+        description:
+          'The standings widget still shows last week’s table after the results were confirmed.',
+        affectedServiceId: SERVICE,
+        actor: ACTOR,
+        correlationId: 'req-integration-read-1',
+        occurredAt: CLOCK.now(),
+      });
+
+      await repository.save(logged);
+      const found = await repository.findByReference(reference);
+
+      expect(found).not.toBeNull();
+      expect(found).toEqual(logged);
+    });
+
+    it('returns null for a reference nothing was ever saved under', async () => {
+      const neverSavedReference = IncidentReferencePolicy.format(102);
+
+      const found = await repository.findByReference(neverSavedReference);
+
+      expect(found).toBeNull();
+    });
+  });
 });

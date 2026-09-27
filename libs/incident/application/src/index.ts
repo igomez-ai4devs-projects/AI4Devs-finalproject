@@ -13,3 +13,8 @@ export type {
 } from './lib/log-incident.use-case';
 export { IncidentLogAuthorizationError } from './lib/incident-actor';
 export type { IncidentActor } from './lib/incident-actor';
+export { GetIncidentByReferenceUseCase } from './lib/get-incident-by-reference.use-case';
+export type {
+  IncidentNotFoundOutcome,
+  GetIncidentByReferenceResult,
+} from './lib/get-incident-by-reference.use-case';

@@ -23,6 +23,23 @@ import { Incident } from './incident.aggregate';
  * completes the port with both methods now that `Incident` exists to type
  * them; wiring a concrete adapter (`T-C1-06`) and calling either method from
  * a use case (`T-C1-07`) remain out of this ticket's scope.
+ *
+ * **Deliberately does *not* extend `IncidentReadRepositoryPort` (`T-C1-99`
+ * Trap 1 — decided the other way from the read port's own first draft).**
+ * Extending it would have made this interface a strict superset of the read
+ * port (no duplicated signature) at the cost of widening what every existing
+ * implementer of *this* interface is required to declare — and by the time
+ * this ticket runs, that includes test doubles inside `apps/api` (composition
+ * root and dispatcher specs for `T-C1-07`/`T-C10-74`), which are explicitly
+ * out of this ticket's boundaries ("Lo que NO debes tocar"). Keeping the two
+ * interfaces **independent** — `findByReference()` declared once, on
+ * `IncidentReadRepositoryPort` only — means adding the read port costs
+ * nothing to any existing implementer of this one; only
+ * `TypeOrmIncidentRepository` (this ticket's own adapter, `T-C1-99` Trap 5)
+ * takes on the extra method, by implementing both interfaces explicitly. The
+ * price is one line of signature duplicated between two files; the
+ * alternative's price was a change this ticket has no license to make. See
+ * `incident-read-repository.port.ts` for the read port itself.
  */
 export interface IncidentRepositoryPort {
   /** A fresh, never-reused UUID v7 for a new Incident aggregate. */

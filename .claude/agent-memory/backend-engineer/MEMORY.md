@@ -10,3 +10,4 @@
 - [No express types in apps/api](project_no_express_types_in_apps_api.md) — express/@types/express aren't resolvable from apps/api; use a local structural interface for @Res()/ArgumentsHost request-response typing instead.
 - [class-validator stopAtFirstError ordering](project_class_validator_stop_at_first_error_ordering.md) — global stopAtFirstError now set; @IsDefined() always runs first, other decorators fire bottom-up (closest to property first).
 - [Check leftover dev server before manual verification](feedback_check_leftover_dev_server_before_manual_verification.md) — netstat/PID-start-time check the port before trusting curl; a stale nx serve from a prior session can still be listening.
+- [ISP port extension blast radius](feedback_isp_port_extension_blast_radius.md) — grep every `implements <WidePort>` repo-wide before making a new narrow port extend it; an out-of-scope implementer breaks the build.

@@ -158,6 +158,50 @@ describe('TypeOrmIncidentRepository', () => {
     });
   });
 
+  describe('findByReference()', () => {
+    it('returns null when no row matches', async () => {
+      const ormRepository = fakeOrmRepository();
+      ormRepository.findOne.mockResolvedValue(null);
+      const repository = new TypeOrmIncidentRepository(
+        fakeDataSource(ormRepository),
+      );
+
+      const result = await repository.findByReference(REFERENCE);
+
+      expect(ormRepository.findOne).toHaveBeenCalledWith({
+        where: { reference: REFERENCE.value },
+      });
+      expect(result).toBeNull();
+    });
+
+    it('maps the row through IncidentMapper.toDomain() when found, never mutating it (T-C1-99 Trap 5)', async () => {
+      const entity = new IncidentEntity();
+      entity.id = IDENTITY.value;
+      entity.reference = REFERENCE.value;
+      entity.shortDescription = 'Cannot submit match roster';
+      entity.description = 'Details.';
+      entity.originChannel = 'portal';
+      entity.reporterUserId = REPORTER.value;
+      entity.serviceId = null;
+      entity.createdAt = CLOCK.now();
+      entity.updatedAt = CLOCK.now();
+      entity.createdBy = ACTOR.value;
+      entity.updatedBy = null;
+      entity.version = 1;
+      const ormRepository = fakeOrmRepository();
+      ormRepository.findOne.mockResolvedValue(entity);
+      const repository = new TypeOrmIncidentRepository(
+        fakeDataSource(ormRepository),
+      );
+
+      const result = await repository.findByReference(REFERENCE);
+
+      expect(result).toBeInstanceOf(Incident);
+      expect(result?.reference.equals(REFERENCE)).toBe(true);
+      expect(ormRepository.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('save()', () => {
     it('maps the aggregate with IncidentMapper.toEntity() and persists it through the ORM repository', async () => {
       const ormRepository = fakeOrmRepository();

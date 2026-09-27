@@ -3,6 +3,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Identity, TicketReference } from '@sport-itsm/shared-domain';
 import {
   Incident,
+  IncidentReadRepositoryPort,
   IncidentReferencePolicy,
   IncidentRepositoryPort,
 } from '@sport-itsm/incident-domain';
@@ -46,9 +47,19 @@ import { IncidentMapper } from './incident.mapper';
  * pre-existing suite passing (it never touches `INCIDENT_REPOSITORY`) while
  * still opening a real connection the moment any incident use case actually
  * calls this adapter — see the report's findings for the full trade-off.
+ *
+ * **Implements both `IncidentRepositoryPort` and `IncidentReadRepositoryPort`
+ * (`T-C1-99` Trap 1/Trap 5).** The two interfaces are independent (see
+ * `incident-read-repository.port.ts`), so satisfying one does not
+ * structurally satisfy the other; this class declares both `implements`
+ * clauses explicitly. `T-C1-100` binds this single instance to both
+ * `INCIDENT_REPOSITORY` and `INCIDENT_READ_REPOSITORY` — no second adapter
+ * class, no duplicated connection/mapping logic.
  */
 @Injectable()
-export class TypeOrmIncidentRepository implements IncidentRepositoryPort {
+export class TypeOrmIncidentRepository
+  implements IncidentRepositoryPort, IncidentReadRepositoryPort
+{
   private initializationPromise: Promise<DataSource> | null = null;
 
   constructor(private readonly dataSource: DataSource) {}
@@ -126,6 +137,22 @@ export class TypeOrmIncidentRepository implements IncidentRepositoryPort {
     const repository = await this.ormRepository();
     const entity = await repository.findOne({
       where: { id: id.value },
+    });
+    return entity ? IncidentMapper.toDomain(entity) : null;
+  }
+
+  /**
+   * `IncidentReadRepositoryPort.findByReference()` (`T-C1-99` Trap 5) — a
+   * plain `SELECT` on `reference` (`uq_incident_reference`, `DATA-MODEL.md`
+   * §20.3), no lock, no write. Absence is reported as `null`, the same
+   * contract `findById()` already uses, never a thrown "not found": whether
+   * to turn that into a typed outcome is the *caller's* job
+   * (`GetIncidentByReferenceUseCase`), not this adapter's.
+   */
+  async findByReference(reference: TicketReference): Promise<Incident | null> {
+    const repository = await this.ormRepository();
+    const entity = await repository.findOne({
+      where: { reference: reference.value },
     });
     return entity ? IncidentMapper.toDomain(entity) : null;
   }

@@ -3652,3 +3652,123 @@ No instales dependencias. No hagas commit ni push. Contenedores desechables elim
 Implementado ticket T-C1-08
 
 </br>
+
+**Prompt 23:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-99.md ·
+Caso de uso `GetIncidentByReference` y el método de lectura del repositorio
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, con el núcleo en **`type:domain` + `type:application`: sin NestJS, sin
+TypeORM, sin HTTP** en esas capas. Mandan `sport-itsm-architecture` (§5.4 dónde vive un puerto, §6.2–§6.3)
+y `sport-itsm-engineering-principles` (ISP, errores tipados, YAGNI). `sport-itsm-backend` para el
+adaptador TypeORM. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Primer ticket del bloque 5 de la rebanada 1: la mitad "verla" de *"un requester registra una incidencia
+y la ve"*. El Product Owner decidió que "verla" es **leerla por referencia** (lo persistido), no repetir
+lo que devolvió el `POST`. Detrás vienen `T-C1-100` (`GET /api/incidents/{reference}`) y `T-C1-101` (la
+pantalla de detalle). Aquí **nada escribe**.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=incident-domain,incident-application,incident-infrastructure   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Trampas del entorno — ya pagadas
+- `libs/incident/infrastructure` tiene `test` (unitario, sin BD, corre en CI) e **`integration`** (base
+  efímera en 5499; no lo lances a la vez que `nx e2e api-e2e`).
+- Los `*.entity.ts` no pueden importar alias `@sport-itsm/*` (la CLI de TypeORM no los resuelve).
+- El `DataSource` es perezoso; no lo cambies.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero.
+- `libs/incident/domain`: `IncidentRepositoryPort` (+ `INCIDENT_REPOSITORY`), `Incident` (incluidos
+  `reconstitute()` e `IncidentSnapshot`), `IncidentReferencePolicy`, errores.
+- `libs/incident/application`: `LogIncidentUseCase` (el patrón vigente: clase pura, puertos por
+  constructor, contexto con actor), `IncidentActor`.
+- `libs/incident/infrastructure`: `TypeOrmIncidentRepository`, `IncidentMapper`, sus specs y el
+  integration spec.
+- `@sport-itsm/shared-domain` (`TicketReference`) y **`@sport-itsm/shared-util`** (ya exporta
+  `Result`/`ok`/`err` desde `T-C10-07`: úsalo si encaja, no inventes otro).
+
+#### Trampa 1 — el AC3: "no method on the port it calls can mutate a row"
+El Scope dice añadir `findByReference()` a `IncidentRepositoryPort`, pero ese puerto **tiene `save()`**.
+Si el caso de uso depende de él, el AC3 es **falso por construcción**: el puerto que llama sí puede
+mutar.
+- Aplica **segregación de interfaces**: declara en `libs/incident/domain` un puerto de **solo lectura**
+  (con `findByReference()` y nada que escriba) y su token, y haz que el caso de uso dependa **solo** de
+  él. Decide y justifica si `IncidentRepositoryPort` lo extiende o si son independientes.
+- `TypeOrmIncidentRepository` implementa ambos. En `T-C1-100` el mismo adaptador se enlazará a los dos
+  tokens; **no cablees nada en `IncidentModule` aquí** (es de `T-C1-100`).
+- Demuestra el AC3 con un test que se apoye en el **tipo** del puerto (no solo en que el stub no escriba).
+- Reporta la desviación del Scope ("added to `IncidentRepositoryPort`") para `architect-tech-lead`.
+
+#### Trampa 2 — el resultado "no encontrado" tipado, sin excepciones
+El AC2 exige un resultado tipado, **nunca** una excepción que el llamante tenga que adivinar.
+- Usa una unión discriminada o el `Result` de `shared-util`. Justifica la elección.
+- Piensa qué entra en el caso de uso: ¿un `string` o un `TicketReference` ya validado? Si entra un
+  `string` con formato inválido o con otro prefijo (`SRQ0000001`), ¿es "no encontrado" o un resultado
+  distinto? `TicketReference.fromString` y `IncidentReferencePolicy.parse` **lanzan**: si el caso de uso
+  las usa, captura y traduce a un resultado tipado; si la validación del formato es del borde
+  (`T-C1-100`), dilo y deja que el caso de uso reciba un `TicketReference`. Decide y justifica; lo que no
+  puede pasar es que un formato inválido acabe como excepción genérica.
+
+#### Trampa 3 — qué devuelve: "the full aggregate state"
+- Devolver el **agregado** entrega al llamante un objeto con métodos de dominio (hoy pocos; mañana
+  `categorize()`, `assign()`…), desde un caso de uso de **lectura**. Recomendación: devolver una vista de
+  solo lectura del estado completo (p. ej. el `IncidentSnapshot` que ya existe, o un tipo de lectura
+  propio de `application`), que `T-C1-100` mapeará a su contrato. Justifica la elección.
+- "Estado completo" incluye los slots aún vacíos (Priority sin derivar, sin categoría, flag `false`):
+  que se vean como tales, no se omitan.
+
+#### Trampa 4 — autorización
+El Scope dice que en esta rebanada no hay visibilidad acotada y que el caso de uso queda abierto a
+cualquier actor resuelto, **de forma provisional**. Decide si el caso de uso recibe ya el contexto con
+el actor (firma estable para cuando lleguen los predicados de `US-C1-06`) aunque hoy no lo use, o si lo
+omites (YAGNI). Justifícalo y déjalo documentado en el código como hueco a cerrar, sin inventar ningún
+predicado.
+
+#### Trampa 5 — el adaptador
+- `findByReference()` en `TypeOrmIncidentRepository`: `SELECT` por `reference` (hay `uq_incident_reference`),
+  sin bloqueo, reconstituyendo con el mapper (`reconstitute()`, sin eventos). Devuelve "no hay" como
+  `null` o como la forma que decida el puerto, nunca lanzando por ausencia.
+- Unitario con el `DataSource` simulado; y un caso en el target **`integration`** contra PostgreSQL
+  real: guardar, leer por referencia, comparar todos los campos; referencia inexistente → vacío.
+
+#### Lo que NO debes tocar
+`libs/shared/**`, `libs/incident/{feature,ui,data-access}`, `apps/**` (ni controlador, ni ruta, ni
+cableado: `T-C1-100`), `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria),
+`package.json`, `prompts.md`. No cambies el comportamiento de `LogIncidentUseCase`. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-application`: encontrado (estado completo, incluidos los slots vacíos), no
+   encontrado (resultado tipado), entrada inválida según tu decisión de la trampa 2, y el AC3. Pega el
+   resumen.
+2. `pnpm nx test incident-domain` e `incident-infrastructure` en verde.
+3. `pnpm nx run incident-infrastructure:integration` en verde con el caso nuevo de lectura. Pega la salida.
+4. Pureza: `grep -rnE "from '(@nestjs|typeorm|express|pg|node:)" libs/incident/application/src libs/incident/domain/src --include=*.ts`
+   → vacío.
+5. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+6. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la firma pública del puerto de lectura, del caso de uso y de su
+  resultado.
+- Tus decisiones de las trampas 1 a 5, con su porqué.
+- La salida de las seis verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el puerto de lectura frente al Scope, la
+  autorización provisional (`US-C1-06`) y lo que `T-C1-100` tiene que cablear (el adaptador en dos tokens).
+
+### Response:
+

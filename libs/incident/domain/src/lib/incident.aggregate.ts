@@ -367,4 +367,41 @@ export class Incident {
 
     return new Incident(snapshot);
   }
+
+  /**
+   * The Incident's full current state as a plain, read-only value
+   * (`T-C1-99` Trap 3) — every field, including the slots this creation
+   * ticket leaves empty (`categoryId`, `impact`, `urgency`, `priority`
+   * unset; `competitionAffectsInProgress` false), shown as such rather than
+   * omitted, so a read-side caller sees the real shape of "not yet
+   * assessed" instead of guessing it from a missing key.
+   *
+   * Deliberately **not** the aggregate itself: `GetIncidentByReferenceUseCase`
+   * (a read-only use case) has no business handing its caller an object that
+   * carries `Incident`'s own methods — today there are none beyond
+   * construction, but `categorize()`, `assign()` and friends will land on
+   * this class as later tickets add behavior, and a snapshot is what keeps a
+   * read path from ever exposing them. The exact inverse of
+   * {@link Incident.reconstitute}, which takes this same shape back in.
+   */
+  toSnapshot(): IncidentSnapshot {
+    return {
+      id: this.id,
+      reference: this.reference,
+      loggedAtEpochMs: this.loggedAtEpochMs,
+      loggedBy: this.loggedBy,
+      reporterId: this.reporterId,
+      originChannel: this.originChannel,
+      shortDescription: this.shortDescription,
+      description: this.description,
+      affectedServiceId: this.affectedServiceId,
+      categoryId: this.categoryId,
+      impact: this.impact,
+      urgency: this.urgency,
+      priority: this.priority,
+      competitionAffectsInProgress: this.competitionAffectsInProgress,
+      affectedSubject: this.affectedSubject,
+      assignment: this.assignment,
+    };
+  }
 }
