@@ -52,15 +52,20 @@ services:
     ports:
       - '${PORT:-3300}:${PORT:-3300}'
     environment:
-      # Exactly the two keys apps/api/src/config/env.validation.ts recognises
-      # today — see the equivalent note in docker-compose.dev.yml. Database,
-      # auth and any other feature's variables are added here only once that
-      # feature's ticket adds them to env.validation.ts and .env.example.
-      # Render itself sets these (and, once T-C10-16 lands, the database
-      # variables) by hand in the dashboard — this block only serves the
-      # local smoke-test path described above.
+      # NODE_ENV/PORT plus PERSISTENCE_MODE (ADR-015, T-C10-76) — see the
+      # equivalent note in docker-compose.dev.yml for why all three are
+      # mandatory in env.validation.ts. Render itself sets these by hand in
+      # the dashboard — this block only serves the local smoke-test path
+      # described above.
+      #
+      # PERSISTENCE_MODE is the literal `memory`, not `${…:-memory}`: this is
+      # the one file that models the real stage topology for a local
+      # `docker compose up` dry run (ADR-015 — two Render services, no
+      # database), so the value must be the actual stage value, not an
+      # overridable default.
       - NODE_ENV=${NODE_ENV:-staging}
       - PORT=${PORT:-3300}
+      - PERSISTENCE_MODE=memory
     healthcheck:
       # TCP-only — see docker/backend/Dockerfile.dev for why an HTTP probe
       # against a health path is not honest today.

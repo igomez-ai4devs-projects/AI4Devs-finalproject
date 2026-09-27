@@ -4333,3 +4333,277 @@ terminar.
 Implementado ticket T-C1-101
 
 </br>
+
+**Prompt 28:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-75.md ·
+Interruptor de configuración `PERSISTENCE_MODE` y guarda del data-source de la CLI
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (config validada, nada de `process.env` fuera de
+`apps/api/src/config/`, sin `console.log`) y `sport-itsm-engineering-principles` (guard clauses, errores con
+nombre). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el primero de la **rebanada 1b** (demo en Render **sin base de datos**, ADR-015). Render no define ninguna
+`POSTGRES_*` en el servicio de la API, y hoy `env.validation.ts` las exige siempre. Este ticket introduce
+`PERSISTENCE_MODE=postgres|memory` (obligatorio, sin default), hace las `POSTGRES_*` condicionales, añade el
+raíl que prohíbe `memory` en `production` y hace que `data-source.ts` se niegue a construir un `DataSource`
+fuera de `postgres`. **No** construye el adaptador en memoria (`T-C10-77`) ni el cableado por modo
+(`T-C10-78`).
+
+**Va en el mismo commit que `T-C10-76`** (`ci-cd-expert`, que añade `PERSISTENCE_MODE=postgres` a los
+targets de `api-e2e`, `incident-infrastructure` y a los compose). Ese ticket se lanza justo después de ti,
+sobre el mismo árbol y sin commit entre medias. Por eso **tú no tocas** ningún `project.json`, `docker/**`
+ni `.github/**`, y `api-e2e`/`incident-infrastructure:integration` se quedarán en rojo hasta que él
+termine: **no los ejecutes** ni intentes arreglarlos.
+
+#### Precondición
+    git status --porcelain                         # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=api   # verde
+
+#### Trampas del entorno — ya pagadas
+- Postgres de desarrollo `sport-itsm-postgres-dev` en el **puerto de host 5452** (5432 está ocupado; nunca
+  lo propongas).
+- Windows tiene variables **globales `POSTGRES_*` de otro proyecto** (usuario `userdev`) que pisan el `.env`:
+  cuando ejecutes la CLI contra la BD de desarrollo, pasa los cinco valores en la misma llamada Bash:
+  `POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres`.
+- Los atajos `pnpm migration:show|run|revert` **ya llevan** `-d apps/api/src/data-source.ts`; no lo repitas.
+- Prettier en Windows da falsos positivos por CRLF en la copia local: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope, los 8 criterios, "Testing methodology").
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 (decisión 1 y consecuencia 8).
+- `apps/api/src/config/`: `env.validation.ts` (el patrón `NodeEnvironment`/`@IsEnum` que debes copiar y el
+  informe "required, but not set"), `environment.ts` (`loadEnvironment()`, el único lector sancionado fuera
+  de Nest), `database-connection.ts`, `configuration.ts`.
+- `apps/api/src/data-source.ts`, `apps/api/src/database/runtime-data-source-options.ts`,
+  `apps/api/src/app/app.module.ts` (llama a `loadEnvironment()` al evaluarse).
+- `apps/api/src/testing/test-event-dispatch.harness-gating.spec.ts` (`BASE_ENVIRONMENT`).
+- `apps/api/project.json`, target `build-migrations`: sus `inputs` enumeran **ficheros concretos** de
+  `config/`. `tools/typeorm.cjs` y los scripts `typeorm`/`migration:*` de `package.json`.
+- `.env.example`.
+
+#### Trampa 1 — dónde vive la guarda y quién lee el entorno
+`data-source.ts` no puede leer `process.env` (privilegio de `config/`, CLAUDE.md §3). La guarda debe obtener
+el modo con `loadEnvironment()` y lanzar **antes** de llamar a `buildDatabaseConnectionOptions()` y antes de
+`new DataSource(...)`. El mensaje nombra `PERSISTENCE_MODE` y el valor recibido.
+Además, el target `build-migrations` compila `data-source.ts` con `tsc` y declara como `inputs` solo
+`config/environment.ts` y `config/env.validation.ts`: **si creas un fichero nuevo en `config/` del que
+dependa `data-source.ts`, la caché de Nx no lo verá**. Recomendación: el enum `PersistenceMode` en
+`env.validation.ts` (como pide el ticket) y la guarda en `data-source.ts` o en `environment.ts`, sin
+ficheros de producción nuevos. Si necesitas uno, **no edites `project.json`: repórtalo** para `T-C10-76`.
+
+#### Trampa 2 — el tipo de `POSTGRES_*` en modo `memory`
+Con `@ValidateIf`, en `memory` los campos `POSTGRES_*!: string` pueden llegar `undefined` aunque el tipo diga
+`string`. El ticket deja **fuera de alcance** `buildDatabaseConnectionOptions()`, `database.module.ts` y
+`runtime-data-source-options.ts`. Recomendación: mantén los tipos declarados (sus únicos consumidores son
+del modo `postgres`), documéntalo en el comentario de la clase y **repórtalo** como hallazgo para `T-C10-78`
+(que es quien hace que `DatabaseModule` solo se cargue en `postgres`). No lo "arregles" volviendo opcionales
+los campos: rompería el tipo de `database-connection.ts`.
+
+#### Trampa 3 — el raíl `memory` + `production`
+Va **después** de la pasada por propiedad de `validateSync()` (ticket). Decide y justifica qué pasa si hay
+errores por propiedad a la vez: recomendación, informar primero los errores por propiedad (con el mismo
+formato de lista) y evaluar el raíl solo cuando ambas claves son válidas. El mensaje nombra **las dos**
+claves (`PERSISTENCE_MODE` y `NODE_ENV`) y sigue el prefijo "Invalid environment configuration. The API will
+not start." que ya existe. Sin `if (environment === …)` repartidos por el código: el raíl vive solo en
+`validateEnvironment()`.
+
+#### Trampa 4 — `AppModule` en modo `memory` todavía importa `DatabaseModule`
+Hoy `app.module.ts` importa `DatabaseModule` sin condición; en `memory` y sin `POSTGRES_*` construiría un
+`DataSource` con `host` indefinido (perezoso, no conecta). **No lo toques**: es `T-C10-78`. Los criterios de
+este ticket sobre `memory` son de **validación**, no de arranque real de la API; no intentes demostrar un
+`nx serve api` en `memory`.
+
+#### Trampa 5 — specs inmunes a las `POSTGRES_*` globales de esta máquina
+Los specs de `env.validation.ts` deben llamar a `validateEnvironment(raw)` con **objetos explícitos**, nunca
+con `process.env`, para que las variables globales de Windows no cambien el resultado (p. ej. un spec de
+"falta `POSTGRES_HOST` en `postgres`" pasaría en falso si leyera el entorno real). El spec de la guarda de
+`data-source.ts` sí pasa por `loadEnvironment()`: aísla el módulo (`jest.isolateModules[Async]`), fija
+`process.env` completo para el caso, restáuralo en `afterEach`, y demuestra con un mock/espía
+(`jest.doMock('typeorm')` o sobre `buildDatabaseConnectionOptions`) que en `memory` no se llama ni a
+`buildDatabaseConnectionOptions()` ni al constructor de `DataSource`. En `postgres` el módulo se carga y
+construye el `DataSource` sin conectar.
+
+#### Trampa 6 — el `.env` local del usuario (ignorado por git)
+`.env` existe en la raíz y **no** tiene `PERSISTENCE_MODE`: tras este ticket, `pnpm nx serve api` y
+`pnpm migration:*` fallarán en local hasta que se añada. **No edites `.env`**: repórtalo y lo añado yo.
+En tus verificaciones pasa `PERSISTENCE_MODE` en línea (Node `--env-file-if-exists` no pisa una variable ya
+definida).
+
+#### Trampa 7 — comentarios que ahora mienten
+La cabecera de `.env.example` ("Every key below is MANDATORY") y el comentario de `EnvironmentVariables`
+("Every key is mandatory") dejan de ser verdad para `POSTGRES_*`. Actualízalos: `PERSISTENCE_MODE` es
+obligatorio y sin default; las `POSTGRES_*` lo son solo en `postgres`. `PERSISTENCE_MODE=postgres` va en
+`.env.example` junto al bloque `POSTGRES_*` que ahora gobierna.
+
+#### Lo que NO debes tocar
+`apps/api/src/app/**`, `apps/api/src/database/**`, `apps/api/src/config/database-connection.ts`,
+`libs/**`, `apps/api-e2e/**`, `apps/web*/**`, cualquier `project.json`, `docker/**`, `.github/**`,
+`package.json`, `tools/**`, `docs/**`, `CLAUDE.md`, `.env`, `prompts.md`, `.claude/**` (salvo tu memoria).
+En el spec de harness-gating, **solo** la línea `PERSISTENCE_MODE: 'postgres'` en `BASE_ENVIRONMENT`
+(y, si acaso, una línea en su comentario). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api --skip-nx-cache` en verde, con los specs nuevos de `env.validation.ts` (enum presente y
+   ausente, valor inválido, `@ValidateIf` en ambos modos, cada `POSTGRES_*` ausente en `postgres`, `memory`
+   sin ninguna `POSTGRES_*`, raíl con `production`, raíl no disparado con `staging`) y de la guarda de
+   `data-source.ts`; y el harness-gating con sus tres casos en verde. Pega el resumen.
+2. AC6, la CLI en `memory` (sin conexión):
+   `PERSISTENCE_MODE=memory NODE_ENV=development PORT=3300 pnpm migration:show` → falla nombrando
+   `PERSISTENCE_MODE` sin intentar conectar. Pega la salida.
+3. AC7, la CLI en `postgres` contra la BD de desarrollo (5452):
+   `PERSISTENCE_MODE=postgres NODE_ENV=development PORT=3300 POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres pnpm migration:show`
+   → lista las 4 migraciones como aplicadas, igual que antes. Pega la salida.
+4. AC1: la CLI **sin** `PERSISTENCE_MODE` (con el resto definido) falla nombrándola con "required, but not
+   set in the environment". Pega la salida.
+5. `pnpm nx run api:build-migrations --skip-nx-cache` en verde (compila la guarda con `tsc`), y
+   `pnpm nx run-many -t lint build --projects=api --skip-nx-cache` en verde.
+6. `pnpm prettier --check` sobre tus ficheros.
+7. `git status --porcelain`: solo los ficheros del alcance (más `prompts.md`).
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. No ejecutes `api-e2e` ni
+`incident-infrastructure:integration` (estarán en rojo hasta `T-C10-76`). Ningún proceso escuchando en 3300
+al terminar y ningún contenedor efímero en marcha.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- Tus decisiones de las trampas 1 a 7, con su porqué (en especial dónde vive la guarda y el orden raíl /
+  errores por propiedad).
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el tipado de `POSTGRES_*` en `memory` (para
+  `T-C10-78`), el `.env` local sin `PERSISTENCE_MODE`, y cualquier bloque de entorno que `T-C10-76` deba
+  cubrir y no figure en su Scope.
+
+### Response:
+
+
+**Prompt 29:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como ci-cd-expert e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-76.md ·
+`PERSISTENCE_MODE` en todos los bloques de entorno que arrancan la API o la CLI
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: ci-cd-expert`. Aplica la skill **`ci-cd`** y cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+`T-C10-75` (Prompt 28) acaba de hacer `PERSISTENCE_MODE` **obligatorio y sin default** en
+`apps/api/src/config/env.validation.ts`, y de hacer que `apps/api/src/data-source.ts` se niegue a construir un
+`DataSource` fuera de `postgres`. Ese cambio está **en el árbol, sin commit**, y va en el **mismo commit** que
+este ticket: hasta que tú añadas la variable, `pnpm nx e2e api-e2e` e
+`incident-infrastructure:integration` fallan al arrancar. Tu trabajo es solo fontanería de configuración:
+`postgres` en todos los entornos que ya usan PostgreSQL, y `memory` solo en el modelo local de stage.
+
+#### Precondición
+    git status --porcelain
+    #  M .env.example
+    #  M apps/api/src/config/env.validation.ts
+    #  M apps/api/src/data-source.ts
+    #  M apps/api/src/testing/test-event-dispatch.harness-gating.spec.ts
+    #  M prompts.md
+    # ?? apps/api/src/config/env.validation.spec.ts
+    # ?? apps/api/src/data-source.spec.ts
+Esos ficheros son de `T-C10-75`: **no los toques ni los reviertas**.
+
+#### Trampas del entorno — ya pagadas
+- Windows tiene variables **globales `POSTGRES_*` de otro proyecto** (usuario `userdev`); los targets de Nx
+  las sobrescriben con su bloque `env`, pero si ejecutas algo a mano, pasa los valores en la misma llamada.
+- `api-e2e` e `incident-infrastructure:integration` usan **la misma PostgreSQL efímera (5499)**: ejecútalos
+  **uno detrás de otro**, nunca a la vez. El Postgres de desarrollo (5452) no se toca.
+- Cypress desde el terminal de VS Code: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- `pnpm migration:run` ya lleva `-d apps/api/src/data-source.ts`.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros. (Ojo: el workflow ejecuta
+  `pnpm prettier --check .` en CI.)
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope, criterios y la lista manual de Render, que **no** ejecutas).
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 (decisión 1, consecuencia 8).
+- El diff de `T-C10-75`: `git diff apps/api/src/config/env.validation.ts apps/api/src/data-source.ts`.
+- `apps/api-e2e/project.json` (`e2e-migrate`, `serve-under-test`), `libs/incident/infrastructure/project.json`
+  (`integration-migrate`, `integration`), `docker/docker-compose.{dev,e2e,stage}.yml`,
+  `docker/backend/Dockerfile`, `.github/workflows/deploy-stage.yml`, `tools/e2e/*.mjs`.
+
+#### Trampa 1 — el target `integration` no arranca la API
+Los dos specs de integración (`libs/incident/infrastructure/src/lib/*.integration-spec.ts`) leen
+`process.env['POSTGRES_*']` directamente y **no** pasan por `env.validation.ts`; por eso ese bloque `env` ni
+siquiera tiene `NODE_ENV`/`PORT`. `integration-migrate` sí pasa por la CLI (necesita la variable de verdad).
+Recomendación: añade `PERSISTENCE_MODE: "postgres"` a los dos, como dice el ticket (coherencia y
+a prueba de futuro), pero **no** añadas `NODE_ENV`/`PORT` a `integration`: no es tu alcance. Dilo en el informe.
+
+#### Trampa 2 — `docker-compose.dev.yml` ya estaba roto
+Su servicio `api` nunca tuvo `POSTGRES_*` (y dentro de la red de compose el host sería `postgres`, no
+`localhost`). El ticket lo deja **reportado, no arreglado**: añade solo `PERSISTENCE_MODE=postgres` y
+**no** añadas las `POSTGRES_*`. Recógelo como hallazgo.
+
+#### Trampa 3 — `NODE_ENV=production` por defecto en la imagen de la API
+`docker/backend/Dockerfile` fija `ENV NODE_ENV=production`. Con `PERSISTENCE_MODE=memory`, el raíl de
+`T-C10-75` **tumba el arranque** si nadie sobrescribe `NODE_ENV`. En `docker-compose.stage.yml` lo cubre
+`NODE_ENV=${NODE_ENV:-staging}`, y en Render el usuario pondrá `NODE_ENV=staging`. No cambies el
+Dockerfile; confirma que el compose de stage lo sobrescribe y **reporta** el riesgo (si alguien olvida
+`NODE_ENV` en Render, la API no arranca — que es justo lo que queremos, pero debe saberse).
+Para el valor en stage: **literal** `PERSISTENCE_MODE=memory`, sin `${…:-memory}` (el ticket pide modelar
+el valor real, no un default sobrescribible).
+
+#### Trampa 4 — comentarios del workflow que describen stage con PostgreSQL
+`.github/workflows/deploy-stage.yml` (≈ líneas 106-123) habla de "Render's pre-deploy command
+(`typeorm migration:run -d data-source.js`, ADR-013)". Con ADR-015 el servicio de Render **no** tiene
+pre-deploy. El paso `api:build-migrations` debe **quedarse** (ADR-015 no retira el camino `postgres`).
+Recomendación: no toques el workflow salvo que encuentres un `pnpm migration:*`/`typeorm` con `env:` en línea
+(el ticket dice que es lo raro); el comentario desfasado se **reporta** como hallazgo, junto con
+`readme.md` §2.4 y las referencias de la skill `ci-cd` que aún describen stage con PostgreSQL.
+
+#### Trampa 5 — `api-e2e` sigue en `postgres`
+`api-e2e` prueba el camino real con PostgreSQL; no lo pases a `memory` "porque es más rápido". El modo
+`memory` todavía no tiene adaptador (`T-C10-77`) ni cableado (`T-C10-78`): `docker compose -f
+docker/docker-compose.stage.yml up` **no** es verificable aún y no debes intentarlo. Sí puedes validar la
+sintaxis con `docker compose -f … config`.
+
+#### Lo que NO debes tocar
+`apps/api/src/**` (todo `T-C10-75` y lo que venga), `libs/**/src/**`, `apps/web*/**`, `docker/backend/Dockerfile`,
+`docker/frontend/**`, el servicio `web` de `docker-compose.stage.yml` (`T-C10-79`), `package.json`, `tools/**`,
+`docs/**`, `readme.md`, `CLAUDE.md`, `.env`, `.env.example`, `prompts.md`, `.claude/**` (salvo tu memoria).
+El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `grep -rn "PERSISTENCE_MODE" apps/api-e2e/project.json libs/incident/infrastructure/project.json docker/ .github/`
+   → exactamente los 4 targets con `postgres`, `docker-compose.dev.yml` con `postgres` y
+   `docker-compose.stage.yml` (servicio `api`) con `memory`. Pega la salida.
+2. `docker compose -f docker/docker-compose.dev.yml config` y lo mismo con `docker-compose.stage.yml`: sin
+   errores, y el `environment` del `api` de stage muestra `PERSISTENCE_MODE: memory` y `NODE_ENV: staging`.
+3. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde. Pega el resumen.
+4. **Después** (no a la vez): `pnpm nx run incident-infrastructure:integration` en verde. Pega el resumen.
+5. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+6. `pnpm prettier --check` sobre tus ficheros.
+7. Al terminar: `docker ps` sin contenedores efímeros (solo `sport-itsm-postgres-dev`), nada escuchando en
+   3300/3333/4200, y `git status --porcelain` con solo tus ficheros más los de `T-C10-75`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. No lances el despliegue ni toques Render/GitHub.
+
+#### Informa al terminar — en español
+- Ficheros modificados, con el diff de cada bloque `env`/`environment`.
+- Tus decisiones de las trampas 1 a 5, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el `docker-compose.dev.yml` sin `POSTGRES_*`, el
+  `NODE_ENV=production` de la imagen frente al raíl, los comentarios del workflow / `readme.md` §2.4 / skill
+  `ci-cd` que describen stage con PostgreSQL, y que `incident-infrastructure:integration` sigue sin estar
+  enganchado al pipeline.
+
+### Response:
+

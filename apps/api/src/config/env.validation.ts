@@ -6,6 +6,7 @@ import {
   IsString,
   Max,
   Min,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -22,6 +23,20 @@ export enum NodeEnvironment {
 }
 
 /**
+ * The persistence backend the API is wired to (ADR-015 decision 1,
+ * `T-C10-75`). Declared the same way `NodeEnvironment` is — an enum, not a
+ * free string — so a typo fails the boot instead of silently falling through.
+ *
+ * There is deliberately **no in-code default**: choosing `memory` (a
+ * non-durable store) must be an explicit act of whoever configures the
+ * environment, never an inference the validator makes on its own.
+ */
+export enum PersistenceMode {
+  Postgres = 'postgres',
+  Memory = 'memory',
+}
+
+/**
  * The validated shape of the process environment.
  *
  * This class is the *only* declaration of what the API reads from its
@@ -31,12 +46,27 @@ export enum NodeEnvironment {
  * `process.env` in feature code") and that this ticket's acceptance criteria
  * test for. Keys are added here as the capabilities that need them arrive —
  * the database connection with `T-C10-16`, observability with `T-C10-28`.
+ *
+ * `PERSISTENCE_MODE` (`T-C10-75`, ADR-015) is the one exception to "every key
+ * is mandatory in every mode": it is itself always mandatory with no default,
+ * but it *gates* the `POSTGRES_*` block below — those five keys are mandatory
+ * only when `PERSISTENCE_MODE=postgres`. In `memory` mode they are optional
+ * and, if present, are never read by any code path (only `postgres`-mode
+ * consumers — `buildDatabaseConnectionOptions()`, `database.module.ts` —
+ * touch them; see `T-C10-75`'s reported finding on their declared `string`
+ * types for `T-C10-78`, which is what actually stops `DatabaseModule` from
+ * loading in `memory` mode).
  */
 export class EnvironmentVariables {
   @IsEnum(NodeEnvironment, {
     message: `NODE_ENV must be one of: ${Object.values(NodeEnvironment).join(', ')}`,
   })
   NODE_ENV!: NodeEnvironment;
+
+  @IsEnum(PersistenceMode, {
+    message: `PERSISTENCE_MODE must be one of: ${Object.values(PersistenceMode).join(', ')}`,
+  })
+  PERSISTENCE_MODE!: PersistenceMode;
 
   @IsInt({ message: 'PORT must be an integer' })
   @Min(1, { message: 'PORT must be a valid TCP port (1-65535)' })
@@ -48,24 +78,47 @@ export class EnvironmentVariables {
    * the `postgres` service already declares in `docker/docker-compose.dev.yml`,
    * so a developer sets the same names on both sides of the connection instead
    * of translating between two vocabularies.
+   *
+   * Mandatory only when `PERSISTENCE_MODE=postgres` (`@ValidateIf` ahead of
+   * each decorator below) — optional, and ignored, in `memory` mode.
    */
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      env.PERSISTENCE_MODE === PersistenceMode.Postgres,
+  )
   @IsNotEmpty({ message: 'POSTGRES_HOST is required' })
   @IsString({ message: 'POSTGRES_HOST must be a string' })
   POSTGRES_HOST!: string;
 
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      env.PERSISTENCE_MODE === PersistenceMode.Postgres,
+  )
   @IsInt({ message: 'POSTGRES_PORT must be an integer' })
   @Min(1, { message: 'POSTGRES_PORT must be a valid TCP port (1-65535)' })
   @Max(65535, { message: 'POSTGRES_PORT must be a valid TCP port (1-65535)' })
   POSTGRES_PORT!: number;
 
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      env.PERSISTENCE_MODE === PersistenceMode.Postgres,
+  )
   @IsNotEmpty({ message: 'POSTGRES_DB is required' })
   @IsString({ message: 'POSTGRES_DB must be a string' })
   POSTGRES_DB!: string;
 
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      env.PERSISTENCE_MODE === PersistenceMode.Postgres,
+  )
   @IsNotEmpty({ message: 'POSTGRES_USER is required' })
   @IsString({ message: 'POSTGRES_USER must be a string' })
   POSTGRES_USER!: string;
 
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      env.PERSISTENCE_MODE === PersistenceMode.Postgres,
+  )
   @IsNotEmpty({ message: 'POSTGRES_PASSWORD is required' })
   @IsString({ message: 'POSTGRES_PASSWORD must be a string' })
   POSTGRES_PASSWORD!: string;
@@ -121,6 +174,27 @@ export function validateEnvironment(
 
     throw new Error(
       `Invalid environment configuration. The API will not start.\n${details}`,
+    );
+  }
+
+  // Cross-field safety rail (ADR-015 decision 1, `T-C10-75`): reached only
+  // once the per-property pass above has already returned with zero errors,
+  // which is what guarantees both `PERSISTENCE_MODE` and `NODE_ENV` are
+  // individually valid before this combination is judged — a malformed key
+  // is always reported as *its own* error first, never folded into this
+  // message. There is no current production environment (ADR-013), so this
+  // rail costs nothing today; it forecloses the worst case (a non-durable
+  // store selected in production) mechanically, rather than by convention.
+  // Kept as the *only* place this combination is checked — no
+  // `if (environment === …)` branch is repeated anywhere else in the code.
+  if (
+    validated.PERSISTENCE_MODE === PersistenceMode.Memory &&
+    validated.NODE_ENV === NodeEnvironment.Production
+  ) {
+    throw new Error(
+      'Invalid environment configuration. The API will not start.\n' +
+        "  - PERSISTENCE_MODE: must not be 'memory' when NODE_ENV is 'production'\n" +
+        "  - NODE_ENV: must not be 'production' when PERSISTENCE_MODE is 'memory'",
     );
   }
 

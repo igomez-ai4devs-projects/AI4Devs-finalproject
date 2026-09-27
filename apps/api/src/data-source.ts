@@ -1,6 +1,34 @@
 import { DataSource } from 'typeorm';
 import { join } from 'node:path';
 import { buildDatabaseConnectionOptions } from './config/database-connection';
+import { PersistenceMode } from './config/env.validation';
+import { loadEnvironment } from './config/environment';
+
+/**
+ * Refuses to let the TypeORM CLI build a `DataSource` outside `postgres`
+ * mode (ADR-015 decision 1, `T-C10-75`).
+ *
+ * Running a migration command "in memory mode" is meaningless — there is no
+ * durable schema to migrate — and must fail loudly, before ever attempting a
+ * connection, rather than silently falling back to `localhost:5432`. This is
+ * why the check reads the mode through `loadEnvironment()` (the sanctioned
+ * reader outside a Nest context, `CLAUDE.md` §3) and throws **before**
+ * `buildDatabaseConnectionOptions()` is called and before `new DataSource()`
+ * runs below — neither is reached in `memory` mode.
+ */
+function assertCliRunsAgainstPostgres(): void {
+  const { PERSISTENCE_MODE } = loadEnvironment();
+
+  if (PERSISTENCE_MODE !== PersistenceMode.Postgres) {
+    throw new Error(
+      `The TypeORM CLI requires PERSISTENCE_MODE=postgres to build a DataSource; ` +
+        `received PERSISTENCE_MODE=${PERSISTENCE_MODE}. Migration commands have no ` +
+        'meaning against an in-memory persistence mode.',
+    );
+  }
+}
+
+assertCliRunsAgainstPostgres();
 
 /**
  * The TypeORM data source used by the TypeORM CLI (`migration:generate` /

@@ -71,12 +71,22 @@ services:
       - /usr/local/app/node_modules
       - /usr/local/app/apps/api/node_modules
     environment:
-      # Exactly the two keys apps/api/src/config/env.validation.ts recognises
-      # today. Both are mandatory with no in-code default — an unset or
-      # malformed value aborts the boot by design. Do not add a variable here
-      # before it is added to env.validation.ts and .env.example together.
+      # NODE_ENV/PORT plus PERSISTENCE_MODE (ADR-015, T-C10-76): all three are
+      # mandatory in apps/api/src/config/env.validation.ts, with no in-code
+      # default — an unset or malformed value aborts the boot by design. Do
+      # not add a variable here before it is added to env.validation.ts and
+      # .env.example together.
+      #
+      # PERSISTENCE_MODE is pinned to postgres, not memory: this service talks
+      # to the postgres service above. Reported, not fixed here (T-C10-76,
+      # out of scope): this block still carries no POSTGRES_HOST/PORT/DB/
+      # USER/PASSWORD, so `docker compose -f docker/docker-compose.dev.yml up
+      # api` already fails environment validation today, independent of
+      # PERSISTENCE_MODE — a pre-existing gap against T-C10-16, not one this
+      # ticket introduces or is scoped to close.
       - NODE_ENV=${NODE_ENV:-development}
       - PORT=${PORT:-3300}
+      - PERSISTENCE_MODE=postgres
     depends_on:
       # Ordering only: the API does not talk to PostgreSQL yet (no data
       # source). Kept so the database is ready by the time T-C10-16 wires the

@@ -23,6 +23,10 @@ const BASE_ENVIRONMENT = {
   // Only has to pass validation (1-65535): the suite never reads it, because
   // `bootApiUnder` listens on an OS-assigned port instead.
   PORT: '3000',
+  // T-C10-75 (ADR-015): fixed to 'postgres' so this fixture keeps exercising
+  // the path it always has — this suite proves the NODE_ENV=test-only route
+  // gating, nothing about persistence mode.
+  PERSISTENCE_MODE: 'postgres',
   POSTGRES_HOST: 'localhost',
   POSTGRES_PORT: '5432',
   POSTGRES_DB: 'harness-gating-unused',

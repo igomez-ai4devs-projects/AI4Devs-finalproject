@@ -23,6 +23,7 @@
         "env": {
           "NODE_ENV": "test",
           "PORT": "3335",
+          "PERSISTENCE_MODE": "postgres",
           "POSTGRES_HOST": "localhost",
           "POSTGRES_PORT": "5499",
           "POSTGRES_DB": "sport_itsm_e2e",
@@ -38,6 +39,7 @@
       "options": {
         "command": "node tools/e2e/teardown-after.mjs docker/docker-compose.e2e.yml -- \"pnpm exec jest --config=libs/incident/infrastructure/jest.integration.config.ts --runInBand\"",
         "env": {
+          "PERSISTENCE_MODE": "postgres",
           "POSTGRES_HOST": "localhost",
           "POSTGRES_PORT": "5499",
           "POSTGRES_DB": "sport_itsm_e2e",
