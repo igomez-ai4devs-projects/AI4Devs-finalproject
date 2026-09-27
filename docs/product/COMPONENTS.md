@@ -2,7 +2,7 @@
 
 > Companion to [`ARCHITECTURE.md`](ARCHITECTURE.md) and section **2.2. Descripción de componentes principales** of [`../readme.md`](../readme.md). Container and layering diagrams live in readme section 2.1; the full C4 context, context map, tactical model, sequences and ADRs live in `ARCHITECTURE.md`.
 
-The system is composed of two deployables — the Angular **Web Client** and the NestJS **API** — plus one PostgreSQL system of record. Everything else is an Nx library: each bounded context contributes a **backend hexagon** (`domain` / `application` / `infrastructure`) and, where it has a UI, a **frontend slice** (`feature` / `ui` / `data-access`). The components below are described by responsibility and technology; their allowed dependencies are the ones already shown in readme section 2.1.
+The system is composed of two deployables — the Angular **Web Client** and the NestJS **API** — plus one PostgreSQL system of record (absent from the Render stage prototype, which runs the API in the non-durable `PERSISTENCE_MODE=memory` — ADR-015). Everything else is an Nx library: each bounded context contributes a **backend hexagon** (`domain` / `application` / `infrastructure`) and, where it has a UI, a **frontend slice** (`feature` / `ui` / `data-access`). The components below are described by responsibility and technology; their allowed dependencies are the ones already shown in readme section 2.1.
 
 ## 1. Web Client — `apps/web`
 
@@ -10,6 +10,7 @@ The client is an **Angular 20.3** application: standalone components only, signa
 
 | Component | Responsibility | Technology |
 | --- | --- | --- |
+| **Static server + API reverse proxy** (web image) | Serve the built bundle with SPA fallback; forward `/api/` to the API so the browser sees one origin and the API needs no CORS (ADR-015). The upstream is `API_UPSTREAM_URL`, rendered into the nginx configuration at container start | nginx (official image, `envsubst` templates), `docker/frontend/` |
 | **Application shell** (`apps/web`) | Bootstrap via `bootstrapApplication` + `provide*` functions, lazy routing, global error handler, theming, cross-context page composition | Angular 20.3, `provideRouter`, `provideHttpClient`, centralized SCSS design tokens as the theming layer |
 | **Self-Service Portal** | Requester surface: knowledge search first, log an Incident, request a published catalog offering, track own tickets and SLA status, comment, confirm or reject a resolution, submit CSAT | `knowledge/feature`, `incident/feature`, `service-catalog/feature`, `service-request/feature`, `approval/feature` |
 | **Agent Workspace** | Supply-side surface: prioritized work list, triage, categorization, the competition-in-progress flag with mandatory justification, work notes, assignment, resolution | `incident/feature`, `service-request/feature`, `knowledge/feature`, SLA countdown rendered by `incident/ui` |
@@ -38,6 +39,7 @@ The client is an **Angular 20.3** application: standalone components only, signa
 | **Health probes** | `/health/live`, `/health/ready` — unprefixed, so Sport ITSM outages are detectable independently of user reports (NFR-CFG-03) | `@nestjs/terminus` |
 | **API documentation** | OpenAPI at `/api/docs`, **development only** | `@nestjs/swagger` |
 | **Composition root modules** | Bind each port token to its adapter (`{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }`), and host the **cross-context adapters** (`SlaPolicyAdapter`, `ApprovalAdapter`, `NotificationAdapter`, `AuditAdapter`) | NestJS DI, `Symbol` injection tokens declared beside each port |
+| **Persistence mode selection** (ADR-015) | Choose, once at boot, which adapter backs every repository port: `PERSISTENCE_MODE=postgres` (TypeORM adapters + `DatabaseModule`) or `memory` (in-memory adapters, no `DataSource`; stage prototype only). Each context contributes a total `Record<PersistenceMode, Provider[]>` map; no other code reads the mode | `PersistenceModule.forMode()` in `apps/api/src/persistence/`, validated by `env.validation.ts` |
 | **Scheduled jobs** | Second inbound adapter: SLA warning/breach sweep and auto-close after the confirmation period | NestJS scheduling over the same application use cases |
 
 ## 3. Bounded-context libraries
@@ -64,7 +66,7 @@ Inside every context the three backend libraries have fixed roles, and the techn
 | --- | --- | --- |
 | `<context>/domain` | Aggregates, entities, value objects, domain services, domain events and **outbound port interfaces** | **Pure TypeScript 5.9 only** — no NestJS, no TypeORM, no HTTP, not even `new Date()` (time arrives through `ClockPort`) |
 | `<context>/application` | Use cases: orchestration, transaction boundary and the authorization check expressed in domain terms | TypeScript + `libs/shared/contracts` (types only); still no framework |
-| `<context>/infrastructure` | Outbound adapters: TypeORM repositories, persistence entities, explicit mappers, external gateways | TypeORM 1.1, `pg`, NestJS DI |
+| `<context>/infrastructure` | Outbound adapters: TypeORM repositories, persistence entities, explicit mappers, external gateways — and, where a context's persistence is mode-selected, its in-memory repository adapter (ADR-015), held to the same port contract suite as the TypeORM one | TypeORM 1.1, `pg`, NestJS DI, `node:crypto` |
 
 ## 4. Shared libraries
 
@@ -77,7 +79,9 @@ Inside every context the three backend libraries have fixed roles, and the techn
 
 ## 5. Persistence
 
-**PostgreSQL 18** is the single system of record for every context: tickets, SLA timer timestamps, catalog, knowledge, approvals and the append-only audit trail. Access goes exclusively through **TypeORM 1.1** repositories in `type:infrastructure`, where persistence entities are **separate classes** from domain aggregates with an explicit mapper (ADR-005). `synchronize` is always `false`; the schema evolves only through **migrations** (`pnpm typeorm migration:generate|run|revert -d apps/api/src/data-source.ts`), auto-run only in development. No business rule lives in a trigger or stored procedure. All instants are stored in UTC so SLA timers survive restarts and remain time-zone correct.
+**PostgreSQL 18** is the single system of record for every context: tickets, SLA timer timestamps, catalog, knowledge, approvals and the append-only audit trail. Access goes exclusively through **TypeORM 1.1** repositories in `type:infrastructure`, where persistence entities are **separate classes** from domain aggregates with an explicit mapper (ADR-005). `synchronize` is always `false`; the schema evolves only through **migrations** (`pnpm typeorm migration:generate|run|revert -d apps/api/src/data-source.ts`), which **never** auto-run on boot in any environment — they are an explicit step (`pnpm migration:run` locally and in acceptance, Render's pre-deploy command on stage; `DATA-MODEL.md` §3.7). *(Corrected: this paragraph previously said "auto-run only in development".)* No business rule lives in a trigger or stored procedure. All instants are stored in UTC so SLA timers survive restarts and remain time-zone correct.
+
+**Stage prototype exception (ADR-015).** While the Render stage runs without a database, the API is configured with `PERSISTENCE_MODE=memory`: the same repository ports are served by in-memory adapters (`InMemoryIncidentRepository` in `libs/incident/infrastructure`), nothing is durable, references restart at `INC0000001` after every restart, the API runs as a single instance and the mode is refused with `NODE_ENV=production`. Which database guarantees are replaced, and which are simply absent, is tabulated in `DATA-MODEL.md` §3.8. Every other environment uses `PERSISTENCE_MODE=postgres`.
 
 ## 6. Cross-cutting components
 

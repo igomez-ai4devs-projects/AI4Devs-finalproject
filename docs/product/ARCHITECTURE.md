@@ -179,6 +179,44 @@ flowchart TB
 | Errors | Domain errors are mapped by a NestJS exception filter to a stable, contract-declared error-code envelope; the client maps codes to Transloco keys. Error codes are part of the contract, error **text** is not. |
 | Time | All instants persisted and computed in UTC; the client renders in the user's locale and time zone (NFR-I18N-03). |
 
+### 3.3 Stage prototype topology (ADR-015 — temporary)
+
+The container view above is the target. While ADR-015 is in force, **stage** runs a reduced shape: two Render services, no database, and the web container reverse-proxying the API so the browser only ever talks to one origin.
+
+```mermaid
+flowchart LR
+    BROWSER["Browser<br/>demo user, no authentication"]
+
+    subgraph render["Render - stage only (ADR-013, amended by ADR-015)"]
+        subgraph websvc["Service sport-itsm-web - image ghcr.io/.../sport-itsm-web"]
+            NGINX["nginx<br/>static Angular bundle<br/>/health answered locally<br/>location /api/ proxied to API_UPSTREAM_URL"]
+        end
+        subgraph apisvc["Service sport-itsm-api - image ghcr.io/.../sport-itsm-api<br/>one instance, autoscaling off"]
+            API["NestJS API<br/>PERSISTENCE_MODE=memory<br/>no DataSource, no migrations"]
+            MEM[("InMemoryIncidentRepository<br/>process memory - lost on restart")]
+        end
+    end
+
+    GHA["GitHub Actions deploy-stage<br/>push to main only"]
+    GHCR["ghcr.io<br/>private images"]
+
+    BROWSER -->|"HTTPS - same origin<br/>/ and /api/*"| NGINX
+    NGINX -->|"HTTPS proxy_pass<br/>path /api/... unchanged, no CORS"| API
+    API --> MEM
+    GHA -->|"build and push, tag = commit SHA"| GHCR
+    GHA -->|"deploy hooks with imgURL"| render
+    GHCR -.->|"pulled with read:packages credential"| render
+
+    classDef c fill:#1f6feb,stroke:#0b3d91,color:#ffffff
+    classDef store fill:#b54708,stroke:#7a2e0e,color:#ffffff
+    classDef extn fill:#e8e8e8,stroke:#8b8b8b,color:#111111
+    class NGINX,API c
+    class MEM store
+    class BROWSER,GHA,GHCR extn
+```
+
+Everything outside stage — development, the integration target, `api-e2e` — keeps the full container view above with `PERSISTENCE_MODE=postgres`.
+
 ---
 
 ## 4. Bounded Context Map (DDD strategic)
@@ -781,7 +819,8 @@ classDiagram
 - The context's NestJS module provides `{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }` and equivalents.
 - **Cross-context adapters live here**, not in either context's infrastructure lib (§5.4).
 - Global providers: `ValidationPipe` with `whitelist`, `forbidNonWhitelisted` and `transform`; `nestjs-pino` logger; `nestjs-i18n`; exception filter mapping domain errors to contract error codes; `@nestjs/terminus` health at `/health/live` and `/health/ready` without the `/api` prefix; Swagger at `/api/docs` in development only.
-- Persistence: TypeORM `synchronize: false` in every environment; migrations auto-run only when `NODE_ENV=development`, and through a controlled deploy step elsewhere.
+- Persistence: TypeORM `synchronize: false` in every environment; migrations **never** auto-run on boot, in any environment (`migrationsRun: false`, `DATA-MODEL.md` §3.7) — they are an explicit step: `pnpm migration:run` locally and in the acceptance suite, Render's pre-deploy command on stage (ADR-013). *(Corrected: this bullet previously said "auto-run only when `NODE_ENV=development`", which contradicted `DATA-MODEL.md` §3.7 and the built `buildDatabaseConnectionOptions()`.)*
+- **Persistence mode (ADR-015).** Which repository adapter backs each port is chosen **once**, by `PersistenceModule.forMode(PERSISTENCE_MODE)` in `AppModule`, from total per-context maps (`Record<PersistenceMode, Provider[]>`, e.g. `apps/api/src/app/incident/incident-persistence.bindings.ts`). `postgres` imports `DatabaseModule` and binds the TypeORM adapters; `memory` binds the in-memory adapters and constructs no `DataSource`. No other file reads the mode.
 
 ---
 
@@ -949,7 +988,8 @@ sequenceDiagram
 | **Time** | `ClockPort` in `shared/domain`. Domain and application layers never call `new Date()`. This is what makes SLA pause/resume and business-hours schedules unit-testable and NFR-AVL-05 provable. |
 | **i18n** | Transloco (client) + `nestjs-i18n` (API) joined by the `Accept-Language` header. Reference data carries stable identifiers with translatable labels (NFR-I18N-05). |
 | **Observability** | `nestjs-pino` structured logs with request correlation; `@nestjs/terminus` liveness and readiness probes (NFR-CFG-03). |
-| **Testing** | Domain and application: Jest unit tests with no infrastructure at all — the purity rule is what makes this possible. Infrastructure: integration tests against PostgreSQL. Acceptance: Cypress 15 + Cucumber in `apps/api-e2e` and `apps/web-e2e`, with Gherkin scenarios traced to PRD acceptance criteria. Coverage floor 80% on changed libs. |
+| **Persistence mode** | `PERSISTENCE_MODE=postgres\|memory`, validated at boot and resolved once at the composition root (§6.3, ADR-015). `memory` is a stage-prototype configuration only: volatile, single-instance, forbidden with `NODE_ENV=production`, never used with real data. Every repository adapter of a port satisfies that port's shared contract suite, whatever its mode. |
+| **Testing** | Domain and application: Jest unit tests with no infrastructure at all — the purity rule is what makes this possible. Infrastructure: integration tests against PostgreSQL; repository adapters additionally run their port's shared contract suite (ADR-015 consequence 7). Acceptance: Cypress 15 + Cucumber in `apps/api-e2e` and `apps/web-e2e`, with Gherkin scenarios traced to PRD acceptance criteria. Coverage floor 80% on changed libs. |
 
 ---
 
@@ -1071,6 +1111,8 @@ The decisive platform fact, and the reason the deploy hook is written into the d
 6. **Secrets never enter the repository.** The `ghcr.io` pull credential lives in Render; the push credential and the deploy hook URLs live in GitHub Actions secrets. A deploy hook URL is itself a secret — anyone holding it can trigger a deploy.
 7. **This decision closes `readme.md` §2.4 and the "no platform chosen" note in `docker/docker-compose.stage.yml` and in the `ci-cd` skill.** Those notes are now stale and are `ci-cd-expert`'s to retire; they are reported, not edited, here.
 
+> **Amended for the stage prototype by ADR-015.** While ADR-015 is in force, the *Database* and *Migrations* rows above do not apply to stage: there is no Render PostgreSQL, the API runs with `PERSISTENCE_MODE=memory`, its pre-deploy command is empty, and the web service reverse-proxies `/api/` to the API. Every other row — platform, stage-only, prebuilt `ghcr.io` images, deploy hooks with `imgURL`, no `render.yaml` — stands unchanged, and the amendment lapses on any of ADR-015's reversal triggers.
+
 ---
 
 ### ADR-014 — A logged Incident is persisted unassessed; the schema grows with the behavior that writes it
@@ -1087,6 +1129,100 @@ The decisive platform fact, and the reason the deploy hook is written into the d
 **Alternatives rejected.** *Sentinel values* (a default `P3`, a default Impact of `3`, or an `unassessed` enum member): the first two are indistinguishable from a real assessment and are exactly what US-C1-08 forbids; the third leaks a non-level into the matrix cell domain, SLA policy matching and every KPI grouping. *Moving the assessment into a separate table*: Priority is an inlined value object of the aggregate root (§6.2, `DATA-MODEL.md` §2) with no identity or lifecycle of its own, so a table for it would be the modelling lie `DATA-MODEL.md` §2 refuses, and would cost a join on every work-list query that sorts by Priority. *Seeding a minimal workflow and matrix in the first slice*: it builds another slice's configuration model ahead of its domain, and makes persistence write a lifecycle state the aggregate does not hold (ADR-005). *Lifecycle columns nullable forever*: it would make "an Incident with no state" a permanently representable condition, which the PRD never describes.
 
 **Consequences.** An Incident can be logged, persisted and read back before triage exists, and the vertical slices ship independently without placeholder data that later has to be told apart from real data. Every Priority-based read must handle "not yet derived" explicitly: work lists and filters need a visible *not prioritized* bucket, the reporting fact table's `priority` becomes nullable, and SLA policy resolution must define its behavior for a ticket with no Priority yet — that last point belongs to `sla`, is recorded as open point 4 of PRD §14.10, and is not decided here. The lifecycle migration carries a data backfill and must be proven reversible like any other. The introduction rule binds every later migration on `incident_ticket`, and applies equally to `sr_request`. Full schema detail: `DATA-MODEL.md` §8.5 and decisions M14–M17.
+
+---
+
+### ADR-015 — Stage prototype on Render: two services, no database, a configuration-selected in-memory persistence adapter
+
+> **Status: accepted as a prototype / demo decision, temporary by construction.** It amends ADR-013 for the stage environment only and is reversed by the triggers listed at the end. Nothing in it changes product behavior (PRD), the target schema (`DATA-MODEL.md`) or any boundary rule (§5).
+
+**Context.** The Product Owner wants a deployed prototype that shows one thing end to end: a person opens the web client, logs an Incident and sees it (the first vertical slice — `POST /api/incidents`, `GET /api/incidents/{reference}`, the Requester intake form and the Incident detail view — is built). The constraints are explicit: the repository deploys to **Render** with **exactly two services** (web and API), **no database on Render**, Incidents **kept in memory** (the demo only has to prove they can be entered and viewed), and **no authentication** on stage (the fixed actor of `T-C10-74` stays). Three facts of the as-built system collide with those constraints:
+
+1. **The API cannot boot without PostgreSQL configuration.** `apps/api/src/config/env.validation.ts` makes every `POSTGRES_*` key mandatory; `DatabaseModule` constructs a `DataSource` at boot (lazily connected, but constructed); `IncidentModule` binds `INCIDENT_REPOSITORY` → `TypeOrmIncidentRepository` unconditionally, whose `nextIdentity()` runs `SELECT uuidv7()` and whose `nextReference()` runs `nextval('incident.incident_reference_seq')` — both need a live PostgreSQL 18.
+2. **ADR-013 assumes a managed PostgreSQL and a migration pre-deploy command**, which would fail on every deploy without a database.
+3. **The deployed web client cannot reach the API.** `libs/incident/data-access` calls the relative base URL `INCIDENT_API_BASE_URL = '/api'`; in development `apps/web/proxy.conf.json` forwards it, but `docker/frontend/nginx.conf` has no `location /api`, so on stage the SPA fallback (`try_files … /index.html`) answers every API call with `index.html` and `200`. The API does not enable CORS.
+
+**Decision.**
+
+**1. Persistence is selected by configuration: `PERSISTENCE_MODE=postgres|memory`.**
+
+| Aspect | Decision |
+|---|---|
+| Variable | `PERSISTENCE_MODE`, validated in `env.validation.ts` as an enum `postgres` \| `memory`. **Mandatory, no default** — the file's own doctrine (every key mandatory, a missing key fails the boot). Choosing a non-durable store must be an explicit act of whoever configures the environment, never an inference. |
+| `POSTGRES_*` | Required **only when** `PERSISTENCE_MODE=postgres` (conditional validation, `@ValidateIf`). In `memory` they are not required and, if present, ignored. |
+| Safety rail | `PERSISTENCE_MODE=memory` together with `NODE_ENV=production` **fails validation** at boot. There is no production environment (ADR-013), so the rail costs nothing and turns "never run a non-durable store for real users" into a mechanical rule instead of a convention. |
+| Migration CLI | `apps/api/src/data-source.ts` (the CLI entry point) refuses to load unless `PERSISTENCE_MODE=postgres`, with a message naming the variable. Running migrations "in memory mode" is meaningless and must fail loudly rather than try `localhost:5432`. |
+| `postgres` | Unchanged behavior: development, integration tests, `api-e2e`, and stage again once a database exists. |
+| `memory` | No `DataSource` is constructed, no connection is attempted, no migration runs, `pg` is never loaded. The API logs one boot-time warning stating that data is volatile. |
+
+**2. The in-memory adapter implements the same two ports, and lives in `libs/incident/infrastructure`.**
+
+*Placement.* It is an outbound adapter whose signatures name `Incident` — test 1 of *Where a port is declared* (§5.4) makes it an `incident` artifact, and §3/§6.1 put every outbound adapter of a context in that context's `type:infrastructure` library. `apps/api` hosts only **cross-context** adapters (ADR-003); a same-context repository adapter there would be misplaced. Concretely: `libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts` (`InMemoryIncidentRepository implements IncidentRepositoryPort, IncidentReadRepositoryPort`), exported from the library barrel beside `TypeOrmIncidentRepository`. It needs no `DataSource` and opens no connection; it reuses `IncidentEntity` and `IncidentMapper` from the same library (below), so `typeorm` is loaded only as the decorator library `IncidentEntity` is declared with, never connected. **No new library, no new tag, no boundary change.** It is a production adapter of the prototype, not a test double, and is held to the same review standard.
+
+*Behavior, method by method.*
+
+| Port method | `InMemoryIncidentRepository` |
+|---|---|
+| `nextIdentity()` | A UUID v7 generated in process per RFC 9562 §5.7, **with no new dependency**: 48-bit big-endian Unix-epoch milliseconds (`Date.now()`), version nibble `0111`, 12 bits of `rand_a` and 62 bits of `rand_b` from `node:crypto` `randomBytes`, variant bits `10`, rendered in canonical lowercase 8-4-4-4-12 form. The result must satisfy `Identity.fromString()` (which accepts v7 only). The generator is a private module of the `in-memory/` folder, not exported and not placed in `shared/util` (randomness and wall-clock time are not pure). `Date.now()` is legitimate here: this is `type:infrastructure`, and the embedded instant is a surrogate-identifier timestamp with no business meaning (ADR-012 — the same argument that makes PostgreSQL's `uuidv7()` compatible with ADR-009). If a second context ever needs it, its promotion target is decided then, by ADR — not pre-built now (YAGNI). |
+| `nextReference()` | An in-process counter, starting at `1`, incremented **before** the value is returned and never decremented — a value handed out is consumed even if the subsequent `save()` fails, exactly the "gaps are acceptable, reuse is not" semantic of the PostgreSQL sequence (`DATA-MODEL.md` §3.2). Rendered through `IncidentReferencePolicy.format()`, which owns the `INC` + seven-digit shape and throws `IncidentReferenceSequenceOutOfRangeError` past `9 999 999`. Node's single-threaded event loop makes the increment atomic; no lock is needed. |
+| `save(incident)` | Maps the aggregate through the existing `IncidentMapper.toEntity()` and stores the resulting **persistence snapshot** (`IncidentEntity`, a plain object here — never attached to any `DataSource`), keyed by id, plus a `reference → id` index. Reusing the mapper is deliberate: ADR-014 decision 4 ("persistence never invents domain state", the typed refusal to save unmapped state) then holds **identically** in both modes, and the stored snapshot is a fresh object the caller cannot mutate afterwards. Two structural rules the database enforces are re-implemented here as typed infrastructure errors: **uniqueness** (a different id saved under an already-indexed reference is rejected) and **reference immutability** (a save for a known id whose reference differs from the stored one is rejected). A **capacity ceiling** of 10 000 Incidents is enforced on insert, because the prototype is an unauthenticated public URL and an unbounded map is a memory-exhaustion vector; exceeding it is a typed error too. None of these errors is a `DomainError`: like a PostgreSQL constraint violation today, each surfaces through `GlobalExceptionFilter` as the generic internal-error envelope — no new contract error code. |
+| `findById(id)` / `findByReference(ref)` | Look up the snapshot and return a **new** aggregate through `IncidentMapper.toDomain()`; `null` on absence, never a thrown "not found" — the same contract the TypeORM adapter honors. |
+
+*Lifetime.* One instance per process: provided in the default (singleton) Nest scope, **never** request- or transient-scoped, and `INCIDENT_READ_REPOSITORY` keeps its `useExisting: INCIDENT_REPOSITORY` alias in both modes. A second instance behind the read token would be a second, empty store — the read side would never see a logged Incident. `incident.module.spec.ts` already asserts the alias by identity; the assertion must hold in both modes.
+
+**3. Selection happens once, at the composition root, as data — not as scattered conditionals.**
+
+- `apps/api/src/persistence/` holds `PersistenceModule.forMode(mode)`, a `@Global()` dynamic module. `AppModule` calls it with `loadEnvironment().PERSISTENCE_MODE` — the same sanctioned, pre-DI read `AppModule` already performs for `TestEventDispatchModule`. **That is the only place in the codebase where the mode is read.**
+- Each context contributes its bindings as a **total map** in its own composition slice: `apps/api/src/app/incident/incident-persistence.bindings.ts` exports `incidentPersistenceBindings: Record<PersistenceMode, Provider[]>` — `postgres` binds `INCIDENT_REPOSITORY` → `TypeOrmIncidentRepository`, `memory` binds it → `InMemoryIncidentRepository` (constructed with `useFactory`, no constructor injection needed), and both bind `INCIDENT_READ_REPOSITORY` with `useExisting`. `Record<PersistenceMode, …>` makes a context that forgets a mode a **compile error**, which is the exhaustiveness guarantee an `if` chain cannot give. `PersistenceModule.forMode()` concatenates the maps it is given and imports `DatabaseModule` **only** for `postgres`; `IncidentModule` stops binding the two repository tokens itself and keeps everything else (use cases, `CLOCK`, `SLA_POLICY`, actor resolver, controller).
+- No `if (PERSISTENCE_MODE …)` exists in any controller, use case, adapter, library or spec helper. Domain and application layers are untouched: they depend on the ports and never learn which adapter is behind them — the hexagon doing exactly the job it was built for.
+
+**4. Web → API: nginx reverse-proxies `/api/` to the API service (same origin). No CORS.**
+
+The web image's nginx configuration becomes a **template rendered at container start** by the official `nginx` image's built-in `envsubst` step (`/etc/nginx/templates/*.template`, with `NGINX_ENVSUBST_OUTPUT_DIR` pointed at the file the image actually loads). It adds `location /api/ { proxy_pass <API_UPSTREAM_URL>; }` — no URI part, so the request path `/api/incidents/…` reaches the API unchanged, matching its global prefix. `API_UPSTREAM_URL` is the API service's public Render URL (`https://<api-service>.onrender.com`), set on the web service at deploy time; in `docker-compose.stage.yml` it is `http://api:3300`. Implementation constraints `ci-cd-expert` must honor: resolve the upstream at request time (`resolver` + a variable in `proxy_pass`) so nginx neither refuses to start nor caches a stale address when the API's IP changes; `proxy_ssl_server_name on` and `Host` set to the upstream host, because Render routes by SNI/Host; `proxy_connect_timeout`/`proxy_read_timeout` of at least 60 s, so the first request after the API is spun down waits instead of failing with `504`; `X-Forwarded-*` headers; the container **fails to start** when `API_UPSTREAM_URL` is unset (an explicit check in `/docker-entrypoint.d/`, not a silently broken literal). `INCIDENT_API_BASE_URL` stays `'/api'`; **no frontend change is required**. The API still enables **no** CORS.
+
+Reasons for the proxy over option (b), an absolute API URL baked into the web build plus a CORS allow-list:
+
+- **Same origin by construction.** No preflight, no `Access-Control-*` policy to keep in sync with two moving URLs, no CORS surface to review — the API keeps the posture it has in every other environment.
+- **The web image stays environment-agnostic.** The API location is runtime configuration of the container, not a build input; the image the pipeline pushes is the image that runs (ADR-013's `imgURL` pinning keeps its meaning), and development (`proxy.conf.json`), `docker-compose.stage.yml` and Render share one topology.
+- **Authentication arrives cleanly later.** When `T-C10-39` introduces real credentials, a same-origin API allows `SameSite=Strict`/`HttpOnly` cookies or a Bearer header without cross-site cookie rules. Option (b) would force that decision now.
+- **Cost accepted:** one extra hop through nginx and a slightly larger nginx configuration. The API also remains directly reachable at its own Render URL — acceptable for an unauthenticated demo that holds no real data, and irrelevant to the proxy decision.
+
+Render's private network was considered as the upstream and **not** chosen: on Render's free instance type a service cannot receive private-network traffic, and the public URL works on every plan. Switching the upstream to the private hostname later is a one-variable change.
+
+**5. Render topology and deployment for the prototype (amends ADR-013 for stage).**
+
+| ADR-013 aspect | Prototype value |
+|---|---|
+| Services | **Two** image-backed web services: `sport-itsm-api` and `sport-itsm-web`. **No Render PostgreSQL.** |
+| API environment (dashboard) | `NODE_ENV=staging`, `PORT=3300`, `PERSISTENCE_MODE=memory`. No `POSTGRES_*`. |
+| Web environment (dashboard) | `API_UPSTREAM_URL=https://<api-service>.onrender.com`; `PORT=80` so Render routes to nginx's listening port. |
+| Pre-deploy command | **Empty on the API service.** `typeorm migration:run -d data-source.js` would fail without a database — and must, by the data-source guard of §1. |
+| Health checks | Web: `/health` (served by nginx itself). API: **no path** until `/health/live` exists — it is reserved in `GLOBAL_PREFIX_EXCLUSIONS` but not implemented, and a check against a non-existent route would fail every deploy; Render then falls back to port detection. Adopt `/health/live` as soon as it lands. |
+| Scaling | API: **exactly one instance, autoscaling off.** Two in-memory instances would be two disjoint stores and two reference counters issuing the same `INC` numbers. |
+| Pipeline | `deploy-stage.yml` needs **no change** for the memory mode itself: images, `ghcr.io` push and deploy hooks with `imgURL` are as ADR-013 decided. The `acceptance` job keeps running `api-e2e` against its own ephemeral PostgreSQL. |
+| Branch | `deploy-stage` runs **only** on a push to `main`. Day-to-day work happens on `finalproject-IGR`, so nothing on that branch deploys today. Choosing the branch flow (merge to `main`, widen the trigger, or a manual dispatch) is the user's call and is **not** decided here. |
+
+**Consequences.**
+
+1. **Stage data is volatile.** Every Incident is lost on each redeploy, restart, crash or instance replacement — and on Render's free instance type an idle service is spun down after a period without traffic, which also empties the store. This is the accepted behavior of the demo, not a defect.
+2. **References restart at `INC0000001` after every restart.** "Never reused" (FR-INC-02, NFR-DAT-01) holds **within one process lifetime only**: across restarts the same reference names a different Incident, so a link bookmarked before a restart can open someone else's Incident afterwards. Stage in memory mode therefore **does not demonstrate** FR-INC-02's durability; the requirement stays proven where it lives, against PostgreSQL (below).
+3. **Single instance only.** Horizontal scaling, which ADR-004 relies on in the target architecture, is unavailable in memory mode; during Render's zero-downtime deploy overlap, anything logged on the outgoing instance is lost.
+4. **Never with real data.** Memory mode is for demonstration content only. It is never used with real Requesters, real Incidents or any personal data, and the production rail of §1 makes the worst case mechanically impossible.
+5. **Database guarantees that do not apply in memory mode, and their substitutes** — detailed in `DATA-MODEL.md` §3.8: the `uuidv7()` default (replaced by the in-process v7 generator), the `NO CYCLE` sequence (in-process counter, per-process only), `uq_incident_reference` (adapter-level uniqueness check), the M18 immutability trigger (adapter-level immutability check), `NOT NULL` and the ADR-014 `CHECK` constraints (the domain invariants plus the shared mapper; no database-level backstop), migrations (not run) and durability (none).
+6. **Stage is unauthenticated.** Every stage route answers anonymously with the `T-C10-74` fixed actor. This is a temporary deployment condition, not the product surface §11.3 rules out: no anonymous surface is designed, and the day authentication exists this ADR's reversal is mandatory.
+7. **What is tested where.** A single **port contract suite** — one shared, parameterized spec (`libs/incident/infrastructure/src/testing/incident-repository.port-contract.ts`, test-only, never exported from the barrel and excluded from `tsconfig.lib.json`) — states the behavior both adapters owe: v7 identities, distinct on repeated calls; `INC` + seven digits; strictly increasing and never repeated references within one adapter instance; save/`findById`/`findByReference` round trip of every mapped field; `null` on absence; rejection of a second Incident under an already-used reference with the first left intact; and "the persisted reference of an Incident never changes" (observable contract: after an attempted save with a changed reference, the stored reference is still the original — the TypeORM adapter keeps it through `update: false`, the in-memory adapter by rejecting). It runs against `InMemoryIncidentRepository` in the ordinary `test` target (and therefore in the pipeline's `verify` job), and against `TypeOrmIncidentRepository` in the existing `integration` target. Guarantees that belong to the **database** — sequence behavior under concurrent connections and rollback, the M18 trigger against raw SQL, `uq_incident_reference` against a forced `INSERT` — stay in `incident-reference-sequence.integration-spec.ts`, PostgreSQL only. `api-e2e` stays PostgreSQL only: acceptance evidence is produced against the system of record. Memory-specific rules (counter start, capacity ceiling, the typed errors, the production rail, "no `DataSource` constructed in memory mode") get their own unit specs.
+8. **Documentation cost.** `.env.example`, every in-repository environment block that boots the API or the CLI (`api-e2e` and `incident-infrastructure` targets, compose files, the workflow, specs that boot `AppModule`) gains `PERSISTENCE_MODE=postgres`; that is the price of the mandatory key and is paid once.
+
+**Alternatives rejected.** *A Render PostgreSQL after all*: excluded by the Product Owner's constraint. *SQLite or PGlite (embedded PostgreSQL) inside the API container*: a new runtime dependency, a second SQL dialect or a heavyweight WASM engine, and the migrations (native enums, `uuidv7()`, the plpgsql trigger) are PostgreSQL 18-specific — more work than the adapter and still volatile on Render's ephemeral filesystem. *An in-memory adapter in `apps/api`*: misplaced per §5.4/§6.3, and it would hide a same-context adapter among the cross-context ones. *Adapter selection by `NODE_ENV`*: couples two independent questions (which environment, which store); stage with a database must remain expressible. *Optional `PERSISTENCE_MODE` defaulting to `postgres`*: fails safe, but breaks the "every key mandatory" doctrine of `env.validation.ts` and hides the choice. *CORS with an absolute API URL*: see §4.
+
+**Reversal triggers — this ADR is revisited, and stage returns to `PERSISTENCE_MODE=postgres` with ADR-013 unamended, when any of the following happens:**
+
+1. A PostgreSQL database is provisioned for stage (set the `POSTGRES_*` variables, restore the pre-deploy command, switch the mode).
+2. Authentication lands (`T-C10-39` replaces the fixed actor): real identities make stage data personal data, which memory mode never holds.
+3. Stage must hold data worth keeping, run more than one API instance, or demonstrate FR-INC-02 / NFR-DAT-01 durability.
+4. Any production environment is proposed.
+
+After reversal the in-memory adapter **stays** in the codebase as a legitimate adapter held to the shared contract suite (useful for local demos and for fast API-level tests); only its use on stage ends. Removing it is a separate decision.
 
 ---
 ## 11. Out of Scope for the MVP
@@ -1107,7 +1243,8 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 | CQRS with a separate read store | Premature for MVP volumes | `reporting` reads projections from the same database behind its own ports |
 | Event sourcing | Not required; the audit trail already satisfies reconstructability (NFR-AUD-01) | State-stored aggregates plus an append-only audit log |
 | Competition calendar service, live-window engine, freeze-window engine | Out of scope (ADR-006, PRD §3.3) | Agent-set competition-impact flag only |
-| Public / anonymous surface, spectator persona, public Knowledge Base | Out of scope (FR-IAM-01, FR-KNW-03, PRD §3.3) | Every route is behind authentication; article visibility is an entitlement filter applied server-side |
+| Public / anonymous surface, spectator persona, public Knowledge Base | Out of scope (FR-IAM-01, FR-KNW-03, PRD §3.3) | Every route is behind authentication; article visibility is an entitlement filter applied server-side. *The stage prototype answers anonymously through the `T-C10-74` fixed actor until authentication lands (ADR-015, consequence 6) — a temporary deployment condition, not a designed surface.* |
+| Durable persistence on stage | Stage prototype only (ADR-015): the Product Owner excluded a database from the Render deployment | `PERSISTENCE_MODE=memory` behind the unchanged repository ports; reversed by switching the variable back to `postgres` once a database exists — no code change |
 | Multi-tenancy | Single-tenant MVP (K7) | No tenant discriminator in the MVP schema; introducing one later is a migration plus a repository-level filter, confined to `type:infrastructure` |
 | NgRx or any external state library | Signals suffice (frontend standard) | Injectable signal stores in `type:data-access` |
 | Server-side rendering | Authenticated internal application; no SEO driver | Client-side Angular with lazy routes |
@@ -1127,6 +1264,7 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 | Changed-only gate | `pnpm nx affected -t lint test build` | CI enforcement on every change |
 | Unit tests without infrastructure | `pnpm nx test <context>-domain` | Domain purity — a domain test that needs a database proves a violation |
 | Acceptance | `pnpm nx e2e api-e2e` / `pnpm nx e2e web-e2e` | PRD acceptance criteria as Gherkin |
+| Adapter parity per port | `pnpm nx test incident-infrastructure` (in-memory adapter) and `pnpm nx run incident-infrastructure:integration` (TypeORM adapter) — the same port contract suite in both | Every adapter behind a repository port honors the same observable contract, so switching `PERSISTENCE_MODE` cannot change behavior the use cases rely on (ADR-015). *Target — the suite is not built yet.* |
 
 ### 12.2 Architectural review checklist for any new library
 
@@ -1139,6 +1277,7 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 7. Is it a presentational component library? Domain-agnostic primitives belong in `libs/shared/ui` (`platform:frontend`, `scope:shared`, `type:ui`, ADR-010); anything that names an ITSM concept belongs in its context's own `type:ui` lib.
 8. Does it warrant an ADR — new context, tag-scheme change, new cross-context integration, new external dependency?
 9. Does it declare a **port**? Place it with the three tests of §5.4 (*Where a port is declared*) before writing the interface — a port in the wrong library is a boundary violation that compiles.
+10. Does it add a **repository adapter**? It lives in its context's `type:infrastructure` library, runs that port's shared contract suite, and — if the context's persistence is mode-selected — both entries of the context's `Record<PersistenceMode, Provider[]>` map are filled (ADR-015).
 
 ### 12.3 Current verification status
 

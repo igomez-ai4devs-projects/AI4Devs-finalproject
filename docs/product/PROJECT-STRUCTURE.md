@@ -38,7 +38,8 @@ AI4Devs-finalproject/
 │  │  │  ├─ app/
 │  │  │  │  ├─ app.module.ts        # root module: imports every context composition module
 │  │  │  │  ├─ incident/            # composition root slice for the incident context
-│  │  │  │  │  ├─ incident.module.ts            # binds ports to adapters: { provide: INCIDENT_REPOSITORY, useClass: … }
+│  │  │  │  │  ├─ incident.module.ts            # binds ports to adapters: use cases, CLOCK, SLA_POLICY, actor resolver
+│  │  │  │  │  ├─ incident-persistence.bindings.ts   # target (ADR-015): Record<PersistenceMode, Provider[]> for the two repository tokens
 │  │  │  │  │  ├─ incident.controller.ts        # thin inbound HTTP adapter - no business logic
 │  │  │  │  │  ├─ dto/
 │  │  │  │  │  │  ├─ log-incident.dto.ts        # class-validator DTO implementing the contract type
@@ -60,7 +61,10 @@ AI4Devs-finalproject/
 │  │  │  │  └─ auth/jwt.strategy.ts             # Passport JWT
 │  │  │  ├─ config/
 │  │  │  │  ├─ configuration.ts                 # @nestjs/config factory - no raw process.env in feature code
-│  │  │  │  └─ env.validation.ts                # validated environment schema
+│  │  │  │  └─ env.validation.ts                # validated environment schema (+ PERSISTENCE_MODE, ADR-015 - target)
+│  │  │  ├─ database/                            # (EXISTS - T-C1-06) DatabaseModule: the one DataSource, postgres mode only
+│  │  │  ├─ persistence/                         # target (ADR-015): PersistenceModule.forMode(mode) - the ONLY reader of
+│  │  │  │                                       #   PERSISTENCE_MODE; imports DatabaseModule for postgres only
 │  │  │  ├─ health/
 │  │  │  │  ├─ health.controller.ts             # /health/live and /health/ready - NOT under /api
 │  │  │  │  └─ health.module.ts
@@ -153,12 +157,17 @@ AI4Devs-finalproject/
 │  │  │     ├─ authorization/incident.policies.ts        # authorization expressed in domain terms
 │  │  │     └─ mappers/incident-response.mapper.ts       # aggregate -> contract response
 │  │  ├─ infrastructure/             # platform:backend scope:incident type:infrastructure
-│  │  │  └─ src/lib/
-│  │  │     ├─ persistence/
-│  │  │     │  ├─ entities/{incident.entity.ts,work-note.entity.ts}   # TypeORM persistence entities
-│  │  │     │  ├─ mappers/incident.mapper.ts                          # entity <-> aggregate (ADR-005)
-│  │  │     │  └─ typeorm-incident.repository.ts                      # implements IncidentRepositoryPort
-│  │  │     └─ gateways/scms-competition.gateway.ts                   # anticorruption layer + free-text fallback
+│  │  │  ├─ src/lib/
+│  │  │  │  ├─ persistence/
+│  │  │  │  │  ├─ entities/{incident.entity.ts,work-note.entity.ts}   # TypeORM persistence entities
+│  │  │  │  │  ├─ mappers/incident.mapper.ts                          # entity <-> aggregate (ADR-005)
+│  │  │  │  │  └─ typeorm-incident.repository.ts                      # implements IncidentRepositoryPort
+│  │  │  │  ├─ in-memory/                                             # target (ADR-015) - stage prototype adapter
+│  │  │  │  │  ├─ in-memory-incident.repository.ts                    # implements both repository ports, no DataSource
+│  │  │  │  │  └─ uuid-v7.ts                                          # private RFC 9562 v7 generator (node:crypto), not exported
+│  │  │  │  └─ gateways/scms-competition.gateway.ts                   # anticorruption layer + free-text fallback
+│  │  │  └─ src/testing/incident-repository.port-contract.ts          # target (ADR-015): shared port contract suite, test-only,
+│  │  │                                                               #   run by both adapters; never exported, excluded from tsconfig.lib
 │  │  ├─ feature/                    # platform:frontend scope:incident type:feature
 │  │  │  └─ src/lib/
 │  │  │     ├─ incident.routes.ts                # lazy route definitions consumed by apps/web
@@ -187,12 +196,20 @@ AI4Devs-finalproject/
 ├─ docs/
 │  ├─ product/
 │  │  ├─ PRD.md                      # product requirements (behavioral authority for the MVP)
-│  │  ├─ ARCHITECTURE.md             # target architecture: C4, context map, hexagon, ADR-001..013 (§10)
+│  │  ├─ ARCHITECTURE.md             # target architecture: C4, context map, hexagon, ADR-001..015 (§10)
 │  │  ├─ DATA-MODEL.md               # prescriptive relational schema, per context schema
 │  │  ├─ COMPONENTS.md               # main components (companion to readme §2.2)
 │  │  └─ PROJECT-STRUCTURE.md        # this document (companion to readme §2.3)
 │  ├─ backlog/                       # derived from the PRD: epic-map.md, <key>/user-stories.md, <key>/tickets/
 │  └─ adr/                           # target, not created yet: ADRs still live in ARCHITECTURE.md §10
+│
+├─ docker/                          # container definitions (ADR-013)
+│  ├─ backend/{Dockerfile,docker-entrypoint.sh}      # API runtime image; entrypoint stays migration-free
+│  ├─ frontend/Dockerfile                            # nginx serving dist/apps/web/browser
+│  ├─ frontend/nginx.conf(.template)                 # target (ADR-015): template rendered at start, proxies /api/ to API_UPSTREAM_URL
+│  └─ docker-compose.{dev,e2e,stage}.yml             # dev DB (5452), ephemeral acceptance DB (5499), stage image build definition
+│
+├─ .github/workflows/deploy-stage.yml  # verify -> acceptance -> deploy-stage (push to main only; ghcr.io + Render deploy hooks)
 │
 ├─ .claude/
 │  ├─ agents/{sport-itsm-product-owner,sport-itsm-architect,business-analyst,architect-tech-lead,
