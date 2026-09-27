@@ -4038,3 +4038,160 @@ No instales dependencias. No hagas commit ni push.
 Implementado ticket T-C1-09
 
 </br>
+
+**Prompt 26:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-10.md ·
+Formulario de alta del requester — lenguaje llano, móvil, WCAG 2.1 AA
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Aplica **`sport-itsm-frontend`** (Angular 20.3: standalone, `OnPush`,
+signals, `inject()`, Reactive Forms tipados, `@if`/`@for`/`@switch`, sin `NgModule`, sin librerías de
+componentes de terceros, accesibilidad escrita a mano) y `sport-itsm-architecture` (§5.3: `type:feature`
+puede depender de `feature`, `ui`, `data-access`, `contracts`, `util`; §7.1). `angular-developer` solo
+como referencia. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Segundo del bloque 6, el último de la rebanada 1: **la primera pantalla del producto**. El requester
+escribe su problema, lo envía y es redirigido a la ficha de su incidencia (`T-C1-101`, que viene justo
+después). Usa **solo** el `IncidentStore` de `T-C1-09`. El usuario ha aprobado incluir aquí además el
+**proxy de desarrollo** de `apps/web` hacia la API, porque este es el primer ticket que lo necesita en un
+navegador.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-data-access,incident-feature,web   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero: sus **tres desviaciones aprobadas** (sin design system pero con accesibilidad
+  completa escrita a mano; i18n aplazada a un fichero de constantes; redirigir en vez de repetir), el
+  **criterio pendiente** del AC3 (`aria-live` de `T-C10-14`, que **no** se construye aquí) y el bloqueo
+  **F29** (se construye con la lectura del backlog: texto libre, sin selector estructurado).
+- `libs/incident/data-access`: `IncidentStore` (`logIncidentAsRequester`, `intakeLoading`,
+  `intakeError`, `createdIncidentReference`), `IncidentApiError`, `INCIDENT_API_BASE_URL`.
+- `libs/shared/contracts`: `LogIncidentRequesterRequest` (`shortDescription`, `description`,
+  `affectedServiceId?`), `ErrorEnvelope`, `ValidationErrorDetail`.
+- Lo que la API devuelve de verdad en un `400`: un detalle por campo, `rule` ∈ `isDefined`,
+  `isNotBlank`, `isString`, `maxLength`, `isUuid`, `whitelistValidation`
+  (`apps/api/src/app/incident/dto/log-incident-requester.dto.ts`, `apps/api-e2e/src/features/incident-intake.feature`).
+- `apps/web/src/app/app.routes.ts` (el comentario de `featureRoutes` dice exactamente cómo se añade un
+  contexto), `app.config.ts`, `app.component.ts`, `styles.scss` (sus tokens son de `libs/shared/ui`, que
+  no existe), `apps/web/project.json` (target `serve`) y `apps/web-e2e/project.json` (su `e2e` depende de
+  `web:serve`).
+
+#### Trampa 1 — "campo de texto libre para el contexto de competición"
+El Scope pide un campo para el contexto de competición, pero **el contrato del requester no tiene ese
+campo** y la API rechaza cualquier propiedad no declarada (`forbidNonWhitelisted` → `400`).
+- **No cambies el contrato ni el backend.** FR-INC-01 dice que el requester *puede* describir el
+  contexto de competición en texto libre, y la descripción ya es texto libre.
+- Decide: (a) sin control aparte, con una indicación en la descripción de que puede incluir el contexto
+  de competición; o (b) un control aparte cuyo valor se incorpora a `description` al enviar. Justifícalo
+  (la (b) mezcla dos datos en uno y el agente de triage no podrá distinguirlos). **Repórtalo** para
+  `architect-tech-lead`.
+- **`affectedServiceId`**: pedir a un requester un UUID no tiene sentido, y aún no existe catálogo de
+  servicios. **No pongas ese control**; se envía sin él. Repórtalo.
+- **AC1**: ningún control de Impact, Urgency, Priority ni flag de competición en ningún punto.
+
+#### Trampa 2 — accesibilidad escrita a mano (WCAG 2.1 AA) y móvil
+- `<label for>` en cada control, `<fieldset>`/`<legend>` donde agrupe, `aria-describedby` de cada campo
+  a su ayuda y a su error, `aria-invalid` cuando proceda, `required` nativo, resumen de errores con
+  `role="alert"` y enlaces a cada campo.
+- **Gestión del foco** (AC2): al fallar el envío, el foco va al resumen de errores; al tener éxito, la
+  navegación lo lleva a la ficha (la ficha gestionará su propio foco en `T-C1-101`).
+- **360 px** sin desplazamiento horizontal; operable solo con teclado; el botón deshabilitado (o
+  `aria-disabled`) mientras se envía, y el doble envío ya lo ignora el store.
+- **AC3 pendiente**: el anuncio por la región `aria-live` de `T-C10-14` **no** se construye aquí. Deja
+  el `role="alert"` y documenta en el código que el AC3 queda pendiente de `T-C10-12/13/14`.
+
+#### Trampa 3 — textos y errores
+- **Todo texto de cara al usuario** en **un único fichero de constantes exportado** de
+  `libs/incident/feature` (el mismo que ampliará `T-C1-101`). Nada literal en las plantillas. Nada de
+  Transloco ni `nestjs-i18n`. Lenguaje llano, sin jerga ITSM (NFR-USE-01).
+- Validación en el cliente que refleje la del servidor (obligatorio, no en blanco, máximo 255 en la
+  descripción corta) **y** mapeo de los errores del servidor: cada `details[].field` + `rule` → un
+  mensaje que diga **qué ha pasado y qué hacer** (NFR-USE-05). Una `rule` desconocida o un error de red
+  (`network-error`) → un mensaje genérico con qué hacer, nunca un fallo silencioso. Si el error trae
+  `correlationId`, decide si mostrarlo como "código para soporte".
+
+#### Trampa 4 — rutas y navegación
+- `libs/incident/feature` exporta `incidentRoutes`; `apps/web/src/app/app.routes.ts` añade **una sola
+  entrada** en `featureRoutes` con `loadChildren`, tal como dice su comentario. Decide la ruta del
+  formulario (p. ej. `/incidents/new`) y si `''` redirige a ella; justifícalo.
+- **AC4**: al tener éxito, navega a la ruta de detalle de la referencia devuelta (p. ej.
+  `/incidents/INC0000001`). Esa ruta es de **`T-C1-101`**, que va después: **no la construyas**. Hasta
+  entonces la navegación caerá en el comodín `**`. Declara la forma de la ruta de detalle en un solo sitio
+  que `T-C1-101` reutilice, y **repórtalo**.
+- El componente consume el store por `inject()` y reacciona a `createdIncidentReference` sin `effect()`
+  innecesarios; si usas uno, justifícalo.
+
+#### Trampa 5 — estilos sin design tokens
+`CLAUDE.md` prohíbe colores y espaciados codificados y pide los tokens del design system, pero
+`libs/shared/ui` (donde viven) **no existe** en esta rebanada (desviación 1). SCSS del componente mínimo
+y responsive; si necesitas valores, decláralos como custom properties locales con un comentario que diga
+que se sustituirán por los tokens de `libs/shared/ui`. Sin `::ng-deep`. **Repórtalo.**
+
+#### Trampa 6 — el proxy de desarrollo (aprobado por el usuario)
+- Añade `apps/web/proxy.conf.json` que envíe `/api` a `http://localhost:3300` (sin reescribir la ruta:
+  la API ya sirve bajo `/api`) y enlázalo en las opciones del target `serve` de `apps/web/project.json`.
+- **No** abras CORS en la API.
+- Ojo: `apps/web-e2e` depende de `web:serve`. El proxy no debe romper ese harness (que hoy no tiene API
+  detrás): comprueba que `web-e2e` sigue en verde.
+- **Demuéstralo de verdad**: con la API (`nx serve api`, contra el Postgres de desarrollo en 5452; las
+  variables globales `POSTGRES_*` pisan el `.env`, pásalas en la misma llamada) y la web (`nx serve web`)
+  arrancadas, un `POST /api/incidents` **a través del puerto de la web** responde `201`. Cierra ambos
+  procesos al terminar (`Get-NetTCPConnection`/`netstat`).
+
+#### Trampa 7 — tests
+- Unitarios del componente (jest-preset-angular, `TestBed`, store simulado): AC1 (ningún control
+  prohibido en el DOM), validación en cliente, mapeo de cada `rule` a su mensaje, error de red, estado de
+  envío, foco al resumen tras un fallo, navegación a `/incidents/<ref>` tras un éxito.
+- **UI-E2E con Cypress/Cucumber en `apps/web-e2e`**: viewport 360 px, sin desplazamiento horizontal,
+  recorrido solo con teclado, envío con la API **simulada con `cy.intercept`** (éxito → la URL cambia a la
+  de detalle; `400` → mensajes y resumen). El E2E real contra la API queda para cuando exista la ficha.
+  Si no puedes probar algo del AC2 de forma fiable (p. ej. foco), dilo.
+- Quita `passWithNoTests` de `libs/incident/feature/jest.config.ts`.
+
+#### Lo que NO debes tocar
+`libs/incident/{domain,application,infrastructure,data-access,ui}` (si el store necesita algo, para y
+repórtalo), `libs/shared/**`, `apps/api/**`, `apps/api-e2e/**`, `docker/**`, `.github/**`, `docs/**`,
+`.claude/**` (salvo tu memoria), `package.json`, `prompts.md`. En `apps/web`: solo `app.routes.ts`,
+`proxy.conf.json` y el target `serve`. Nada de la pantalla de detalle (`T-C1-101`). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-feature` y `pnpm nx test web` en verde. Pega el resumen.
+2. `pnpm nx lint incident-feature` en verde (incluye las reglas de `angular-eslint`: prefijo `incident`,
+   `OnPush`, control flow); `grep -rnE "\*ngIf|\*ngFor|NgModule|::ng-deep" libs/incident/feature/src` → vacío.
+3. AC1: `grep -rniE "impact|urgency|priority|competitionAffects" libs/incident/feature/src --include=*.html`
+   → vacío (pega la salida) y el test del DOM en verde.
+4. `pnpm nx e2e web-e2e` en verde con los escenarios nuevos y el anterior (pega la salida; si Cypress
+   falla con "bad option --smoke-test", `unset ELECTRON_RUN_AS_NODE;` en la misma llamada).
+5. Proxy real: la petición a través del puerto de la web → `201` (pega estado y cuerpo) y ambos procesos
+   cerrados después.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+   Grafo: `incident-feature` depende solo de `incident-data-access` y `shared-contracts` (y `util` si lo
+   usas); `web` → `incident-feature` solo por `loadChildren`.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Ningún proceso de la API ni de la web escuchando al
+terminar.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la ruta del formulario y la de detalle declarada; el fichero de
+  constantes.
+- Tus decisiones de las trampas 1 a 7, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el campo de contexto de competición frente
+  al contrato, `affectedServiceId` en el formulario, el AC3 pendiente, los estilos sin tokens y la ruta de
+  detalle que construirá `T-C1-101`.
+
+### Response:
+

@@ -1,7 +1,5 @@
 export default {
   displayName: 'incident-feature',
-  // Scaffolded empty (T-C1-01); remove once the first spec lands (T-C1-10).
-  passWithNoTests: true,
   preset: '../../../jest.preset.js',
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
   coverageDirectory: '../../../coverage/libs/incident/feature',
