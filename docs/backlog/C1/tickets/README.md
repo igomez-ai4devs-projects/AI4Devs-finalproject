@@ -369,7 +369,9 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 **New this pass — decision 4 of the minimal delivery-slice-1 cut.** "See it" is detail by reference, not an echo of the `POST` response: an echo shows what the requester typed, not what the server actually persisted, which proves nothing about the write path. Sequenced after `T-C1-05`/`T-C1-06` (the aggregate and its persistence, which this block extends with a read method) and reachable only by redirect from `T-C1-10`'s successful submission — there is no other route to this block yet. Numbered last for the usual reason: ticket IDs are stable and appended at the next free ID; it belongs, logically, immediately after `T-C1-06` inside block B.
 
-**One dependency flagged, not resolved — see `T-C1-100`'s own `## Context`.** `T-C1-08` sources its exception-filter mapping from `T-C10-40`, which is not part of this delivery slice. `T-C1-100`'s `404` mapping needs *some* filter to exist. This is reported for the Product Owner / Architect, not decided here.
+**Dependency flagged in an earlier pass, now resolved — see `T-C1-100`'s own `## Resolved` section.** `T-C1-08` sources its exception-filter mapping from `T-C10-40`, which is not part of this delivery slice — but `T-C1-08` did not actually wait for it: it already built `GlobalExceptionFilter`, registered globally, as the minimum it owed ahead of `T-C10-40`'s eventual replacement. `T-C1-100`'s `404`/`400` mapping reuses that filter as-is; no new filter and no `T-C10-40` dependency remain.
+
+**`T-C1-99` is built (architect-tech-lead pass, ISP ratification).** Its read port (`IncidentReadRepositoryPort`) is deliberately **independent** of `IncidentRepositoryPort` — not an `extends` in either direction — so `GetIncidentByReferenceUseCase`'s AC3 ("no method on the port it calls can mutate a row") holds at the type level without widening what `IncidentRepositoryPort`'s existing test-double implementers must declare. See `T-C1-99`'s closing note for the full decision.
 
 ---
 
