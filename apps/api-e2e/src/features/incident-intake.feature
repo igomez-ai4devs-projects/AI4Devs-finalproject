@@ -27,11 +27,36 @@ Feature: Requester intake of an Incident (T-C1-08, US-C1-01, FR-INC-01)
       | priority                     |
       | competitionAffectsInProgress |
 
-  Scenario: A request missing a mandatory field names the field and its rule
+  # A missing field must name exactly one rule of obligation (`isDefined`),
+  # never the cascade of every other decorator that also fails against
+  # `undefined` (`stopAtFirstError: true`, `main.ts`) — the noise this
+  # follow-up ticket removes so `T-C1-10` can render one "what to do now"
+  # message per field (NFR-USE-05), not three for the same field.
+  Scenario: A request missing a mandatory field names the field and exactly one rule of obligation
     Given a fresh Incident intake request body
     And the request body has no "shortDescription" property
     When the requester posts the Incident intake request
-    Then the response is a validation failure naming "shortDescription"
+    Then the response is a validation failure with exactly one detail for "shortDescription", rule "isDefined"
+
+  Scenario: A request missing both mandatory fields names each field with its own single rule
+    Given a fresh Incident intake request body
+    And the request body has no "shortDescription" property
+    And the request body has no "description" property
+    When the requester posts the Incident intake request
+    Then the response is a validation failure with exactly one detail for "shortDescription", rule "isDefined"
+    And the response is a validation failure with exactly one detail for "description", rule "isDefined"
+
+  Scenario Outline: A present but invalid shortDescription names only the rule it actually breaks
+    Given a fresh Incident intake request body
+    And the request body sets "shortDescription" to the <kind> value
+    When the requester posts the Incident intake request
+    Then the response is a validation failure with exactly one detail for "shortDescription", rule "<rule>"
+
+    Examples:
+      | kind              | rule       |
+      | blank             | isNotBlank |
+      | over-length       | maxLength  |
+      | wrong-type        | isString   |
 
   Scenario: A valid request creates the Incident and returns only its reference
     Given a fresh Incident intake request body

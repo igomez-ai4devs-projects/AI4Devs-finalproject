@@ -41,6 +41,26 @@ function forbiddenFieldValue(field: string): unknown {
   return field === 'competitionAffectsInProgress' ? true : 'HIGH';
 }
 
+/**
+ * One concrete value per "kind" of present-but-invalid input the DTO's
+ * `stopAtFirstError` ordering is meant to tell apart (`log-incident-
+ * requester.dto.ts`'s own doc comment) — each violates exactly one rule,
+ * never more than one, so a passing assertion here proves no cascade leaked
+ * through over real HTTP, not just inside the unit-tested `validate()` call.
+ */
+function invalidValueOfKind(kind: string): unknown {
+  switch (kind) {
+    case 'blank':
+      return '   ';
+    case 'over-length':
+      return 'a'.repeat(256);
+    case 'wrong-type':
+      return 12345;
+    default:
+      throw new Error(`Unknown invalid-value kind: "${kind}"`);
+  }
+}
+
 function postIncidentIntake(
   body: Record<string, unknown>,
 ): Cypress.Chainable<Cypress.Response<IncidentIntakeResponseBody>> {
@@ -75,6 +95,13 @@ Given('the request body has no {string} property', (field: string) => {
   requestBody = rest;
 });
 
+Given(
+  'the request body sets {string} to the {word} value',
+  (field: string, kind: string) => {
+    requestBody = { ...requestBody, [field]: invalidValueOfKind(kind) };
+  },
+);
+
 When('the requester posts the Incident intake request', () => {
   postIncidentIntake(requestBody).then((res) => {
     lastResponse = res;
@@ -90,6 +117,23 @@ Then(
       (detail) => detail.field,
     );
     expect(fields, JSON.stringify(lastResponse.body)).to.include(field);
+  },
+);
+
+Then(
+  'the response is a validation failure with exactly one detail for {string}, rule {string}',
+  (field: string, rule: string) => {
+    expect(lastResponse.status).to.equal(400);
+    expect(lastResponse.body.error?.code).to.equal('VALIDATION_FAILED');
+    const details = (lastResponse.body.error?.details ?? []).filter(
+      (detail) => detail.field === field,
+    );
+    // Exactly one detail for this field, and it names this rule — proving no
+    // cascade of every other decorator that also fails against the same bad
+    // value leaked into the response (`log-incident-requester.dto.ts`'s
+    // `stopAtFirstError` doc comment).
+    expect(details, JSON.stringify(lastResponse.body)).to.have.length(1);
+    expect(details[0].rule).to.equal(rule);
   },
 );
 

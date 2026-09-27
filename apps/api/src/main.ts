@@ -29,11 +29,24 @@ async function bootstrap(): Promise<void> {
   // `{ field, rule }` details `GlobalExceptionFilter` expects (`T-C1-08`
   // Trap 3) — without it, a validation failure would never reach the
   // `ErrorEnvelope` `ARCHITECTURE.md` §3.2 promises.
+  //
+  // `stopAtFirstError: true` is deliberately **global**, not scoped to one
+  // DTO: it is the app-wide policy that a single property reports at most
+  // one violated rule (its first, in the decorator order that DTO declares
+  // — see `LogIncidentRequesterDto`'s own doc comment for how that ordering
+  // works), never a cascade of every decorator that happened to fail on the
+  // same bad value. `T-C1-10` renders each `{ field, rule }` detail as one
+  // "what to do now" message (NFR-USE-05); a cascade would only repeat that
+  // message for the same field. This applies to every DTO going forward —
+  // a DTO that legitimately needs to report more than one independent
+  // problem per property does not exist yet, and if one ever does, it is
+  // that DTO's decorators (not this global option) that should change.
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      stopAtFirstError: true,
       exceptionFactory: (errors) =>
         new RequestValidationException(flattenValidationErrors(errors)),
     }),

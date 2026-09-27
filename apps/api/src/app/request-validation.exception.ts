@@ -23,10 +23,18 @@ export class RequestValidationException extends BadRequestException {
 /**
  * Flattens `class-validator`'s `ValidationError[]` into the contract's flat
  * `ValidationErrorDetail[]` — one entry per **property and constraint**
- * (`T-C1-08` Trap 3), not one entry per property: a value failing two
- * constraints at once (e.g. wrong type *and* too long) is reported as two
- * details, since collapsing them would silently drop a violation the client
- * would otherwise never learn about.
+ * (`T-C1-08` Trap 3), not one entry per property. This function itself does
+ * not deduplicate anything: it stays a pure, mechanical flattener of
+ * whatever `error.constraints` already holds. In practice `error.constraints`
+ * holds at most one key per property today, because the global
+ * `ValidationPipe`'s `stopAtFirstError: true` (`main.ts`) already stops each
+ * property at its first failing decorator before this function ever sees the
+ * result — that policy (not this function) is what turns "an absent field
+ * used to report `isString` + `isNotBlank` + `maxLength` at once" into a
+ * single `isDefined` detail. Should a future DTO ever need two genuinely
+ * independent rules reported for the same property in the same response,
+ * this function would still flatten them both — it just has nothing to
+ * deduplicate under the current app-wide policy.
  *
  * `rule` is the constraint's own key from `error.constraints` — `isNotEmpty`,
  * `maxLength`, `isUuid`, `whitelistValidation` (the key `forbidNonWhitelisted`
