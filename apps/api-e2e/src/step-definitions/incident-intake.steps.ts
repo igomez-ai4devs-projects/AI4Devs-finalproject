@@ -168,3 +168,14 @@ Then(
 Then('the response body carries no field the requester may not see', () => {
   expect(Object.keys(lastResponse.body)).to.deep.equal(['reference']);
 });
+
+/**
+ * The reference of whatever this suite's own `lastResponse` most recently
+ * created — `incident-detail.steps.ts` (`T-C1-100`) reuses this rather than
+ * duplicating the intake request/response handling just to obtain a
+ * reference to `GET`. A narrow accessor, not the raw `lastResponse` export:
+ * the caller needs the reference, not this module's whole response shape.
+ */
+export function lastCreatedIncidentReference(): string {
+  return lastResponse.body.reference as string;
+}

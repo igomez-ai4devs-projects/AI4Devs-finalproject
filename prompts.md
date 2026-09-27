@@ -3772,3 +3772,143 @@ No instales dependencias. No hagas commit ni push. Contenedores desechables elim
 
 ### Response:
 
+Implementado ticket T-C1-99
+
+</br>
+
+**Prompt 24:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-100.md ·
+La ruta `GET /incidents/{reference}` y su contrato de respuesta
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (controladores finos, DTO validados,
+`ValidationPipe` global, DI por tokens), `sport-itsm-architecture` (ADR-007: contratos solo tipos; §3.2)
+y `sport-itsm-engineering-principles`. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Cierra el **backend de la rebanada 1**: con él, "registrar una incidencia **y verla**" funciona entero por
+HTTP. Es la mitad HTTP de `T-C1-99` y el destino al que redirigirá el formulario (`T-C1-10` → `T-C1-101`).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=shared-contracts,incident-application,api   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Trampas del entorno — ya pagadas
+- `api-e2e` levanta su PostgreSQL efímera (5499), migra y sirve la API con `NODE_ENV=test`; el
+  `DataSource` es perezoso. `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash. No lo lances a la
+  vez que `incident-infrastructure:integration` (mismo stack).
+- Postgres de desarrollo en 5452; las variables globales `POSTGRES_*` pisan el `.env`: pasa los valores
+  en la misma llamada. Antes de una verificación manual comprueba que no haya un proceso viejo
+  escuchando en el puerto (`netstat`/`Get-NetTCPConnection`) y ciérralo al terminar.
+- `apps/api` no tiene `express`/`@types/express` resolubles: usa interfaces estructurales locales, como
+  ya hace `T-C1-08`.
+
+#### El ticket es el contrato — y esta vez ya está alineado con el código
+`architect-tech-lead` lo reescribió tras `T-C1-99`: su Scope, su sección *Resolved* y sus **seis** AC
+describen lo que existe (filtro global, `ErrorEnvelope`, `stopAtFirstError`, el caso de uso con `Result`).
+Léelo entero y síguelo. Lee además, del repo:
+- `libs/incident/application`: `GetIncidentByReferenceUseCase`, `GetIncidentByReferenceResult`,
+  `IncidentNotFoundOutcome`.
+- `libs/incident/domain`: `IncidentSnapshot`, `Incident.toSnapshot()`, `IncidentReadRepositoryPort` +
+  `INCIDENT_READ_REPOSITORY`.
+- `apps/api/src/app/incident/incident.controller.ts` (el `POST` de `T-C1-08`: patrón de
+  `resolveCorrelationId`, cabecera de correlación, DTO → caso de uso), `incident.module.ts`,
+  `dto/`, `apps/api/src/app/global-exception.filter.ts`, `request-validation.exception.ts`,
+  `apps/api/src/main.ts`.
+- `libs/shared/contracts` (`ErrorCode`, `ErrorEnvelope`, `IncidentCreatedResponse`, convención del barrel).
+- `apps/api-e2e/src/features/incident-intake.feature` y sus steps (reutiliza lo que puedas).
+
+#### Trampa 1 — qué campos lleva `IncidentDetailResponse`
+El ticket dice "excluye `IncidentSnapshot.id`; el resto se mapea directamente". Pero el AC4 prohíbe
+también "any internal identifier that leaks storage details unrelated to the reference itself", y el
+snapshot lleva **otros UUID**: `reporterId`, `loggedBy`, `affectedServiceId`.
+- Decide **campo a campo** qué entra en el contrato y justifícalo contra el AC4 y contra lo que la
+  pantalla de detalle (`T-C1-101`) necesita mostrar. No expongas un identificador interno sin un motivo
+  que el requester entienda.
+- Instantes como **cadena ISO 8601 en UTC** (el cliente los presenta en su zona, NFR-I18N-03), nunca
+  epoch ms ni `Date`.
+- Los campos todavía vacíos (Priority sin derivar, Impact, Urgency, categoría, flag de competición) van
+  **explícitamente** con su valor vacío (`null`/`false`), no omitidos: "not yet prioritized" es texto que
+  pondrá el cliente.
+- Si la respuesta es distinta de lo que el ticket da a entender, repórtalo.
+
+#### Trampa 2 — la validación del parámetro de ruta
+- DTO de parámetros con `class-validator` y el patrón `^[A-Z]{3}[0-9]{7}$`, validado por el
+  `ValidationPipe` global (con `@Param()` de un objeto DTO; comprueba que `whitelist`/
+  `forbidNonWhitelisted` se comportan bien con parámetros). Con `stopAtFirstError`, un parámetro inválido
+  debe dar **un solo** detalle con `field: 'reference'`.
+- Una referencia con forma válida pero otro prefijo (`SRQ0000001`) pasa la validación y sale **`404`**
+  (decisión de `T-C1-99`: literalmente no existe esa incidencia). No lo conviertas en `400`.
+
+#### Trampa 3 — cableado de los dos tokens
+- `{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }` y
+  `{ provide: INCIDENT_READ_REPOSITORY, useExisting: INCIDENT_REPOSITORY }`.
+- `GetIncidentByReferenceUseCase` con `useFactory` e `inject: [INCIDENT_READ_REPOSITORY]`.
+- **AC6**: un test que obtenga los dos tokens del contenedor y compruebe que son **la misma instancia**.
+  Recuerda la trampa de `T-C1-08`: un `TestingModule` que solo importa `IncidentModule` necesita también
+  el módulo global de `EVENT_PUBLISHER` (`EventDispatchModule`) y, si se resuelve el repositorio real,
+  el `DatabaseModule`; sobreescribe lo que haga falta para no necesitar PostgreSQL.
+
+#### Trampa 4 — textos
+El ticket habla de un fichero de constantes para "el mensaje de no encontrado". Pero el `ErrorEnvelope`
+**no tiene campo de mensaje** (§3.2: el texto no es contrato) y el backend de `T-C1-08` no emite ningún
+texto. Si esta ruta tampoco necesita emitir texto, **no crees** el fichero de constantes: el cliente
+(`T-C1-101`) traducirá `NOT_FOUND`. Repórtalo.
+
+#### Trampa 5 — tests
+- Unitarios (sin BD): el DTO de parámetros, el mapeo snapshot → contrato (campo a campo, incluidos los
+  vacíos y la ausencia del `id`), las dos ramas del controlador (`ok` → `200`, `err` → `NotFoundException`).
+- **API-E2E con Cypress/Cucumber** (`apps/api-e2e`, nada de Supertest), contra la base efímera real:
+  - AC1: `POST` una incidencia y luego `GET` su referencia → `200` con el estado **persistido** (compara
+    con lo enviado donde aplique, y comprueba campos que solo pone el servidor: `originChannel: portal`,
+    instante de registro, vacíos de evaluación);
+  - AC2: referencia con forma válida inexistente → `404` `NOT_FOUND`;
+  - AC3: varias formas inválidas (longitud, minúsculas, formato) → `400` `VALIDATION_FAILED` con un único
+    detalle de `reference`;
+  - AC4: el cuerpo no contiene el `id` (ni ningún identificador interno que hayas decidido excluir).
+
+#### Lo que NO debes tocar
+`libs/incident/{domain,application,infrastructure}` (si algo debe cambiar, para y repórtalo),
+`libs/shared/{domain,util}`, `apps/api/src/{database,event-dispatch,testing,migrations,bootstrap}/**`,
+el filtro global salvo que sea imprescindible (justifícalo), `docker/**`, `.github/**`, `docs/**`,
+`.claude/**` (salvo tu memoria), `package.json`, `prompts.md`. No cambies el comportamiento del `POST`.
+El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api` y `pnpm nx test shared-contracts` en verde. Pega el resumen.
+2. **AC5**: `grep -rnE "class-validator|@nestjs|from '@sport-itsm/incident" libs/shared/contracts/src`
+   → solo comentarios (pega la salida).
+3. **AC6**: el test de instancia única en verde.
+4. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde con los escenarios nuevos y todos los
+   anteriores. Pega la salida.
+5. Petición manual real (`POST` + `GET` de esa referencia, un `404` y un `400`) contra la API arrancada:
+   pega estado, cabecera de correlación y cuerpo de cada una. Cierra el servidor al terminar.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados; ningún proceso de
+la API escuchando al terminar; `sport-itsm-postgres-dev` `healthy` en 5452.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; el tipo `IncidentDetailResponse` literal; la ruta con respuestas reales
+  (`200`, `404`, `400`); el cableado del módulo.
+- Tus decisiones de las trampas 1 a 5, con su porqué (en especial, qué campos del snapshot expones y
+  cuáles no).
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**.
+
+### Response:
+
+Implementado ticket T-C1-100
+
+</br>

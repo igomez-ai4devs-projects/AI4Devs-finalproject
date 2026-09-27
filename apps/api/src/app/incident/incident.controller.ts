@@ -1,25 +1,35 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
   Inject,
+  NotFoundException,
+  Param,
   Post,
   Res,
 } from '@nestjs/common';
 import {
   CORRELATION_ID_HEADER,
   IncidentCreatedResponse,
+  IncidentDetailResponse,
 } from '@sport-itsm/shared-contracts';
-import { LogIncidentUseCase } from '@sport-itsm/incident-application';
+import {
+  GetIncidentByReferenceUseCase,
+  LogIncidentUseCase,
+} from '@sport-itsm/incident-application';
 import { OriginChannelCode } from '@sport-itsm/incident-domain';
+import { TicketReference } from '@sport-itsm/shared-domain';
 import { resolveCorrelationId } from '../correlation-id.util';
+import { GetIncidentByReferenceParamsDto } from './dto/get-incident-by-reference-params.dto';
 import { LogIncidentRequesterDto } from './dto/log-incident-requester.dto';
 import {
   INCIDENT_ACTOR_RESOLVER,
   IncidentActorResolver,
 } from './incident-actor-resolver';
+import { toIncidentDetailResponse } from './incident-detail-response.mapper';
 
 /**
  * Structural, not `express`-typed — same reasoning as
@@ -49,16 +59,18 @@ const REQUESTER_ORIGIN_CHANNEL: OriginChannelCode = 'portal';
  * below this class.
  *
  * Depends on `LogIncidentUseCase` by its own class token (bound in
- * `IncidentModule` via `useFactory`, `T-C1-08` Trap 5) and on
- * `IncidentActorResolver` by its `INCIDENT_ACTOR_RESOLVER` token — never on
- * `FixedRequesterActorResolver` by name, so `T-C10-39` repoints the binding
- * without touching this file (`incident-actor-resolver.ts`'s own doc
- * comment).
+ * `IncidentModule` via `useFactory`, `T-C1-08` Trap 5), on
+ * `GetIncidentByReferenceUseCase` the same way (`T-C1-100`, `IncidentModule`
+ * Trap 3), and on `IncidentActorResolver` by its `INCIDENT_ACTOR_RESOLVER`
+ * token — never on `FixedRequesterActorResolver` by name, so `T-C10-39`
+ * repoints the binding without touching this file (`incident-actor-
+ * resolver.ts`'s own doc comment).
  */
 @Controller('incidents')
 export class IncidentController {
   constructor(
     private readonly logIncident: LogIncidentUseCase,
+    private readonly getIncidentByReferenceUseCase: GetIncidentByReferenceUseCase,
     @Inject(INCIDENT_ACTOR_RESOLVER)
     private readonly actorResolver: IncidentActorResolver,
   ) {}
@@ -70,10 +82,10 @@ export class IncidentController {
    * of the actual response body/status via this method's return value and
    * `@HttpCode`, exactly as if `@Res()` were never used.
    *
-   * No `Location` header: the read-by-reference route it would point to
-   * (`T-C1-99`/`T-C1-100`) does not exist yet in this delivery slice, and a
-   * `Location` aimed at a route that answers `404` would mislead a client
-   * more than omitting it (`T-C1-08` Trap 6, decided and reported).
+   * No `Location` header: `T-C1-08` decided and reported this, and
+   * `T-C1-100`'s Scope reaffirms it rather than revisiting it now that the
+   * read-by-reference route below exists — this route remains the *target* a
+   * future `Location` would point to, not a new source of one.
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -100,5 +112,47 @@ export class IncidentController {
     // Only what the requester may see (`T-C1-08` AC3) — never the internal
     // `id`, which this route has no justification to expose.
     return { reference: result.reference.value };
+  }
+
+  /**
+   * `GET /incidents/{reference}` (`T-C1-100`, `US-C1-01`, `FR-INC-01`) — the
+   * redirect target `T-C1-08`'s `201` and `T-C1-10`'s form ultimately land on
+   * (`T-C1-101`). Never an echo of a request body: the response is the
+   * Incident's own persisted state, read fresh from
+   * `GetIncidentByReferenceUseCase`.
+   *
+   * The path parameter reaches this method only through
+   * `GetIncidentByReferenceParamsDto` — already proven to match
+   * `TicketReference`'s own shape by the global `ValidationPipe` before this
+   * method body ever runs (`T-C1-100` Trap 2) — so `TicketReference.fromString()`
+   * below can never throw `InvalidTicketReferenceError`; it only re-parses a
+   * value already known to be well-formed into the type the use case expects.
+   *
+   * A well-formed reference matching no Incident (including one with a
+   * foreign, non-`INC` prefix, e.g. `SRQ0000001`) is `404`, not `400`
+   * (`T-C1-99`'s own decision, reaffirmed by `T-C1-100`'s "Resolved" section):
+   * there is nothing wrong with the *shape* of what the caller sent, only with
+   * what it refers to.
+   */
+  @Get(':reference')
+  async getIncidentByReference(
+    @Param() params: GetIncidentByReferenceParamsDto,
+    @Headers(CORRELATION_ID_HEADER) correlationIdHeader: string | undefined,
+    @Res({ passthrough: true }) res: MinimalHttpResponse,
+  ): Promise<IncidentDetailResponse> {
+    const correlationId = resolveCorrelationId(correlationIdHeader);
+    res.setHeader(CORRELATION_ID_HEADER, correlationId);
+
+    const reference = TicketReference.fromString(params.reference);
+    const result = await this.getIncidentByReferenceUseCase.execute(reference);
+
+    if (!result.ok) {
+      // `GlobalExceptionFilter` already recognizes `NotFoundException` and
+      // maps it to `{ error: { code: NOT_FOUND } }` (`T-C1-08`) — no new
+      // filter code needed (`T-C1-100`'s "Resolved" section).
+      throw new NotFoundException();
+    }
+
+    return toIncidentDetailResponse(result.value);
   }
 }

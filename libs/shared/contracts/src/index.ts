@@ -44,6 +44,10 @@
  *   intake of an Incident (`T-C1-08`); see `incident-intake.contract.ts`'s
  *   own doc comment for why these are not (yet) the `LogIncidentRequest` /
  *   `IncidentDetailResponse` `ARCHITECTURE.md` §7.1 anticipates.
+ * - `IncidentDetailResponse`, `IncidentOriginChannel`, `IncidentPriority` —
+ *   `GET /api/incidents/{reference}` (`T-C1-100`); see
+ *   `incident-detail.contract.ts`'s own doc comment for the field-by-field
+ *   inclusion/exclusion decisions.
  */
 export { ErrorCode } from './lib/error-code';
 export type {
@@ -57,3 +61,8 @@ export type {
   LogIncidentRequesterRequest,
   IncidentCreatedResponse,
 } from './lib/incident-intake.contract';
+export type {
+  IncidentDetailResponse,
+  IncidentOriginChannel,
+  IncidentPriority,
+} from './lib/incident-detail.contract';

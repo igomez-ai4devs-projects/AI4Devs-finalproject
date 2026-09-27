@@ -6,12 +6,17 @@ import {
   ClockPort,
 } from '@sport-itsm/shared-domain';
 import {
+  INCIDENT_READ_REPOSITORY,
   INCIDENT_REPOSITORY,
+  IncidentReadRepositoryPort,
   IncidentRepositoryPort,
   SLA_POLICY,
   SlaPolicyPort,
 } from '@sport-itsm/incident-domain';
-import { LogIncidentUseCase } from '@sport-itsm/incident-application';
+import {
+  GetIncidentByReferenceUseCase,
+  LogIncidentUseCase,
+} from '@sport-itsm/incident-application';
 import { TypeOrmIncidentRepository } from '@sport-itsm/incident-infrastructure';
 import { FixedRequesterActorResolver } from '../../bootstrap/fixed-requester-actor.resolver';
 import { SystemClock } from '../system-clock';
@@ -63,11 +68,25 @@ import { ProvisionalNoopSlaPolicyAdapter } from './provisional-noop-sla-policy.a
  * that composes `IncidentModule` on its own — not through `AppModule` — must
  * import `EventDispatchModule` alongside it for `LogIncidentUseCase`'s
  * factory to resolve (`log-incident.fixed-actor.spec.ts` does exactly that).
+ *
+ * **`T-C1-100` adds the read side.** `INCIDENT_READ_REPOSITORY` is bound with
+ * `useExisting: INCIDENT_REPOSITORY`, never a second `useClass:
+ * TypeOrmIncidentRepository` — one adapter instance, two ports, exactly
+ * `T-C1-99`'s closing note and this ticket's own AC6. `useExisting` (not
+ * `useValue`/`useFactory`) is what makes the two tokens alias the *same*
+ * resolved instance rather than each constructing their own —
+ * `incident.module.spec.ts` proves this by identity, not by type.
+ * `GetIncidentByReferenceUseCase` follows the same `useFactory` pattern
+ * `LogIncidentUseCase` already established: a framework-free class the
+ * composition root constructs, never `@Injectable()`, injected with only the
+ * one port its constructor declares (`IncidentReadRepositoryPort`) — nothing
+ * about read-only lookup needs `SLA_POLICY`, `EVENT_PUBLISHER` or `CLOCK`.
  */
 @Module({
   controllers: [IncidentController],
   providers: [
     { provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository },
+    { provide: INCIDENT_READ_REPOSITORY, useExisting: INCIDENT_REPOSITORY },
     {
       provide: INCIDENT_ACTOR_RESOLVER,
       useClass: FixedRequesterActorResolver,
@@ -89,6 +108,12 @@ import { ProvisionalNoopSlaPolicyAdapter } from './provisional-noop-sla-policy.a
           clock,
         ),
       inject: [INCIDENT_REPOSITORY, SLA_POLICY, EVENT_PUBLISHER, CLOCK],
+    },
+    {
+      provide: GetIncidentByReferenceUseCase,
+      useFactory: (incidentReadRepository: IncidentReadRepositoryPort) =>
+        new GetIncidentByReferenceUseCase(incidentReadRepository),
+      inject: [INCIDENT_READ_REPOSITORY],
     },
   ],
 })
