@@ -256,7 +256,7 @@ No business rule ever lives in a trigger, a stored procedure or a check that enc
 | Schema evolution (§3.7) | Migrations, pre-deploy step | Not applicable | No schema exists. The migration CLI refuses to load in this mode |
 | Durability | PostgreSQL | **None** | Everything is lost on restart. Capacity is capped at 10 000 Incidents per process |
 
-**Rules that follow.** Memory mode is for demonstration content only — never real Requesters, real Incidents or personal data — and is refused at boot with `NODE_ENV=production`. The API runs as **one** instance in this mode. Evidence for every database guarantee above is produced in `postgres` mode only (the `integration` target and `api-e2e`); a shared port contract suite proves that both adapters honor the same *observable* port behavior (ARCHITECTURE ADR-015, consequence 7). Decision **M19** (§18).
+**Rules that follow.** Memory mode is for demonstration content only — never real Requesters, real Incidents or personal data — and is refused at boot with `NODE_ENV=production`. The API runs as **one** instance in this mode. Evidence for every database guarantee above is produced in `postgres` mode only (the `integration` target and `api-e2e`); the in-memory adapter is covered by its own unit specs only. **No shared port contract suite is built while ADR-015 is in force** (Product Owner decision): that both adapters honor the same *observable* port behavior is an accepted, unproven risk of the prototype, closed by the contract suite when ADR-015 is reversed (ARCHITECTURE ADR-015, consequence 7). Decision **M19** (§18).
 
 ---
 
@@ -1950,7 +1950,7 @@ Recorded honestly, because a reader should know which parts are traceable and wh
 
 **Not built:** every table, enum type, sequence, check, index, trigger, partition and `GRANT`/`REVOKE` in this document, and every TypeORM entity and mapper (`libs/incident/infrastructure/src` exports nothing yet). The `Incident` aggregate and `TicketReference` exist in `libs/incident/domain` only. This section records what exists; it does not assert that any statement of §3–§18 has been exercised against a database.
 
-**Not built either (ADR-015, §3.8):** the `PERSISTENCE_MODE` switch, `InMemoryIncidentRepository` and the shared port contract suite. Until they exist the API cannot boot without PostgreSQL configuration.
+**Not built either (ADR-015, §3.8):** the `PERSISTENCE_MODE` switch and `InMemoryIncidentRepository` (the shared port contract suite is not part of this work — deferred to ADR-015's reversal). Until they exist the API cannot boot without PostgreSQL configuration.
 
 **Next steps, in order:**
 

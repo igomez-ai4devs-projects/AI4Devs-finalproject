@@ -66,7 +66,7 @@ Inside every context the three backend libraries have fixed roles, and the techn
 | --- | --- | --- |
 | `<context>/domain` | Aggregates, entities, value objects, domain services, domain events and **outbound port interfaces** | **Pure TypeScript 5.9 only** — no NestJS, no TypeORM, no HTTP, not even `new Date()` (time arrives through `ClockPort`) |
 | `<context>/application` | Use cases: orchestration, transaction boundary and the authorization check expressed in domain terms | TypeScript + `libs/shared/contracts` (types only); still no framework |
-| `<context>/infrastructure` | Outbound adapters: TypeORM repositories, persistence entities, explicit mappers, external gateways — and, where a context's persistence is mode-selected, its in-memory repository adapter (ADR-015), held to the same port contract suite as the TypeORM one | TypeORM 1.1, `pg`, NestJS DI, `node:crypto` |
+| `<context>/infrastructure` | Outbound adapters: TypeORM repositories, persistence entities, explicit mappers, external gateways — and, where a context's persistence is mode-selected, its in-memory repository adapter (ADR-015), verified by its own unit specs (a shared port contract suite across both adapters is deferred until ADR-015 is reversed) | TypeORM 1.1, `pg`, NestJS DI, `node:crypto` |
 
 ## 4. Shared libraries
 

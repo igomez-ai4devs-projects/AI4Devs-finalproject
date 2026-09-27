@@ -166,8 +166,8 @@ AI4Devs-finalproject/
 │  │  │  │  │  ├─ in-memory-incident.repository.ts                    # implements both repository ports, no DataSource
 │  │  │  │  │  └─ uuid-v7.ts                                          # private RFC 9562 v7 generator (node:crypto), not exported
 │  │  │  │  └─ gateways/scms-competition.gateway.ts                   # anticorruption layer + free-text fallback
-│  │  │  └─ src/testing/incident-repository.port-contract.ts          # target (ADR-015): shared port contract suite, test-only,
-│  │  │                                                               #   run by both adapters; never exported, excluded from tsconfig.lib
+│  │  │  └─ src/testing/incident-repository.port-contract.ts          # target, DEFERRED (ADR-015 consequence 7): shared port contract
+│  │  │                                                               #   suite, built only when ADR-015 is reversed - not created now
 │  │  ├─ feature/                    # platform:frontend scope:incident type:feature
 │  │  │  └─ src/lib/
 │  │  │     ├─ incident.routes.ts                # lazy route definitions consumed by apps/web

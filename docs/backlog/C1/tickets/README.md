@@ -81,7 +81,7 @@ A **deployment** slice layered on top of slice 1 once it was already complete, n
 | 1 | `T-C1-103` | Home page at `/` linking to the Incident intake form | frontend-engineer | 2.5h |
 | 2 | `T-C1-104` | Translate the intake form and detail screen to Spanish | frontend-engineer | 2.5h |
 
-**Total: 2 tickets · 5.0h.** `T-C1-104` is sequenced after `T-C1-103` only to avoid both tickets editing disjoint sections of `incident-messages.ts` at once — neither depends on the other's code. Both are independent of the `C10`-side backend/nginx chain and can be built in parallel with it; combined with `C10`'s 12.0h (block P there), the whole Render-demo slice is **17.0h**.
+**Total: 2 tickets · 5.0h.** `T-C1-104` is sequenced after `T-C1-103` only to avoid both tickets editing disjoint sections of `incident-messages.ts` at once — neither depends on the other's code. Both are independent of the `C10`-side backend/nginx chain and can be built in parallel with it; combined with `C10`'s 11.0h (block P there — `T-C10-77` no longer builds the shared repository-port contract suite, cut by the user's decision), the whole Render-demo slice is **16.0h**.
 
 **Two deviations land on `C1` tickets directly, on top of the three `C10` already carries (see that document's own Slice 1b note for the no-database, no-CORS and unauthenticated-actor deviations):**
 
