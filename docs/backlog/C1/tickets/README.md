@@ -1,10 +1,10 @@
 # Tickets — C1 · Incident Management
 
-> Sources: `docs/backlog/C1/user-stories.md` (34 stories — 30 greenfield, 4 gap: `US-C1-01`, `02`, `05`, `08`; includes `US-C1-33`/`34` for `FR-INC-19`/`20`) · `docs/backlog/epic-map.md` (§ `C1`, § **Foundation ownership (priced once)**, findings **F17**, **F31**) · `docs/backlog/C10/tickets/` (the workspace foundation, already ticketed) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9 · PRD §7.1, §14, §14.10
+> Sources: `docs/backlog/C1/user-stories.md` (34 stories — 30 greenfield, 4 gap: `US-C1-01`, `02`, `05`, `08`; includes `US-C1-33`/`34` for `FR-INC-19`/`20`) · `docs/backlog/epic-map.md` (§ `C1`, § **Foundation ownership (priced once)**, findings **F17**, **F31**) · `docs/backlog/C10/tickets/` (the workspace foundation, already ticketed, including the Render demo prototype's block P) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9, §10 (ADR-015) · PRD §7.1, §14, §14.10
 > Test plan: [`../test-plan.md`](../test-plan.md)
 
-**102 tickets · 268.5h · five tickets now exceed the 3h cap, each with a recorded exception.** One ticket added this pass (`T-C1-102`, `FR-INC-20`) on top of the three added by the previous pass (`T-C1-99`–`101`, block O, "see it — detail by reference") and the `T-C1-09`/`T-C1-10` re-cut for delivery slice 1 — see **Delivery slices** below.
-**2 tickets are foundation** work with `story: —` — the six `incident` libraries and the context schema/module wiring. `T-C1-102` is **no longer** in this count: it is reparented to `US-C1-34` this pass (**F32**, third pass below) — it was never foundation (it has a persona and observable behavior), only briefly unstoried.
+**104 tickets · 273.5h · five tickets now exceed the 3h cap, each with a recorded exception.** Two tickets added this pass (`T-C1-103`, `T-C1-104`, block Q — the Render demo prototype, `ADR-015`) on top of the one added by the previous pass (`T-C1-102`, `FR-INC-20`) and the three before that (`T-C1-99`–`101`, block O, "see it — detail by reference") and the `T-C1-09`/`T-C1-10` re-cut for delivery slice 1 — see **Delivery slices** below.
+**4 tickets are foundation** work with `story: —` — the six `incident` libraries and the context schema/module wiring (block A), plus `T-C1-103`/`T-C1-104` (block Q, this pass — the Render-demo home page and its Spanish translation, neither backed by a `C1` story). `T-C1-102` is **no longer** in this count: it is reparented to `US-C1-34` this pass (**F32**, third pass below) — it was never foundation (it has a persona and observable behavior), only briefly unstoried.
 **12 tickets are blocked** by six findings: **F24** (1), **F25** (2), **F27** (1), **F28** (2), **F29** (3), **F30** (3). None of those decisions is made in this backlog.
 
 **This pass — ADR-014 (`ARCHITECTURE.md` §10) and `DATA-MODEL.md` §8.5/M14–M16.** `incident_ticket`'s assessment, matrix-version and lifecycle columns are nullable in the target schema, a matrix version is pinned at an Incident's **first derivation** rather than at creation, and every column arrives with the migration of the first behavior that writes it, backfilled exactly where it lands `NOT NULL` on a table that already has rows. Nine tickets changed to carry this out; net effect **+2.5h** (263.5h → 266.0h), all inside blocks B (net 0h — one ticket lighter, one heavier), D, E, F and I:
@@ -49,6 +49,8 @@ Of the three Product Owner decisions relayed by the pass above, two are now numb
 2. **Gap notes (US-C1-01/02/05/08).** `T-C1-08`, `T-C1-11` and `T-C1-30` each gained an "Already built" note pointing at the exact `libs/incident/domain` code (`Incident.log()`, `OriginChannel`, the reporter/actor separation, the not-yet-derived Priority state) their story's gap shape names, so their scope is read as the delta, not rebuilt from zero. `T-C1-11`'s title and text are also corrected from the obsolete "contact channel" to **origin channel** (PRD §14.10 decision D1, already the term the code and `US-C1-02` use). Verified directly against `libs/incident/domain/src/lib/incident.aggregate.ts`, `origin-channel.vo.ts` and `incident-reference.policy.ts` — no other `US-C1-01/02/05/08` ticket was found describing already-built domain behavior as still to do.
 3. **Phase correction (F17).** Blocks **L** (`FR-INC-15`, `US-C1-28`) and **M** (`FR-INC-16`, `US-C1-29`/`30`) were still labeled `unphased (F9)`, and the two sequencing risks below (**F23**, **F26**) were still recorded as open Product Owner calls. Both are resolved in the PRD (§14.3: `FR-INC-15` is `Must`, Phase 1, explicitly alongside intake; §14.5: `FR-INC-16`'s deflection-recording limb explicitly rides the same phase as `FR-KNW-06` measurement, Phase 3) — verified directly against `docs/product/PRD.md` §14.3 and §14.5. Block L moves to **Phase 1 (MVP)**, block M to **Phase 3 (§14.5)**; the totals table and the by-phase line below are recalculated, and **F23**/**F26** are marked resolved rather than open. `user-stories.md` itself still reads `Phase: unphased (F9)` on `US-C1-28`/`29`/`30` — that field is the Business Analyst's own artifact and is not edited here; this correction is reported for its next regeneration, exactly as **F31**'s build-state finding was reported the other way around last pass.
 
+**Fourth pass — the Render demo prototype (`ADR-015`, this session).** The user asked for slice 1 to be actually reachable at a URL on Render: two services, no database, in-memory Incident persistence, no authentication, the whole web surface in Spanish. The architect recorded the design as `ADR-015` (`docs/product/ARCHITECTURE.md` §10, plus §3.3, §6.3, §9, §11.3, §12; `DATA-MODEL.md` §3.8/M19; `COMPONENTS.md`; `PROJECT-STRUCTURE.md`). Most of that work is platform foundation and lands in `C10` (`T-C10-75`–`79`, block P there — see that document). Two tickets land here, in `C1`, at the next free IDs: **`T-C1-103`** (a home page at `/`, linking to the intake form — logically `C9`'s eventual self-service-portal landing, ticketed here for now because `C9` is not drilled and the demo needs it today) and **`T-C1-104`** (translating `T-C1-10`'s and `T-C1-101`'s existing English strings to Spanish, plus the `apps/web-e2e` step-definition assertions that hardcode English substrings against the rendered DOM). Both are `foundation: true`, `story: —` — no `C1` story asks for a Spanish-language demo landing page, and none should be invented to manufacture one. See **Block Q** below and `docs/backlog/C10/tickets/README.md`'s own **Slice 1b** note for the full cross-epic picture.
+
 **Delivery is now cut by vertical slice, not by block order — see Delivery slices below.** The Product Owner has re-cut delivery across `C1` and `C10` into three thin, end-to-end slices, approved by the user. **No ticket file changed and no ID moved for this.** The claim that used to stand here — *"the numbering is the implementation order"* — is corrected: the numbering is stable and mostly reflects a reasonable build order **within** a block, but which slice ships first is a delivery decision, not something this file's ID order ever decided. `T-C1-01` is still the first ticket **of Block A**; it is not necessarily the first ticket built end to end. Where the order departs from the story sequence **within a block**, the reason is stated below that block, exactly as before.
 
 ## Delivery slices
@@ -69,6 +71,22 @@ Approved by the user, from the Product Owner's cut. Three vertical, end-to-end s
 
 1. **Design system deferred, accessibility is not.** `T-C1-10` and `T-C1-101` write hand-built semantic HTML meeting WCAG 2.1 AA without any `libs/incident/ui`/`libs/shared/ui` primitive. `T-C1-10`'s AC3 is left in place as a **known-pending criterion** — see its own note.
 2. **i18n deferred to a per-feature constants file.** `T-C1-08`, `T-C1-10`, `T-C1-100` and `T-C1-101` source every user-facing string from one exported constants file per feature lib, never `nestjs-i18n`/Transloco yet — the user has explicitly accepted this as debt against `CLAUDE.md` §3.
+
+### Slice 1b — Render demo prototype (added this pass, `ADR-015`)
+
+A **deployment** slice layered on top of slice 1 once it was already complete, not one of the Product Owner's original three vertical slices. Full cross-epic detail (including the `C10`-side tickets, which are most of the work) is in `docs/backlog/C10/tickets/README.md`'s own **Slice 1b** note; this is the `C1` half.
+
+| Order | `C1` ticket | Title | Agent | Est. |
+|---|---|---|---|---:|
+| 1 | `T-C1-103` | Home page at `/` linking to the Incident intake form | frontend-engineer | 2.5h |
+| 2 | `T-C1-104` | Translate the intake form and detail screen to Spanish | frontend-engineer | 2.5h |
+
+**Total: 2 tickets · 5.0h.** `T-C1-104` is sequenced after `T-C1-103` only to avoid both tickets editing disjoint sections of `incident-messages.ts` at once — neither depends on the other's code. Both are independent of the `C10`-side backend/nginx chain and can be built in parallel with it; combined with `C10`'s 12.0h (block P there), the whole Render-demo slice is **17.0h**.
+
+**Two deviations land on `C1` tickets directly, on top of the three `C10` already carries (see that document's own Slice 1b note for the no-database, no-CORS and unauthenticated-actor deviations):**
+
+1. **Whole web surface in Spanish, strings only in the feature constants file.** `T-C1-103` authors new strings directly in Spanish; `T-C1-104` translates `T-C1-10`'s and `T-C1-101`'s existing English strings. Both stay inside `libs/incident/feature/src/lib/incident-messages.ts`, never inline in a template, never through Transloco/`nestjs-i18n` — the same accepted i18n-deferred debt slice 1 already carries, now extended to cover a second language rather than resolved.
+2. **A home page with no backing `C1` story, deliberately not invented.** `T-C1-103` is `foundation: true`, cited against the user's own Render-demo decision and `FR-KNW-08` (`C9`, not yet drilled) rather than any `C1` requirement — see that ticket's own `## Context` for why it is ticketed here instead of waiting for `C9`.
 
 **Everything else in this README ships after these three**, in whatever phase/block order the rest of this document already states — not orphaned, just later. That is most of the epic: the rest of blocks B and C, and all of blocks D through N.
 
@@ -385,6 +403,17 @@ The signature behavior of the product. The epic map calls `C1` *the only epic th
 
 ---
 
+## Block Q · Render demo prototype — 2 tickets · 5h · `foundation: true`, phase 0 — **delivery slice 1b**
+
+| # | Title | Story | Layer | Agent | Est. |
+|---|---|---|---|---|---:|
+| [T-C1-103](T-C1-103.md) | Home page at `/` linking to the Incident intake form | — (foundation) | feature | frontend-engineer | 2.5h |
+| [T-C1-104](T-C1-104.md) | Translate the intake form and detail screen to Spanish | — (foundation) | feature | frontend-engineer | 2.5h |
+
+**New this pass — `ADR-015`, the Render demo prototype.** Not a `C1` requirement: the Product Owner wants slice 1 deployed and reachable on Render, with a proper landing page (not a redirect) and the whole demo web surface in Spanish. Numbered last, at the next free IDs. `T-C1-103` cites `FR-KNW-08` (`C9`, self-service portal, not yet drilled) as its eventual home and is reassigned when that epic is drilled; `T-C1-104` is pure content translation of two already-shipped tickets (`T-C1-10`, `T-C1-101`), sequenced after `T-C1-103` to avoid both editing disjoint sections of the same constants file at once. Neither is a `C10`-style workspace-scaffolding ticket — both are `libs/incident/feature` work, hence their placement in `C1` rather than `C10`, mirroring where `T-C1-10`/`T-C1-101` already live. See **Delivery slices → Slice 1b** above and each ticket's own `## Context` for the full reasoning, including the cross-epic `C10` half (`T-C10-75`–`79`, that document's own block P) this slice also needs.
+
+---
+
 ## Sequencing risks carried forward — F23 and F26 resolved this pass (F17)
 
 Both findings were about **phasing**, not implementation, and both are now settled by the PRD rather than open Product Owner calls — verified against `docs/product/PRD.md` §14.3 and §14.5 (epic map finding **F17**). Kept here as a resolved record, not a live risk.
@@ -416,14 +445,15 @@ Both findings were about **phasing**, not implementation, and both are now settl
 | N · Phase 3 | 6 | 16.0 | 3 (§14.5) |
 | O · See it — detail by reference | 3 | 5.0 | disputed 0/1 |
 | P · Untriaged-period visibility | 1 | 2.5 | 1 (MVP) |
-| **Total** | **102** | **268.5** | |
+| Q · Render demo prototype | 2 | 5.0 | 0 — deployment slice, not a PRD phase |
+| **Total** | **104** | **273.5** | |
 
-**By phase (recalculated this pass — F17).** disputed 0/1 (**F6**): 28 tickets · 71.0h · **the cut is not made here.** Phase 1 (MVP): 64 tickets · 170.5h (was 61 · 162.0h; +block L, 3 · 8.5h). Phase 3 (§14.5): 10 tickets · 27.0h (was 6 · 16.0h; +block M, 4 · 11.0h). **Unphased (F9): retired — 0 tickets.** Every `C1` block now carries a PRD-verified phase.
+**By phase (recalculated this pass — F17).** disputed 0/1 (**F6**): 28 tickets · 71.0h · **the cut is not made here.** Phase 1 (MVP): 64 tickets · 170.5h (was 61 · 162.0h; +block L, 3 · 8.5h). Phase 3 (§14.5): 10 tickets · 27.0h (was 6 · 16.0h; +block M, 4 · 11.0h). **Unphased (F9): retired — 0 tickets.** Block Q (2 tickets · 5.0h) carries no PRD phase at all — `ADR-015` is a temporary, stage-only deployment amendment, not phased product scope, and is tracked separately from this by-phase count rather than folded into it. Every `C1` **product** block still carries a PRD-verified phase.
 
 **Tickets now at the 3h cap with a recorded exception (skill rule, not a sizing failure):** `T-C1-30`, `T-C1-43`, `T-C1-49`, `T-C1-50` and, new this second pass, `T-C1-73`, all at 3.5h — each bundles a migration with the one behavior that is its only writer, per the ADR-014 notes above; splitting any of them would leave a schema no code writes to yet, or a use case that cannot persist its own output.
 
-**Foundation** (`story: —`): 2 tickets · 4.5h — the six `incident` libraries and the context schema/module wiring. Everything else is `C10`. (Block O's three tickets trace `US-C1-01` like the rest of block B — not foundation, even though added by the first ADR-014 pass. `T-C1-102` is reparented to `US-C1-34` this pass — **F32** — and is no longer `story: —`; it was never foundation, only briefly unstoried — see its own `## Context` and block P above.)
+**Foundation** (`story: —`): 4 tickets · 9.5h — the six `incident` libraries and the context schema/module wiring (block A, 2 tickets · 4.5h), plus `T-C1-103`/`T-C1-104` (block Q, this pass, 2 tickets · 5.0h — the Render-demo home page and its Spanish translation). Everything else that is genuine platform/workspace foundation is `C10`; block Q is the one exception, ticketed here because it is `libs/incident/feature` work, not workspace scaffolding — see block Q's own note. (Block O's three tickets trace `US-C1-01` like the rest of block B — not foundation, even though added by the first ADR-014 pass. `T-C1-102` is reparented to `US-C1-34` this pass — **F32** — and is no longer `story: —`; it was never foundation, only briefly unstoried — see its own `## Context` and block P above.)
 
 **Blocked:** 12 tickets — **F24** `T-C1-41` · **F25** `T-C1-86`, `T-C1-87` · **F27** `T-C1-68` · **F28** `T-C1-79`, `T-C1-80` · **F29** `T-C1-10`, `T-C1-14`, `T-C1-16` · **F30** `T-C1-32`, `T-C1-34`, `T-C1-47`. `T-C1-102`'s dependency on PRD assumption **A11** is not counted here: unlike these six findings, it blocks no *mechanism*, only the production configuration value — see block P.
 
-**By agent:** `backend-engineer` 72 · `frontend-engineer` 27 · `—` 3. The three are the six-library scaffolding, which spans both platforms, and two API-E2E specs (`T-C1-64`, `T-C1-71`) — e2e-harness work on the backend platform (`apps/api-e2e`, `platform:backend`, `type:e2e`), which neither dev agent owns. `T-C1-102` (new this pass) is `backend-engineer`, folded into the 72.
+**By agent:** `backend-engineer` 72 · `frontend-engineer` 29 · `—` 3. The three are the six-library scaffolding, which spans both platforms, and two API-E2E specs (`T-C1-64`, `T-C1-71`) — e2e-harness work on the backend platform (`apps/api-e2e`, `platform:backend`, `type:e2e`), which neither dev agent owns. `T-C1-102` (previous pass) is `backend-engineer`, folded into the 72. `T-C1-103`/`T-C1-104` (block Q, this pass) are `frontend-engineer`, folded into the 29.

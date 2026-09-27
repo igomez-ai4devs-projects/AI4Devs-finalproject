@@ -1,6 +1,6 @@
 # Test Plan — C1 · Incident Management
 
-> Sources: `docs/backlog/C1/user-stories.md` (34 stories — 30 greenfield, 4 gap: `US-C1-01`, `02`, `05`, `08`; includes `US-C1-33`/`34` for `FR-INC-19`/`20`, now with their own stories — see the **Findings** note, updated this pass) · `docs/backlog/C1/tickets/` (102 tickets — `T-C1-102` reparented to `US-C1-34` this pass, **F32**) · `docs/backlog/epic-map.md` (finding **F17**) · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9, §10 (ADR-014) · `docs/product/DATA-MODEL.md` §3.2, §8.1, §8.5, §16, §18 (M14–M18) · PRD §7.1, §14, §14.10
+> Sources: `docs/backlog/C1/user-stories.md` (34 stories — 30 greenfield, 4 gap: `US-C1-01`, `02`, `05`, `08`; includes `US-C1-33`/`34` for `FR-INC-19`/`20`, now with their own stories — see the **Findings** note, updated this pass) · `docs/backlog/C1/tickets/` (104 tickets — `T-C1-102` reparented to `US-C1-34`, **F32**; `T-C1-103`/`104`, block Q, added this pass for the Render demo prototype) · `docs/backlog/epic-map.md` (finding **F17**) · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §6.2, §8, §9, §10 (ADR-014, ADR-015) · `docs/product/DATA-MODEL.md` §3.2, §3.8, §8.1, §8.5, §16, §18 (M14–M19) · PRD §7.1, §14, §14.10
 > This document is both the **BDD specification** and the **test strategy** for the epic. Every scenario below is written to seed a `.feature` file or a `*.spec.ts` directly.
 
 ## Context
@@ -15,7 +15,9 @@
 
 | Excluded | Why |
 |---|---|
-| The 2 **foundation** tickets (`T-C1-01`, `T-C1-02`) | They have no persona and no user-observable behavior. Their *done* is the mechanical check written in the ticket itself — six projects with three tags each, a lint probe that fails on an illegal import, a migration that runs and reverts. |
+| The 2 **foundation** tickets of block A (`T-C1-01`, `T-C1-02`) | They have no persona and no user-observable behavior. Their *done* is the mechanical check written in the ticket itself — six projects with three tags each, a lint probe that fails on an illegal import, a migration that runs and reverts. |
+| `T-C1-104` (block Q — Spanish translation) | Content-only edit of strings `AT-C1-03` already exercises; no new behavior, no new scenario — see the note under `AT-C1-93` above. |
+| The `C10`-side of the Render demo prototype (`T-C10-75`–`79`) | Configuration switch, in-memory adapter, composition-root wiring and reverse proxy — no persona, covered by `docs/backlog/C10/test-plan.md`'s own foundation-exclusion note and by each ticket's own mechanical acceptance criteria. |
 | The whole workspace foundation | Priced once into `C10` (epic map, *Foundation ownership*) and covered by `docs/backlog/C10/test-plan.md`. Nx, the tag scheme, the four applications, the shared libraries, the design system and the base migration chain are **assumed working** here. |
 | SLA clock arithmetic, targets and schedules | `C7`. `AT-C1-47` → `AT-C1-49` assert that the Incident side **publishes correct pause/resume signals** and that the `apps/api` adapter receives them. What `C7` then computes is its own acceptance. |
 | Major Incident declaration, protocol, cadence and closure propagation | `C13` (`FR-MIM-01` → `FR-MIM-06`). `AT-C1-57` asserts the Incident-side parent reference and explicitly asserts that **nothing propagates** in this epic. |
@@ -902,6 +904,21 @@ Numbered `AT-C1-91` → `92`, appended for the same reason `AT-C1-88` → `90` w
 - Test data: one persisted Incident · Dependencies: real PostgreSQL, `T-C1-04`'s trigger and function · Covers: US-C1-05 (`T-C1-04`) · `DATA-MODEL.md` §3.2, M18
 - Why Integration: this is a database-level guarantee that a stubbed repository or an application-layer check cannot prove, and it must be proven for the superuser role specifically, since no least-privileged application role exists yet (`DATA-MODEL.md` §19).
 
+### Added this pass — the Render demo prototype (`ADR-015`, `T-C1-103`/`T-C1-104`)
+
+Numbered `AT-C1-93`, appended for the same reason `AT-C1-88`→`92` were. `T-C1-103`/`T-C1-104` are `foundation: true` (block Q) — no `C1` story backs either — but unlike block A's two foundation tickets, `T-C1-103` has real, user-observable behavior (a person visits a page and follows a link), so it earns one acceptance scenario despite carrying `story: —`; see its own `## Context` for why that combination is deliberate rather than a labeling error.
+
+#### AT-C1-93 — The home page presents itself and links to the intake form — P1 — type: E2E — impl: `apps/web-e2e` (frontend platform)
+
+**Given** a browser visiting the web root `/`
+**When** the page loads
+**Then** it renders inside the shell's `main#main-content` landmark with exactly one `<h1>`, presents a single link to the intake form reachable and activatable by keyboard alone, and following it navigates to `/incidents/new`; the existing `harness-smoke.feature` scenarios (main landmark present, router settled on `/`) still pass unchanged.
+
+- Test data: none — the page takes no input and calls no API · Dependencies: served `apps/web`, no backend call · Covers: — (foundation, `T-C1-103`) · `FR-KNW-08` (eventual `C9` home), `NFR-USE-01`, `NFR-USE-04`
+- Why E2E: the property is that a real router navigation resolves correctly from a real page, which a component-level test cannot show on its own; the component-level Jest spec for the strings-sourced-from-constants check is ticket-level (`T-C1-103`'s own `## Testing methodology`), not repeated here.
+
+**No new scenario for `T-C1-104` (the Spanish translation).** It is a content-only change to strings `AT-C1-03` already exercises (`T-C1-10`'s plain-language/mobile/keyboard E2E scenario) — the existing scenario is re-run against the translated UI and must keep passing in **behavior**, unchanged; only the render**ed text** and four hardcoded English substrings inside `apps/web-e2e/src/step-definitions/incident-intake.steps.ts` change (see `T-C1-104`'s own `## Context` for the exact four). Minting a second scenario to assert "the text is now in Spanish" would test a translation choice, not a behavior, and would immediately go stale the moment any single word is later revised.
+
 ---
 
 ## Coverage summary
@@ -911,12 +928,12 @@ Numbered `AT-C1-91` → `92`, appended for the same reason `AT-C1-88` → `90` w
 | Unit | 40 | P0:32 P1:8 | `backend-engineer` — 38 · `frontend-engineer` — 2 (`AT-C1-64`, `AT-C1-81`) |
 | Integration | 21 | P0:13 P1:8 | `backend-engineer` |
 | API-E2E | 21 | P0:18 P1:3 | `apps/api-e2e` — e2e-harness work, backend platform, `type:e2e` |
-| E2E | 10 | P0:0 P1:10 | `apps/web-e2e` — e2e-harness work, frontend platform, `type:e2e` |
-| **Total** | **92** | **P0:63 P1:29** | |
+| E2E | 11 | P0:0 P1:11 | `apps/web-e2e` — e2e-harness work, frontend platform, `type:e2e` |
+| **Total** | **93** | **P0:63 P1:30** | |
 
 `AT-C1-49` is counted once, under Unit, although it has an Integration half: the boundary assertion is a lint and graph check and the degradation assertion needs a running API.
 
-**Blocked:** 6 scenarios — `AT-C1-28` and `AT-C1-38` (**F30**), `AT-C1-31` (**F24**), `AT-C1-63` (**F27**), `AT-C1-76` (**F25**), `AT-C1-87` (**F28**). **Runnable acceptance today: 86 scenarios** (81, plus the first pass's `AT-C1-88` → `90`, plus this second pass's `AT-C1-91` → `92`). Two more run but must be read with a caveat: `AT-C1-75` and `AT-C1-77` rest on the **F25** assumption, and `AT-C1-74` passes on the Incident side while `FR-INC-14` stays unsatisfied without `C2`.
+**Blocked:** 6 scenarios — `AT-C1-28` and `AT-C1-38` (**F30**), `AT-C1-31` (**F24**), `AT-C1-63` (**F27**), `AT-C1-76` (**F25**), `AT-C1-87` (**F28**). **Runnable acceptance today: 87 scenarios** (81, plus the first pass's `AT-C1-88` → `90`, plus the second pass's `AT-C1-91` → `92`, plus this pass's `AT-C1-93`). Two more run but must be read with a caveat: `AT-C1-75` and `AT-C1-77` rest on the **F25** assumption, and `AT-C1-74` passes on the Incident side while `FR-INC-14` stays unsatisfied without `C2`.
 
 No scenario is unwritable. That differs from `C10`, where `AT-C10-54` could not be specified at all: every open decision in `C1` constrains an *outcome* the scenario can still name, rather than a destination nobody has chosen.
 

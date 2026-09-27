@@ -1,6 +1,6 @@
 # Test Plan — C10 · Identity & Access Management
 
-> Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/C10/tickets/` (71 tickets) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §9 · PRD §7.10, §4.3
+> Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/C10/tickets/` (76 tickets — `T-C10-75`–`79`, block P, added this pass for the Render demo prototype, **ADR-015**) · `docs/backlog/epic-map.md` · `CLAUDE.md` §2–§3 · `docs/product/ARCHITECTURE.md` §5, §9, §10 (ADR-015) · PRD §7.10, §4.3
 > This document is both the **BDD specification** and the **test strategy** for the epic. Every scenario below is written to seed a `.feature` file or a `*.spec.ts` directly.
 
 ## Context
@@ -13,7 +13,7 @@
 
 | Excluded | Why |
 |---|---|
-| The 22 **foundation** tickets (`story: —`) | They have no persona and no user-observable behavior. Their *done* is the mechanical check written in the ticket itself — `pnpm nx lint`, a `pnpm nx graph` with no illegal edge, a migration that runs and reverts. Turning a lint rule into a Gherkin scenario would add ceremony, not coverage. |
+| The 22 **foundation** tickets (`story: —`) predating this pass, plus `T-C10-75`–`79` (block P, this pass — the Render demo prototype, **ADR-015**) | They have no persona and no user-observable behavior. Their *done* is the mechanical check written in the ticket itself — `pnpm nx lint`, a `pnpm nx graph` with no illegal edge, a migration that runs and reverts, a configuration boot-fails-fast proof, a reverse-proxy smoke test. Turning a lint rule (or a `docker compose up` + `curl` check) into a Gherkin scenario would add ceremony, not coverage. See **Render demo prototype — manual verification** below for the one checklist this pass adds outside the acceptance-scenario numbering. |
 | End-to-end proof of `FR-IAM-03` over real tickets | Finding **F15**: the records the visibility predicates filter belong to `C1` and `C2`. This epic proves the **predicate and the scope restriction**; the ticket-level proof lands with those epics. |
 | Persisting a role change as an `AuditEntry` | Finding **F5**: `C10` publishes the domain event, `C18` records it. `AT-C10-43` and `AT-C10-44` assert publication against a test subscriber and stop there. |
 | Structured logging, health probes, i18n scaffolding, the a11y baseline | Priced into the `NFR` epic standalone slice by the epic map, not into `C10`. |
@@ -577,6 +577,15 @@ Component-level Jest tests for the Angular pieces (`T-C10-13` to `T-C10-15`, `T-
 **Determinism.** Every time-dependent scenario — token expiry, the device-local inactivity and maximum-lifetime bounds, event timestamps — runs on `FixedClock` (`T-C10-09`, ADR-009). No scenario in this plan sleeps, and none asserts against wall-clock time.
 
 **Regression posture.** No defect story exists in this epic, so no mandatory regression scenario applies. The nearest equivalent is `AT-C10-40`: once permissions are resolved per request, any later change that reintroduces trust in token claims fails it immediately. This revision adds three more of the same shape, each written specifically to catch a reversion toward the design PRD §14.8 rejected: `AT-C10-11` (a central session check silently reintroduced would make this scenario fail, because it currently — correctly — verifies), `AT-C10-46` (a sliding or otherwise extended expiry would change the `exp` claim mid-test), and `AT-C10-51`'s second half (a stored step-up mark would let the second privileged call proceed without its own credential).
+
+## Render demo prototype — manual verification (`ADR-015`, block P, this pass)
+
+`T-C10-75`–`79` are foundation tickets with no persona (see the exclusion table above); their acceptance criteria live in their own files and are not renumbered into the `AT-C10-nn` sequence. Two of those criteria are worth restating here because they are the only **manually run, local** checks this whole test plan relies on — the automated-post-deploy smoke test the architect's own work list carried (finding "C3" in the drill request) is explicitly cut from this delivery, so these two checks are, for now, the only proof the Render topology itself is exercised at all:
+
+1. **`404` JSON through nginx, not `index.html`.** With the stage image stack running locally (`docker compose -f docker/docker-compose.stage.yml up`, `T-C10-79`), `curl -i http://localhost:4200/api/incidents/INC9999999` must return the API's own `404` JSON error envelope (`GlobalExceptionFilter`'s shape) — never nginx's SPA fallback (`index.html`, `200`). This is the one assertion that proves the `/api/` reverse-proxy location exists and is correctly ordered ahead of the SPA `try_files` rule, and it is cheap enough to re-run by hand before every manual stage smoke test.
+2. **A full intake-to-detail round trip against `PERSISTENCE_MODE=memory`, through the proxy, with no database anywhere in the stack.** Same local compose stack: open `http://localhost:4200/`, follow the link `T-C1-103` adds, submit the intake form, and confirm the redirect lands on the detail page showing the persisted (not typed) values — the same property `AT-C1-01`/`AT-C1-93` already assert against the dev/CI harnesses, now asserted once against the actual Render-shaped image pair before the first real deploy.
+
+Neither check is wired into `pnpm nx e2e api-e2e`/`web-e2e` or into `.github/workflows/deploy-stage.yml` — both continue running their existing suites against their own ephemeral-PostgreSQL and dev-server harnesses, unaffected by `PERSISTENCE_MODE` or the nginx proxy. Automating these two checks against the real, deployed Render URL is exactly the post-deploy smoke test this delivery cut declines to build; if that gap is later judged unacceptable, it is new scope, not an oversight in this pass.
 
 ## Open decisions this plan cannot resolve
 

@@ -1,9 +1,11 @@
 # Tickets — C10 · Identity & Access Management
 
-> Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/epic-map.md` (§ `C10`, § **Foundation ownership (priced once)**) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §9 · PRD §7.10, §4.3, §14.2
+> Sources: `docs/backlog/C10/user-stories.md` (16 stories, all greenfield) · `docs/backlog/epic-map.md` (§ `C10`, § **Foundation ownership (priced once)**) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5, §9, §10 (ADR-015, block P) · `docs/product/DATA-MODEL.md` §3.8 (M19) · PRD §7.10, §4.3, §14.2
 > Test plan: [`../test-plan.md`](../test-plan.md)
 
-**74 ticket IDs issued · 71 represent real work · 174.5h.** Three IDs are **retired** (see below) and carry `0h`; they are never reused. One further ticket (`T-C10-74`) is **disposable**: real, scheduled work that a later, named ticket deletes outright — not the same as retired. Two tickets exceed the 3h cap — `T-C10-06` and `T-C10-44` — each of which records why in its `## Context`.
+**79 ticket IDs issued · 76 represent real work · 186.5h.** Three IDs are **retired** (see below) and carry `0h`; they are never reused. One further ticket (`T-C10-74`) is **disposable**: real, scheduled work that a later, named ticket deletes outright — not the same as retired. Two tickets exceed the 3h cap — `T-C10-06` and `T-C10-44` — each of which records why in its `## Context`.
+
+**Slice 1b added this pass — the Render demo prototype (ADR-015).** Five new tickets, `T-C10-75`–`79` (Block P, 12.0h), implement the architect's `ADR-015` amendment: the Product Owner wants an actual deployed prototype on Render — two services, no database, in-memory Incident persistence, no authentication — proving "a person opens the web client, logs an Incident, sees it" end to end on a real URL. See **Block P** and the **Delivery slices** section below.
 
 **Delivery is now cut by vertical slice, not by block order.** The Product Owner has re-cut delivery across `C10` and `C1` into three thin, end-to-end slices ("a requester logs an Incident" → "an agent triages it" → "it is resolved and confirmed"), approved by the user. **No ticket file changed and no ID moved for this** — see **Delivery slices** below for which slice each ticket ships in. The line that used to stand here — *"the numbering is the implementation order"* — is no longer true and is corrected: the numbering is stable and mostly reflects a reasonable build order **within** a slice, but which slice ships first is a delivery decision this file records, not derives from ID order. A ticket outside all three named slices is not orphaned — it still exists, it ships after them.
 
@@ -13,7 +15,7 @@
 
 **Two gaps found while cutting the slices, now closed — `T-C10-72`, `T-C10-73` (blocks M, N).** No ticket in this epic seeded a single `iam.iam_user` row, which made the whole epic — not only the first slice — undemonstrable end to end; `T-C10-72` is the fix, an idempotent bootstrap seed, deliberately **not** a `CreateUser` capability (`FR-SRQ-09` is `C2`'s, not drilled here). Separately, `T-C10-55` was found coupling the epic's only generic post-commit dispatcher to role-administration events the first slice does not use (finding **H1**); the generic mechanism is extracted to `T-C10-73`, and `T-C10-55` keeps only its role-specific collection step (3h → 1.5h).
 
-25 tickets are **foundation** work with `story: —`. 18 are the whole workspace, priced into `C10` by the epic map and deliberately left storyless by the Business Analyst (finding **F14**); the 19th, `T-C10-68`, is a defect found in that same shipped foundation output; the 20th, `T-C10-69`, is a scope gap found while implementing ADR-013 (deployment) against that same foundation; the 21st, `T-C10-70`, is a verification gap found while implementing `T-C10-07` — the `"types": []` layer-purity setting (`ARCHITECTURE.md` §5.5) is correctly authored but no workspace target ever typechecks against it (§12.3); the 22nd, `T-C10-71`, is a documentation-integrity gap the Architect found in `DATA-MODEL.md` itself while resolving the `T-C10-43`/`T-C10-44` column-drift defect; the 23rd and 24th, `T-C10-72` and `T-C10-73`, are the two gaps found cutting delivery slice 1 to 96h; the 25th, `T-C10-74`, is that same slice's disposable actor, cut further to 41h — see **Block I** through **Block O**.
+30 tickets are **foundation** work with `story: —`. 18 are the whole workspace, priced into `C10` by the epic map and deliberately left storyless by the Business Analyst (finding **F14**); the 19th, `T-C10-68`, is a defect found in that same shipped foundation output; the 20th, `T-C10-69`, is a scope gap found while implementing ADR-013 (deployment) against that same foundation; the 21st, `T-C10-70`, is a verification gap found while implementing `T-C10-07` — the `"types": []` layer-purity setting (`ARCHITECTURE.md` §5.5) is correctly authored but no workspace target ever typechecks against it (§12.3); the 22nd, `T-C10-71`, is a documentation-integrity gap the Architect found in `DATA-MODEL.md` itself while resolving the `T-C10-43`/`T-C10-44` column-drift defect; the 23rd and 24th, `T-C10-72` and `T-C10-73`, are the two gaps found cutting delivery slice 1 to 96h; the 25th, `T-C10-74`, is that same slice's disposable actor, cut further to 41h — see **Block I** through **Block O**. The 26th through 30th, `T-C10-75`–`79` (Block P, this pass), are `ADR-015`'s Render-demo prototype: a configuration switch, an in-memory persistence adapter, the composition-root wiring that selects between them, the environment plumbing that keeps CI green while the switch is mandatory, and the nginx reverse proxy that lets the deployed web image reach the deployed API on one origin.
 5 tickets are **blocked**: 4 by **F16**, now partially resolved (the privileged set is the PRD's own list; the `NFR-SEC-06` judgment call stays open), 1 by **F17** (nobody has decided where a denied authorization is recorded).
 
 The numbering is stable and roughly reflects a sensible build order **within** whichever slice or phase a ticket ships in — see **Delivery slices** for slice order and the Totals table for phase order. Where the order within a block departs from the story sequence, the reason is stated below that block. A **retired** ticket is the one exception to "the number is real work": its number is not built at all, and the note explaining why sits in the ticket's own file rather than here.
@@ -40,6 +42,26 @@ Approved by the user, from the Product Owner's cut. Vertical, end-to-end slices 
 4. **A denied-authorization audit window, with no subscriber, and no `C1` change when one arrives.** `T-C1-07` still publishes `IncidentLogged` post-commit through `T-C10-73`'s dispatcher, but no subscriber is registered against it in this slice — `FR-AUD-01`→`04` (the Phase-0 audit invariants, PRD §14.1) are not yet satisfied for Incident creation. `ADR-008` is the reason this is safe to defer: the dispatcher already isolates subscriber failure and requires none to function, so `C18`'s eventual audit subscriber plugs in later **without touching any `C1` file**.
 
 **Everything else in this README ships after slice 1**, in whatever phase/block order the rest of this document already states — not orphaned, just later. That now includes `T-C10-18`–`28`, `30`, `31`, `34` (the whole authentication flow, deferred by deviation 1, not only the session-model rework already noted), `35`, `36`, `38`–`40` (RBAC — `35`/`36` are prerequisite baseline like `T-C10-01`–`15`, not slice-specific; `38`–`40` are deferred with authentication), `72` (block M — the bootstrap seed nothing in this slice reads; ships with the rest of the identity stack), `12`–`15` (deviation 2), `37` (deviation 3), and the rest of blocks D–L as already stated.
+
+### Slice 1b — Render demo prototype (added this pass, `ADR-015`)
+
+Not one of the Product Owner's original three vertical slices — a **deployment** slice layered on top of slice 1, once slice 1 was already complete: the user asked for slice 1 to be actually reachable at a URL, on Render, with exactly two services and no database. The architect recorded the resulting design as `ADR-015` (`docs/product/ARCHITECTURE.md` §10, plus §3.3, §6.3, §9, §11.3, §12; `DATA-MODEL.md` §3.8/M19; `COMPONENTS.md`; `PROJECT-STRUCTURE.md`), and this pass tickets it — trimmed relative to the architect's own work list per the user's cut (see **Deviations** below).
+
+| Order | `C10` ticket | Title | Agent | Est. |
+|---|---|---|---|---:|
+| 1 | `T-C10-75` + `T-C10-76` | `PERSISTENCE_MODE` switch (backend) + every environment block it touches (ci-cd) — **land together, atomically** | backend-engineer + ci-cd-expert | 2h + 1h |
+| 2 | `T-C10-77` | `InMemoryIncidentRepository` + the shared repository port contract suite | backend-engineer | 3h |
+| 3 | `T-C10-78` | `PersistenceModule.forMode()` — composition-root wiring | backend-engineer | 3h |
+| — (parallel) | `T-C10-79` | nginx reverse-proxies `/api/` to the API service | ci-cd-expert | 3h |
+
+**Total: 5 tickets · 12.0h.** `T-C10-79` has no dependency on `T-C10-75`–`78` and can be built and locally verified in parallel with that chain; it only becomes meaningful for an actual Render deploy once both halves exist. See `docs/backlog/C1/tickets/README.md`'s own **Delivery slices** section for the `C1`-side tickets (`T-C1-103`, `T-C1-104`) that complete this slice, and this document's **Block P** for the full ticket-by-ticket detail.
+
+**Deviations the user has explicitly approved for this slice, on top of slice 1's own four:**
+
+5. **No database on Render, at all — not even the managed PostgreSQL ADR-013 originally assumed for stage.** `PERSISTENCE_MODE=memory` on the `sport-itsm-api` Render service; Incidents live in process memory only and are lost on every restart, redeploy or idle spin-down. `FR-INC-02`/`NFR-DAT-01`'s "never reused" reference guarantee holds **within one process lifetime only** on stage — the requirement stays proven where it lives, against PostgreSQL, in `development`/`integration`/`api-e2e` (unchanged, still `PERSISTENCE_MODE=postgres` everywhere else).
+6. **Two Render services only, web reverse-proxying the API — no CORS, no absolute API URL.** `docker/frontend/nginx.conf` gains a same-origin `/api/` proxy (`T-C10-79`); `libs/incident/data-access`'s `INCIDENT_API_BASE_URL` needed no change (`ADR-015` decision 4).
+7. **Stage keeps `T-C10-74`'s fixed, unauthenticated actor**, exactly as slice 1's own deviation 1 already accepted — this slice does not reopen it, only deploys the system that already relies on it.
+8. **The automated contract-suite-as-CI-gate (B3) and an automated post-deploy smoke test (C3) are cut from this delivery**, narrower than the architect's own full work list. `T-C10-77` still builds the shared port contract suite itself (`ADR-015` consequence 7 ties it to the second adapter's own correctness, not to a CI-gating decision) and runs it in the ordinary `test`/`integration` targets; what is cut is any *additional*, dedicated CI job wired specifically around it, and any automated check run against the real, deployed Render URL after a push. `T-C10-79`'s own local `docker compose` + `curl` verification (see its ticket) is the only proof this slice relies on for the nginx proxy; the first real Render deploy is verified by hand.
 
 **A dependency this slice used to need and no longer does.** The previous cut's report that `T-C10-31`/`T-C10-37`/`T-C1-08`/`T-C1-10` depended on an undrilled `NFR` epic for i18n scaffolding is superseded by deviation 3 above: those tickets no longer depend on `NFR` for this slice at all, because i18n itself is deferred. The `NFR` finding stands for whichever slice eventually builds real i18n — it is not this one's problem anymore.
 
@@ -304,6 +326,26 @@ Source: epic map, **Foundation ownership (priced once)**. Nothing else in this e
 
 ---
 
+## Block P · Render demo prototype — 5 tickets · 12h · `foundation: true`, phase 0 — **delivery slice 1b**
+
+| # | Title | Layer | Agent | Est. |
+|---|---|---|---|---:|
+| [T-C10-75](T-C10-75.md) | `PERSISTENCE_MODE` configuration switch and the data-source CLI guard | infrastructure (config validation + apps/api data-source guard) | backend-engineer | 2h |
+| [T-C10-76](T-C10-76.md) | `PERSISTENCE_MODE` set across every environment block that boots the API or the CLI | workspace tooling (project.json env blocks + docker/** + .github/workflows/**) | ci-cd-expert | 1h |
+| [T-C10-77](T-C10-77.md) | `InMemoryIncidentRepository` and the shared repository port contract suite | infrastructure | backend-engineer | 3h |
+| [T-C10-78](T-C10-78.md) | `PersistenceModule.forMode()` — persistence selected once, at the composition root, as data | app (composition root) | backend-engineer | 3h |
+| [T-C10-79](T-C10-79.md) | nginx reverse-proxies `/api/` to the API service — same origin, no CORS | workspace tooling (docker/frontend/** + docker-compose.stage.yml) | ci-cd-expert | 3h |
+
+**Source: `ADR-015`** (`docs/product/ARCHITECTURE.md` §10, plus §3.3, §6.3, §9, §11.3, §12; `DATA-MODEL.md` §3.8/M19; `COMPONENTS.md`; `PROJECT-STRUCTURE.md`), amending `ADR-013` for the stage environment only. Nothing here changes product behavior, the target schema, or any boundary rule — it is a temporary, reversible deployment/persistence decision, reversed the day a Render database exists, authentication lands, or any production environment is proposed (`ADR-015`'s own reversal triggers).
+
+**Build order, not ID order.** `T-C10-75` and `T-C10-76` **must land together, in the same change** — the moment `PERSISTENCE_MODE` becomes a mandatory, no-default key (`T-C10-75`), every environment block that boots the API or the CLI needs it set (`T-C10-76`), or CI goes red the instant one merges without the other. `T-C10-77` has no dependency on either and could be built first, but is sequenced second here because `T-C10-78` needs it. `T-C10-78` depends on both `T-C10-75` (the enum) and `T-C10-77` (the adapter it binds). `T-C10-79` (nginx) has no dependency on any of the other four and is a parallel track — it becomes meaningful for an actual Render deploy only once the backend chain also lands.
+
+**None of these five tickets has a user scenario.** Like the rest of this epic's foundation blocks (I–O), each is a mechanical check written in its own `## Context`/`## Acceptance criteria` — a configuration switch, an adapter honoring a shared contract, a composition-root wiring proof, an environment-variable presence check, a reverse-proxy smoke test. `docs/backlog/C10/test-plan.md` records why these five stay out of its acceptance-scenario numbering, the same convention already applied to blocks A and I–O.
+
+**Manual Render/GitHub configuration is not this ticket set's own file to write.** Each of `T-C10-76`, `T-C10-78` and `T-C10-79` carries a `## Manual configuration checklist` section; `T-C10-76`'s is the authoritative full list (GitHub secrets, the `ghcr.io` pull credential, both Render services' environment variables, the first push to `main`) and the other two cross-reference it rather than repeating it.
+
+---
+
 ## Totals
 
 | Block | Ticket IDs | Hours | Phase |
@@ -323,12 +365,13 @@ Source: epic map, **Foundation ownership (priced once)**. Nothing else in this e
 | M · Bootstrap accounts | 1 | 2.0 | 0 |
 | N · Generic event dispatch | 1 | 2.0 | 0 |
 | O · Disposable actor for delivery slice 1 | 1 | 0.5 | 0 |
-| **Total** | **74** | **174.5** | |
+| P · Render demo prototype | 5 | 12.0 | 0 |
+| **Total** | **79** | **186.5** | |
 
 **Retired (`retired: true`): 3 ticket IDs · 0h** — `T-C10-24`, `T-C10-32`, `T-C10-33` (all block B), all consequences of PRD §14.8. Not reused; excluded from every count below. **Disposable (`disposable: true`): 1 ticket · 0.5h** — `T-C10-74` (block O), correct and built, deleted outright once `T-C10-39` lands; not excluded from any count, it is real, scheduled work.
 
-Foundation (`story: —`): **25 tickets · 60.5h** — all of block A, plus `T-C10-18`, plus `T-C10-68` (block I), `T-C10-69` (block J), `T-C10-70` (block K), `T-C10-71` (block L), `T-C10-72` (block M), `T-C10-73` (block N) and `T-C10-74` (block O).
+Foundation (`story: —`): **30 tickets · 72.5h** — all of block A, plus `T-C10-18`, plus `T-C10-68` (block I), `T-C10-69` (block J), `T-C10-70` (block K), `T-C10-71` (block L), `T-C10-72` (block M), `T-C10-73` (block N), `T-C10-74` (block O) and `T-C10-75`–`79` (block P, this pass).
 
-By phase: **Phase 0: 58 tickets · 145.0h** (blocks A, C, D, E, I, J, K, L, M, N, O, plus block B minus its 3 retired IDs and minus `T-C10-34`) · **Phase 1: 7 tickets · 15.0h** (`T-C10-34` + block F) · **Phase 2: 2 tickets · 5.0h** (block G) · **Phase 3: 4 tickets · 9.5h** (block H). `C10` is no longer a Phase-0-only epic; it is now the least phase-atomic epic in `docs/backlog/epic-map.md`, and its drill position (1st) is unaffected.
+By phase: **Phase 0: 63 tickets · 157.0h** (blocks A, C, D, E, I, J, K, L, M, N, O, P, plus block B minus its 3 retired IDs and minus `T-C10-34`) · **Phase 1: 7 tickets · 15.0h** (`T-C10-34` + block F) · **Phase 2: 2 tickets · 5.0h** (block G) · **Phase 3: 4 tickets · 9.5h** (block H). `C10` is no longer a Phase-0-only epic; it is now the least phase-atomic epic in `docs/backlog/epic-map.md`, and its drill position (1st) is unaffected. Block P's phase 0 is a deployment-timing label, not a PRD phase claim — `ADR-015` is a temporary stage-only amendment, not phased product scope.
 
-By agent: `backend-engineer` 48 · `frontend-engineer` 13 · `ci-cd-expert` 4 · `—` 6 · **retired 3**. The six `—` tickets are three workspace-tooling tickets, the two scaffolding tickets that span both platforms, and one API-E2E spec — work that belongs to neither dev agent, so each names its layer and platform instead. `T-C10-68` is the first ticket in this epic to name `ci-cd-expert` explicitly, for per-project `project.json` target ownership, `T-C10-69` its second, `T-C10-70` its third, and `T-C10-71` its fourth — see the note below the Reading-a-ticket table if that agent is not yet recognised by whoever picks this up.
+By agent: `backend-engineer` 51 · `frontend-engineer` 13 · `ci-cd-expert` 6 · `—` 6 · **retired 3**. The six `—` tickets are three workspace-tooling tickets, the two scaffolding tickets that span both platforms, and one API-E2E spec — work that belongs to neither dev agent, so each names its layer and platform instead. `T-C10-68` is the first ticket in this epic to name `ci-cd-expert` explicitly, for per-project `project.json` target ownership, `T-C10-69` its second, `T-C10-70` its third, `T-C10-71` its fourth, and `T-C10-76`/`T-C10-79` (block P, this pass) its fifth and sixth.
