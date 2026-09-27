@@ -4613,3 +4613,139 @@ No instales dependencias. No hagas commit ni push. No lances el despliegue ni to
 Implementado ticket T-C10-76
 
 </br>
+
+**Prompt 30:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-77.md ·
+`InMemoryIncidentRepository` — adaptador de persistencia de Incidencias en memoria
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`**, `sport-itsm-architecture` (§5.4: el adaptador
+vive en el `type:infrastructure` de su contexto) y `sport-itsm-engineering-principles` (errores tipados,
+inmutabilidad, funciones pequeñas). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Rebanada 1b (demo en Render **sin base de datos**, ADR-015 decisión 2). `T-C10-75`/`T-C10-76` ya están en
+commit: existe `PERSISTENCE_MODE=postgres|memory`. Este ticket construye el **segundo adaptador** de
+`IncidentRepositoryPort` + `IncidentReadRepositoryPort`, en memoria, y lo exporta. **No** lo enlaza a ningún
+token ni lee el modo: eso es `T-C10-78`, el siguiente. Es un **adaptador de producción del prototipo, no un
+doble de test**: se revisa con el mismo rigor que `TypeOrmIncidentRepository`.
+
+Alcance recortado por decisión del usuario: **sin suite de contrato compartida** entre adaptadores
+(consecuencia 7 de ADR-015, aplazada). Los specs unitarios propios son toda la superficie de prueba.
+
+#### Precondición
+    git status --porcelain                                      # limpio
+    pnpm nx run-many -t lint test --projects=incident-infrastructure,incident-domain   # verde
+
+#### Trampas del entorno — ya pagadas
+- Este ticket **no necesita base de datos**: solo el target `test` de `incident-infrastructure`. No ejecutes
+  `incident-infrastructure:integration` ni `api-e2e` (no cambias nada que cubran; si decides ejecutarlos,
+  uno detrás de otro, nunca a la vez: comparten la PostgreSQL efímera en 5499).
+- Los `*.entity.ts` no pueden importar alias `@sport-itsm/*` (la CLI de TypeORM no los resuelve). No toques
+  `incident.entity.ts`.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope, 7 criterios, "Out of scope").
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 (decisión 2) y `DATA-MODEL.md` §3.2 ("gaps acceptable, reuse
+  never") y §3.8.
+- `libs/incident/domain/src/lib/`: `incident-repository.port.ts`, `incident-read-repository.port.ts`,
+  `incident-reference.policy.ts` (`format()` ya lanza `IncidentReferenceSequenceOutOfRangeError`),
+  `incident.aggregate.ts` (`log()` / `reconstitute()`).
+- `libs/shared/domain/src/lib/identity.ts` (regex `UUID_V7`: versión `7`, variante `[89ab]`).
+- `libs/incident/infrastructure/src/lib/`: `typeorm-incident.repository.ts` (el contrato observable que
+  debes igualar: `null` en ausencia, agregado nuevo en cada lectura), `incident.mapper.ts`,
+  `incident-mapping.error.ts` (el patrón de error de infraestructura: `extends Error`, `name` fijado),
+  `incident.entity.ts`, y sus specs para el estilo de fixtures.
+- `libs/incident/infrastructure/src/index.ts`.
+- `apps/api/src/app/global-exception.filter.ts`: un `Error` que no es `DomainError` ni mapeado sale como
+  `500 INTERNAL_ERROR`. Eso es lo que el ticket quiere para tus tres errores; **no** añadas código de error
+  al contrato ni mapeos al filtro.
+
+#### Trampa 1 — el AC de la llamada 10 000 000 de `nextReference()`
+El AC pide que la llamada número diez millones lance `IncidentReferenceSequenceOutOfRangeError`. Llamar diez
+millones de veces en un spec puede ser lento (cada llamada construye un `TicketReference`). **Mídelo
+primero.** Si cabe en unos pocos segundos, hazlo literalmente, con timeout propio del caso. Si no, **no**
+metas una costura solo para test en la API pública del adaptador (p. ej. un parámetro de constructor con el
+contador inicial que `T-C10-78` podría acabar usando); elige la costura mínima que respete el diseño,
+justifícala y repórtala. En cualquier caso: el contador **sube antes** de formatear y **nunca baja**, de modo
+que la llamada 10 000 001 también lanza (y no reutiliza). No reimplementes el control de rango: `format()`.
+
+#### Trampa 2 — orden de las tres reglas de `save()`
+Decide y justifica un orden único y documentado. Recomendación:
+1. id **conocido** → si su `reference` difiere de la almacenada, error de **inmutabilidad**; si coincide,
+   se sobrescribe la instantánea (sigue contando como 1, **no** activa el tope aunque haya 10 000).
+2. id **nuevo** → si la `reference` ya está indexada a otro id, error de **unicidad**; si el almacén ya
+   tiene 10 000, error de **capacidad**.
+Toda comprobación **antes** de mutar el mapa o el índice: una `save()` rechazada deja el estado exactamente
+igual (lo exigen tres AC). `IncidentMapper.toEntity()` también puede lanzar `IncidentMappingError`: llámalo
+antes de mutar nada.
+
+#### Trampa 3 — "el llamante no puede mutar la instantánea"
+`IncidentEntity` lleva `Date` (`createdAt`/`updatedAt`), que son mutables. Garantiza que ni el agregado que
+recibe `save()` ni el que devuelven `findById()`/`findByReference()` comparten estado mutable con lo
+almacenado (copia defensiva de la entidad y/o `Object.freeze`, tú decides y lo justificas). Pruébalo:
+mutar lo que devolvió una lectura (o la entidad de entrada, si fuera accesible) no cambia la siguiente
+lectura, y dos lecturas devuelven instancias distintas (`not.toBe`).
+
+#### Trampa 4 — UUID v7 a mano con `node:crypto`
+Sin dependencia nueva. 48 bits de `Date.now()` big-endian, nibble de versión `0111`, 12 bits `rand_a`,
+variante `10` + 62 bits `rand_b` desde `randomBytes`, en minúsculas 8-4-4-4-12. Función **privada** de la
+carpeta `in-memory/` (no exportada desde el barrel, no en `shared/util`). Prueba que pasa
+`Identity.fromString()`, que los primeros 12 hex codifican el `Date.now()` del momento (con `jest` fijando
+el reloj o comparando rango) y que N llamadas dan N valores distintos. Si el lint de fronteras o de
+`import` protesta por `node:crypto` en un `type:infrastructure`, **repórtalo**, no relajes la regla.
+
+#### Trampa 5 — nada de `DataSource`
+El adaptador importa `IncidentEntity` (que trae decoradores de `typeorm`), pero **no** puede importar ni
+construir `DataSource`. El ticket pide una comprobación estructural: elige cómo (lectura del fuente
+buscando el import, o `jest.mock('typeorm')` espiando el constructor) y justifícalo.
+
+#### Trampa 6 — qué se exporta y cómo se inyecta
+Exporta `InMemoryIncidentRepository` desde `libs/incident/infrastructure/src/index.ts`, junto a
+`TypeOrmIncidentRepository`. `@Injectable()` como el adaptador TypeORM, ámbito por defecto (singleton),
+constructor sin dependencias. Los tres errores tipados: exporta solo lo que un consumidor fuera de la
+librería necesite de verdad hoy (probablemente nada — `T-C10-78` solo enlaza la clase); dilo en el informe.
+Nombres en inglés ITSM y mensajes que nombren los valores implicados (id, referencia, tope).
+
+#### Lo que NO debes tocar
+`apps/**` (el cableado es `T-C10-78`), `libs/incident/{domain,application,data-access,feature,ui}/**`,
+`libs/shared/**`, `typeorm-incident.repository.ts`, `incident.mapper.ts`, `incident.entity.ts` y los
+`*.integration-spec.ts`, cualquier `project.json`, `docker/**`, `.github/**`, `package.json`, `docs/**`,
+`CLAUDE.md`, `prompts.md`, `.claude/**` (salvo tu memoria). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-infrastructure --skip-nx-cache` en verde, con un caso por cada AC (1 a 7) más los
+   de las trampas 2 a 5. Pega el resumen y el tiempo del caso de la trampa 1.
+2. `pnpm nx lint incident-infrastructure` en verde.
+3. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+4. `grep -rn "DataSource" libs/incident/infrastructure/src/lib/in-memory/` → solo en el spec estructural, si
+   acaso. Pega la salida.
+5. `pnpm prettier --check` sobre tus ficheros.
+6. `git status --porcelain`: solo `libs/incident/infrastructure/src/lib/in-memory/**` e `index.ts`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Ningún contenedor efímero ni proceso escuchando al terminar.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- Tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las seis verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo que tras un reinicio las referencias vuelven a
+  `INC0000001` (aceptado en ADR-015, pero que se diga), cualquier diferencia de comportamiento observable
+  que veas frente a `TypeOrmIncidentRepository` (p. ej. qué pasa con una `save()` de un id conocido), y
+  lo que `T-C10-78` necesite saber para enlazarlo.
+
+### Response:
+
+Implementado ticket T-C10-77
+
+</br>
