@@ -19,8 +19,11 @@
 # Neither command uses `ports`, `healthcheck`, `depends_on` or `restart` —
 # they are kept anyway, see the note below.
 #
-# It correctly has no `postgres` service: stage uses Render's managed
-# PostgreSQL instance, not a container this file could own.
+# It correctly has no `postgres` service: ADR-015 (the stage prototype,
+# docs/product/ARCHITECTURE.md §10, decision 4) removed PostgreSQL from
+# stage entirely — the API runs PERSISTENCE_MODE=memory below, and the web
+# service reverse-proxies /api/ to it (T-C10-79) — so there is no database,
+# managed or otherwise, for this file to own.
 #
 # `IMAGE_TAG` defaults to `local` so `docker compose build` works
 # out of the box for a manual smoke test; the pipeline overrides it with the
@@ -92,6 +95,15 @@ services:
     container_name: sport-itsm-web-stage
     ports:
       - '4200:80'
+    environment:
+      # nginx reverse-proxies /api/ to the API service, same origin, no CORS
+      # (ADR-015 decision 4, T-C10-79). Render sets this by hand on the web
+      # service's own dashboard entry to the API service's public Render
+      # URL — this entry only serves the local `docker compose up`
+      # smoke-test path described above. Origin only: no path, no trailing
+      # slash (docker/frontend/docker-entrypoint.d/10-check-api-upstream-url.sh
+      # rejects the container start otherwise).
+      - API_UPSTREAM_URL=http://api:3300
     depends_on:
       api:
         condition: service_healthy

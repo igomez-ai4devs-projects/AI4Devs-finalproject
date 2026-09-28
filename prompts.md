@@ -5043,3 +5043,152 @@ No hagas commit ni push. No ejecutes nada de `docker/**` (el compose de stage us
 Implementado ticket T-C1-103
 
 </br>
+
+**Prompt 33:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como ci-cd-expert e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-79.md ·
+nginx hace de proxy inverso de `/api/` hacia el servicio de la API — mismo origen, sin CORS
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: ci-cd-expert`. Aplica la skill **`ci-cd`** (Docker, nginx, compose) y cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Último eslabón de infraestructura de la demo en Render (ADR-015, decisión 4). Hoy `docker/frontend/nginx.conf`
+no tiene `location /api/`: en stage, toda llamada a la API cae en el fallback SPA y devuelve `index.html` con
+`200`. El frontend ya llama a la ruta **relativa** `/api` (`INCIDENT_API_BASE_URL`), así que la solución es
+que nginx reenvíe `/api/` a la API (`API_UPSTREAM_URL`), mismo origen, sin CORS y **sin tocar el frontend**.
+Ya están en commit la API en modo `memory` (`T-C10-75`…`78`) y la página de inicio (`T-C1-103`), así que la
+prueba local completa (inicio → formulario → ficha, todo por `localhost:4200`) es posible.
+
+#### Precondición
+    git status --porcelain                 # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test build --projects=api,web   # verde
+
+#### Trampas del entorno — ya pagadas
+- Los ficheros `*.sh` y `Dockerfile*` van con **LF** (`.gitattributes`); un shebang con CRLF rompe el
+  contenedor con "no such file or directory". Compruébalo en lo que crees.
+- `apps/web-e2e` usa `web:serve` (dev server en 4200), **no** nginx: este ticket no lo afecta, pero el `web` del
+  compose de stage publica también el **4200**. Antes de levantar stage, comprueba que no hay nada en
+  3300/4200; al terminar, `docker compose … down` y puertos libres.
+- Las imágenes de stage son solo de ejecución: necesitan `dist/` construido antes (lee la cabecera de
+  `docker/docker-compose.stage.yml` y `docker/backend/Dockerfile` para saber qué targets hacen falta, p. ej.
+  `api:build-migrations`/`prune`, y `web:build`).
+- La API de stage arranca con `NODE_ENV=staging` y `PERSISTENCE_MODE=memory` (`T-C10-76`); la imagen trae
+  `NODE_ENV=production` por defecto, y `memory`+`production` tumba el arranque a propósito.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope, 7 criterios, lista manual de Render que **no** ejecutas).
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 (decisión 4) y lo que dice §9/§11.3/§12 del proxy.
+- `docker/frontend/{Dockerfile,nginx.conf}`, `docker/docker-compose.stage.yml`, `docker/backend/Dockerfile`,
+  `.github/workflows/deploy-stage.yml` (cómo construye y publica la imagen web: el contexto debe seguir
+  valiendo en CI), `apps/api/src/app/global-exception.filter.ts` (la forma del 404 JSON).
+- La documentación de la imagen oficial `nginx` sobre `/etc/nginx/templates`, `NGINX_ENVSUBST_OUTPUT_DIR`,
+  `NGINX_ENVSUBST_FILTER` y los scripts de `/docker-entrypoint.d/` (orden por nombre; los `*.envsh` se
+  cargan con `source`) — **compruébalo dentro de la imagen** (`docker run --rm nginx:alpine cat /docker-entrypoint.sh`),
+  no de memoria.
+
+#### Trampa 1 — `nginx.conf` es un fichero **completo**, no un `conf.d/`
+El `Dockerfile` copia `nginx.conf` sobre `/etc/nginx/nginx.conf` (con su bloque `http`), y ese fichero **no**
+incluye `conf.d/*.conf`. Si dejas la plantilla en la ruta por defecto (salida en `/etc/nginx/conf.d`), nginx
+**no la cargará**. Recomendación: plantilla del fichero entero (p. ej. `docker/frontend/nginx.conf.template`
+→ `/etc/nginx/templates/nginx.conf.template`) con `NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx`, de modo que el
+resultado sea exactamente `/etc/nginx/nginx.conf`. Elimina el `nginx.conf` estático si queda huérfano y dilo.
+
+#### Trampa 2 — `envsubst` y las variables propias de nginx
+`$uri`, `$host`, `$scheme`, `$remote_addr`… conviven en la plantilla con `${API_UPSTREAM_URL}`. El script de la
+imagen solo sustituye variables definidas en el entorno, pero no te fíes: fija `NGINX_ENVSUBST_FILTER` para
+que solo se sustituyan las variables que tú declares, y **inspecciona el `nginx.conf` renderizado** dentro del
+contenedor (`docker exec … cat /etc/nginx/nginx.conf`) para demostrar que las variables de nginx siguen
+intactas. Pega el fragmento de `location /api/` renderizado.
+
+#### Trampa 3 — `proxy_pass` con variable: sin URI y sin barra final
+Con `proxy_pass $variable;` (necesario para resolver en cada petición), nginx reenvía la URI original **solo**
+si el valor no lleva parte de ruta. Si `API_UPSTREAM_URL` llega como `https://x.onrender.com/` (con barra
+final), nginx reemplaza toda la URI por `/` y todas las llamadas llegarían a la raíz de la API. El script de
+comprobación de `/docker-entrypoint.d/` debe **fallar** (o normalizar, y decirlo) si la variable falta, está
+vacía, no empieza por `http://`/`https://` o lleva ruta/barra final. Nombre del script con un prefijo que lo
+ejecute **antes** del de `envsubst` (p. ej. `10-…`), y **ejecutable** en la imagen (`COPY --chmod=755` o
+`chmod`): un script sin bit de ejecución se **ignora en silencio** y la comprobación no existiría.
+
+#### Trampa 4 — `resolver`: Docker local y Render no comparten DNS
+`127.0.0.11` solo existe dentro de una red de Docker; en Render no. Recomendación: que el script (un `*.envsh`
+para poder exportar) lea el primer `nameserver` de `/etc/resolv.conf` y lo exporte (p. ej. `NGINX_RESOLVER`)
+para la plantilla, con `valid=` corto e `ipv6=off` si no hay IPv6. Justifica tu elección. `Host` y SNI:
+`proxy_set_header Host $proxy_host;`, `proxy_ssl_server_name on;` (y `proxy_ssl_name $proxy_host;` si hace
+falta) — **no** el `Host` del navegador. Tiempos: `proxy_connect_timeout` y `proxy_read_timeout` ≥ 60 s
+(`proxy_connect_timeout` no admite más de ~75 s). `X-Forwarded-For` (`$proxy_add_x_forwarded_for`),
+`X-Forwarded-Proto` (en Render el TLS termina antes de nginx: considera respetar un `X-Forwarded-Proto`
+entrante y caer en `$scheme`, y justifícalo) y `X-Forwarded-Host` (`$host`).
+
+#### Trampa 5 — `add_header` y la herencia: no rompas nada y no lo empeores
+En nginx, un `add_header` dentro de un `location` **anula** la herencia de los `add_header` del `server`. La
+configuración actual ya lo sufre (las `location` de assets, `= /index.html` y `/health` pierden las cabeceras
+de seguridad). El ticket es **aditivo**: no cambies esas reglas, pero **no** pongas `add_header` en
+`location /api/` (para que herede las tres cabeceras de seguridad), y **reporta** el fallo preexistente.
+Demuéstralo con `curl -I` a `/api/…` y a `/` (pega las cabeceras).
+
+#### Trampa 6 — el compose de stage y su cabecera
+Añade `API_UPSTREAM_URL=http://api:3300` al `environment` del servicio `web`. La cabecera del fichero aún
+dice "stage uses Render's managed PostgreSQL instance" (desfasado por ADR-015, lo reportaste en `T-C10-76`):
+como este ticket ya edita ese fichero, puedes corregir **esa frase** para que describa ADR-015 (sin
+PostgreSQL, API en memoria, web con proxy `/api/`). Nada más de ese comentario. No toques el servicio `api`.
+
+#### Trampa 7 — cómo probar lo que el ticket pide sin navegador
+- AC2: `docker run` de la imagen web **sin** `API_UPSTREAM_URL` → sale con código ≠ 0 y el log nombra la
+  variable. Repite con `https://x.onrender.com/` (barra final) → también falla (trampa 3). Pega los logs.
+- AC3: stage completo (`docker compose -f docker/docker-compose.stage.yml up -d --build` tras construir
+  `dist/`): `curl -i http://localhost:4200/api/incidents/INC9999999` → 404 JSON de la API, nunca `index.html`.
+- AC4 (cabeceras del lado de la API): la API no las registra. Usa un eco **temporal y no versionado** (p. ej.
+  un `node -e` en el host que devuelva las cabeceras recibidas, y `API_UPSTREAM_URL=http://host.docker.internal:<puerto>`)
+  para mostrar `Host` = upstream y los tres `X-Forwarded-*`. Opcional pero valioso: apunta a un HTTPS público
+  cualquiera para demostrar que SNI y el `resolver` funcionan (cualquier respuesta del servidor remoto, no un
+  `502` de nginx). Borra todo lo temporal.
+- AC7 (sin navegador): por `http://localhost:4200` haz `GET /` (HTML de la SPA), `POST /api/incidents` con un
+  cuerpo válido (mira el DTO) → 201 `{reference}`, `GET /api/incidents/<reference>` → 200 con lo registrado,
+  y `GET /incidents/<reference>` → HTML de la SPA (fallback, no 404). La parte de navegador la haré yo: déjalo
+  indicado como **pendiente de prueba manual del usuario**.
+
+#### Lo que NO debes tocar
+`apps/**`, `libs/**`, `apps/web/proxy.conf.json`, `docker/backend/**`, `docker/docker-compose.{dev,e2e}.yml`,
+el servicio `api` de `docker-compose.stage.yml`, `.github/**` (salvo que la ruta de la plantilla obligue a
+cambiar el paso de construcción — en ese caso, cambio mínimo y dilo), `package.json`, `docs/**`, `readme.md`,
+`CLAUDE.md`, `.env`, `prompts.md`, `.claude/**` (salvo tu memoria). El ticket no se edita. No actives CORS.
+
+#### Verificación — ejecútala, no la afirmes
+1. `docker build -f docker/frontend/Dockerfile .` en verde (tras `pnpm nx build web`).
+2. AC2: los dos arranques fallidos de la trampa 7, con sus logs.
+3. El `nginx.conf` renderizado dentro del contenedor (trampa 2): `location /api/`, `resolver` y una muestra de
+   variables de nginx intactas.
+4. AC3 y AC7 vía `docker compose -f docker/docker-compose.stage.yml up`: las cuatro respuestas de la trampa 7
+   (código, cabeceras relevantes y cuerpo). `/health` → 200.
+5. AC4: la salida del eco temporal (y, si lo hiciste, la prueba HTTPS).
+6. Trampa 5: `curl -I` de `/` y de `/api/incidents/INC9999999` con sus cabeceras de seguridad.
+7. Limpieza: `docker compose … down`, `docker ps` solo con `sport-itsm-postgres-dev`, nada en 3300/4200,
+   eco temporal borrado, `git status --porcelain` solo con tus ficheros (`docker/frontend/**`,
+   `docker/docker-compose.stage.yml`) y `file`/`od` mostrando LF en tus `*.sh`/`*.envsh`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias en el repo. No hagas commit ni push. No lances el despliegue ni toques Render/GitHub.
+
+#### Informa al terminar — en español
+- Ficheros creados, modificados y eliminados, con la plantilla final completa.
+- Tus decisiones de las trampas 1 a 7, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la herencia de `add_header`, lo que el usuario debe
+  poner en Render para el servicio web (`API_UPSTREAM_URL` exacta, sin barra final; `PORT`; health check
+  `/health`), el comportamiento esperado del primer acceso tras la suspensión de la API, y los comentarios
+  desfasados que sigan describiendo stage con PostgreSQL (workflow, `readme.md` §2.4, skill `ci-cd`).
+
+### Response:
+
+Implementado ticket T-C10-79
+
+</br>
