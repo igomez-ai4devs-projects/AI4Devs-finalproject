@@ -3,8 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { configModuleOptions } from '../config/configuration';
 import { NodeEnvironment } from '../config/env.validation';
 import { loadEnvironment } from '../config/environment';
-import { DatabaseModule } from '../database/database.module';
 import { EventDispatchModule } from '../event-dispatch/event-dispatch.module';
+import { PersistenceModule } from '../persistence/persistence.module';
 import { TestEventDispatchModule } from '../testing/test-event-dispatch.module';
 import { IncidentModule } from './incident/incident.module';
 
@@ -39,16 +39,24 @@ const testOnlyModules =
  * tokens to concrete adapters (ADR-003), plus the cross-cutting
  * `EventDispatchModule` that binds `EventPublisherPort` for all of them
  * (`T-C10-73`). `IncidentModule` (`T-C1-02`) is the first context module;
- * `T-C1-06` gives it its first real provider binding. `DatabaseModule`
- * (`T-C1-06`) opens the one PostgreSQL connection every context's repository
- * adapters share — imported once here, `@Global()` so no context module
- * re-imports it.
+ * `T-C1-06` gave it its first real provider binding.
+ *
+ * **`PersistenceModule.forMode()` (`T-C10-78`, ADR-015 decision 3).** Which
+ * repository adapter backs each context's port tokens is now chosen once,
+ * here, from `loadEnvironment().PERSISTENCE_MODE` — the same sanctioned,
+ * pre-DI read this file already performs above for `NODE_ENV`. `postgres`
+ * imports `DatabaseModule` (opening the one PostgreSQL connection every
+ * context's TypeORM adapters share) and binds the TypeORM adapters; `memory`
+ * binds the in-memory adapters instead and never imports `DatabaseModule`, so
+ * no `DataSource` is ever constructed on that path. This replaces the
+ * previous unconditional `DatabaseModule` import — no context module
+ * re-imports either `PersistenceModule` or `DatabaseModule`, both `@Global()`.
  */
 @Module({
   imports: [
     ConfigModule.forRoot(configModuleOptions),
     EventDispatchModule,
-    DatabaseModule,
+    PersistenceModule.forMode(environment.PERSISTENCE_MODE),
     IncidentModule,
     ...testOnlyModules,
   ],

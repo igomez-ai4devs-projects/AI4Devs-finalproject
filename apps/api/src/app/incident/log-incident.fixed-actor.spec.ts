@@ -17,7 +17,9 @@ import {
   LogIncidentUseCase,
 } from '@sport-itsm/incident-application';
 import { BOOTSTRAP_REQUESTER_ID } from '../../bootstrap/bootstrap-identities';
+import { PersistenceMode } from '../../config/env.validation';
 import { EventDispatchModule } from '../../event-dispatch/event-dispatch.module';
+import { PersistenceModule } from '../../persistence/persistence.module';
 import { IncidentModule } from './incident.module';
 import {
   INCIDENT_ACTOR_RESOLVER,
@@ -49,6 +51,21 @@ import {
  * `.compile()` fails to resolve `LogIncidentUseCase`'s dependency — nothing
  * about this test's own assertions changes, only what makes the module
  * graph as production-accurate as this narrower fixture can be.
+ *
+ * **`PersistenceModule.forMode(PersistenceMode.Memory)` import added by
+ * `T-C10-78`.** `IncidentModule` no longer binds `INCIDENT_REPOSITORY`
+ * itself (`incident-persistence.bindings.ts`) — without this import,
+ * `.overrideProvider(INCIDENT_REPOSITORY)` below has no token in the graph to
+ * override and `.compile()` fails the same way it would for
+ * `EVENT_PUBLISHER`. `Memory` is an arbitrary but harmless choice of mode
+ * here: this suite immediately overrides `INCIDENT_REPOSITORY` with its own
+ * local double regardless, so the mode's *own* binding is never actually
+ * constructed. The local double below is named `FixedIdentityIncidentRepository`,
+ * not `InMemoryIncidentRepository`, precisely to avoid colliding with the
+ * real, exported `@sport-itsm/incident-infrastructure` adapter of that name —
+ * this class is a fixed-identity test double for this suite's own narrow
+ * needs (`nextIdentity()` always returns `ALLOCATED_IDENTITY`), not that
+ * adapter, and is not meant to be confused with it.
  */
 
 const ALLOCATED_IDENTITY = Identity.fromString(
@@ -56,8 +73,13 @@ const ALLOCATED_IDENTITY = Identity.fromString(
 );
 const CLOCK = FixedClock.at(new Date('2026-09-26T09:00:00.000Z'));
 
-/** An in-memory adapter, the same shape `T-C1-07`'s own AC3 spec uses. */
-class InMemoryIncidentRepository implements IncidentRepositoryPort {
+/**
+ * A fixed-identity test double, the same shape `T-C1-07`'s own AC3 spec uses
+ * — renamed from `InMemoryIncidentRepository` by `T-C10-78` to avoid
+ * colliding with the real, exported `@sport-itsm/incident-infrastructure`
+ * adapter of that name (this suite's own doc comment above).
+ */
+class FixedIdentityIncidentRepository implements IncidentRepositoryPort {
   private nextSequenceValue = 1;
   private readonly incidentsById = new Map<string, Incident>();
 
@@ -101,10 +123,14 @@ const VALID_INPUT: LogIncidentInput = {
 
 describe('LogIncidentUseCase composed with IncidentModule’s fixed actor binding (T-C10-74 AC3)', () => {
   it('authorizes and persists exactly as it would against any resolved Actor', async () => {
-    const repository = new InMemoryIncidentRepository();
+    const repository = new FixedIdentityIncidentRepository();
 
     const moduleRef = await Test.createTestingModule({
-      imports: [EventDispatchModule, IncidentModule],
+      imports: [
+        EventDispatchModule,
+        PersistenceModule.forMode(PersistenceMode.Memory),
+        IncidentModule,
+      ],
     })
       .overrideProvider(INCIDENT_REPOSITORY)
       .useValue(repository)

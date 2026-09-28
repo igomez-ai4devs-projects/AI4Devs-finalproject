@@ -11,3 +11,4 @@
 - [class-validator stopAtFirstError ordering](project_class_validator_stop_at_first_error_ordering.md) — global stopAtFirstError now set; @IsDefined() always runs first, other decorators fire bottom-up (closest to property first).
 - [Check leftover dev server before manual verification](feedback_check_leftover_dev_server_before_manual_verification.md) — netstat/PID-start-time check the port before trusting curl; a stale nx serve from a prior session can still be listening.
 - [ISP port extension blast radius](feedback_isp_port_extension_blast_radius.md) — grep every `implements <WidePort>` repo-wide before making a new narrow port extend it; an out-of-scope implementer breaks the build.
+- [Dynamic import of a workspace lib in a spec](project_dynamic_import_workspace_lib_in_spec.md) — trips `@nx/enforce-module-boundaries` repo-wide; split env-driven isolate boot from identity-sensitive assertions. Also: `nx reset` before trusting a lint failure.

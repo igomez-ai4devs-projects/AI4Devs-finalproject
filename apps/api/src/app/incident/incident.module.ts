@@ -17,7 +17,6 @@ import {
   GetIncidentByReferenceUseCase,
   LogIncidentUseCase,
 } from '@sport-itsm/incident-application';
-import { TypeOrmIncidentRepository } from '@sport-itsm/incident-infrastructure';
 import { FixedRequesterActorResolver } from '../../bootstrap/fixed-requester-actor.resolver';
 import { SystemClock } from '../system-clock';
 import { INCIDENT_ACTOR_RESOLVER } from './incident-actor-resolver';
@@ -29,16 +28,21 @@ import { ProvisionalNoopSlaPolicyAdapter } from './provisional-noop-sla-policy.a
  * (`ARCHITECTURE.md` §6.3, `PROJECT-STRUCTURE.md`).
  *
  * `T-C1-02` wired this module into `AppModule` empty on purpose, as the shape
- * every later `incident` ticket would copy. `T-C1-06` is that first ticket:
- * it introduces the port's first concrete adapter and binds it here, exactly
- * as this module's own doc comment already promised —
- * `INCIDENT_REPOSITORY` → `TypeOrmIncidentRepository`.
+ * every later `incident` ticket would copy. `T-C1-06` was the first ticket
+ * to bind a concrete adapter here — `INCIDENT_REPOSITORY` →
+ * `TypeOrmIncidentRepository`, unconditionally.
  *
- * `TypeOrmIncidentRepository` depends on `DataSource` (`typeorm`), provided
- * globally by `DatabaseModule` (`../../database/database.module.ts`, imported
- * once in `AppModule`) — this module does not re-import it, the same reason
- * `EVENT_PUBLISHER` is not re-imported here either (`EventDispatchModule` is
- * `@Global()`).
+ * **`T-C10-78` moves that binding out.** `INCIDENT_REPOSITORY` and
+ * `INCIDENT_READ_REPOSITORY` are no longer provided by this module: which
+ * adapter backs them is now a function of `PERSISTENCE_MODE`, decided once by
+ * `PersistenceModule.forMode()` (`../../persistence/persistence.module.ts`)
+ * from `./incident-persistence.bindings.ts`'s total map, and imported
+ * globally by `AppModule` alongside this module (ADR-015 decision 3,
+ * `ARCHITECTURE.md` §6.3). Both tokens still resolve for anything in this
+ * module that needs them (`LogIncidentUseCase`'s and
+ * `GetIncidentByReferenceUseCase`'s `useFactory` bindings below), the same
+ * way `EVENT_PUBLISHER` already resolves without this module re-importing
+ * `EventDispatchModule` — `PersistenceModule` is `@Global()` too.
  *
  * `INCIDENT_ACTOR_RESOLVER` → `FixedRequesterActorResolver` is `T-C10-74`'s
  * binding, added ahead of `T-C1-08` on purpose: `T-C1-08`'s controller will
@@ -63,30 +67,29 @@ import { ProvisionalNoopSlaPolicyAdapter } from './provisional-noop-sla-policy.a
  *   that class's own doc comment for why a no-op cannot lose the
  *   `IncidentLogged` event.
  *
- * `EVENT_PUBLISHER` is not bound here for the same reason `INCIDENT_REPOSITORY`
- * *is*: it is global (`EventDispatchModule`, `@Global()`), so any test module
- * that composes `IncidentModule` on its own — not through `AppModule` — must
- * import `EventDispatchModule` alongside it for `LogIncidentUseCase`'s
- * factory to resolve (`log-incident.fixed-actor.spec.ts` does exactly that).
+ * `EVENT_PUBLISHER` is not bound here because it is global
+ * (`EventDispatchModule`, `@Global()`) — the same reason `INCIDENT_REPOSITORY`
+ * and `INCIDENT_READ_REPOSITORY` no longer need to be either, now that
+ * `PersistenceModule` binds them globally too (`T-C10-78`, above). Any test
+ * module that composes `IncidentModule` on its own — not through `AppModule`
+ * — must import both global modules alongside it for
+ * `LogIncidentUseCase`'s factory to resolve
+ * (`log-incident.fixed-actor.spec.ts` does exactly that).
  *
- * **`T-C1-100` adds the read side.** `INCIDENT_READ_REPOSITORY` is bound with
- * `useExisting: INCIDENT_REPOSITORY`, never a second `useClass:
- * TypeOrmIncidentRepository` — one adapter instance, two ports, exactly
- * `T-C1-99`'s closing note and this ticket's own AC6. `useExisting` (not
- * `useValue`/`useFactory`) is what makes the two tokens alias the *same*
- * resolved instance rather than each constructing their own —
- * `incident.module.spec.ts` proves this by identity, not by type.
- * `GetIncidentByReferenceUseCase` follows the same `useFactory` pattern
- * `LogIncidentUseCase` already established: a framework-free class the
- * composition root constructs, never `@Injectable()`, injected with only the
- * one port its constructor declares (`IncidentReadRepositoryPort`) — nothing
- * about read-only lookup needs `SLA_POLICY`, `EVENT_PUBLISHER` or `CLOCK`.
+ * **`T-C1-100` added the read side**, `GetIncidentByReferenceUseCase`,
+ * following the same `useFactory` pattern `LogIncidentUseCase` already
+ * established: a framework-free class the composition root constructs,
+ * never `@Injectable()`, injected with only the one port its constructor
+ * declares (`IncidentReadRepositoryPort`) — nothing about read-only lookup
+ * needs `SLA_POLICY`, `EVENT_PUBLISHER` or `CLOCK`. `INCIDENT_READ_REPOSITORY`
+ * itself resolves through `PersistenceModule`'s `useExisting:
+ * INCIDENT_REPOSITORY` binding (`incident-persistence.bindings.ts`) — one
+ * adapter instance, two ports, in either `PersistenceMode` — which is what
+ * `incident.module.spec.ts` proves by identity, not by type.
  */
 @Module({
   controllers: [IncidentController],
   providers: [
-    { provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository },
-    { provide: INCIDENT_READ_REPOSITORY, useExisting: INCIDENT_REPOSITORY },
     {
       provide: INCIDENT_ACTOR_RESOLVER,
       useClass: FixedRequesterActorResolver,

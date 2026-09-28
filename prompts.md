@@ -4749,3 +4749,162 @@ No instales dependencias. No hagas commit ni push. Ningún contenedor efímero n
 Implementado ticket T-C10-77
 
 </br>
+
+**Prompt 31:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-78.md ·
+`PersistenceModule.forMode()` — la persistencia se elige una vez, en la raíz de composición, como datos
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (DI por tokens, composición solo en `apps/api`),
+`sport-itsm-architecture` (§6.3 raíz de composición; dominio y aplicación intactos) y
+`sport-itsm-engineering-principles`. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es la pieza que hace real la demo de Render **sin base de datos** (ADR-015, decisión 3). Ya están en commit
+`PERSISTENCE_MODE` (`T-C10-75`/`T-C10-76`) e `InMemoryIncidentRepository` (`T-C10-77`, exportado desde
+`@sport-itsm/incident-infrastructure`). Aquí el enlace de `INCIDENT_REPOSITORY`/`INCIDENT_READ_REPOSITORY`
+pasa a ser una **función del modo**, resuelta una sola vez; `memory` no importa `DatabaseModule` ni construye
+ningún `DataSource`. Después de este ticket, la API puede arrancar en Render con `PERSISTENCE_MODE=memory`.
+
+#### Precondición
+    git status --porcelain                                       # limpio
+    pnpm nx run-many -t lint test --projects=api,incident-infrastructure   # verde
+
+#### Trampas del entorno — ya pagadas
+- Postgres de desarrollo en el **puerto de host 5452** (nunca 5432). Windows tiene variables **globales
+  `POSTGRES_*` de otro proyecto** (usuario `userdev`): si arrancas la API a mano en `postgres`, pasa los
+  cinco valores en la misma llamada; para probar `memory` **sin** ninguna `POSTGRES_*`, quítalas con
+  `env -u POSTGRES_HOST -u POSTGRES_PORT -u POSTGRES_DB -u POSTGRES_USER -u POSTGRES_PASSWORD …`.
+- El `.env` de la raíz (ignorado por git) lleva `PERSISTENCE_MODE=postgres` y las `POSTGRES_*`, y
+  `ConfigModule` lo carga desde el **directorio de trabajo** (`envFilePath: ['.env']`), añadiendo al entorno
+  lo que falte. No lo edites.
+- `api-e2e` e `incident-infrastructure:integration` comparten la PostgreSQL efímera (5499): **uno detrás de
+  otro**. Cypress: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- Un `@Global()` no llega a un `TestingModule` que no lo importe: por eso los specs de `IncidentModule`
+  importan `EventDispatchModule` a mano (y ahora también necesitarán `PersistenceModule`).
+- Antes de una prueba manual, comprueba que no hay procesos en 3300/4200 y ciérralos al terminar.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope y 7 criterios).
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 y las notas de §6.3 sobre `apps/api/src/persistence/`
+  (≈ líneas 823 y 1175-1176).
+- `apps/api/src/app/app.module.ts` (lectura pre-DI con `loadEnvironment()`), `app/incident/incident.module.ts`
+  y sus comentarios, `app/incident/incident.module.spec.ts`, `app/incident/log-incident.fixed-actor.spec.ts`,
+  `database/database.module.ts`, `event-dispatch/event-dispatch.module.ts`, `main.ts`,
+  `config/configuration.ts`, `config/env.validation.ts` (`PersistenceMode`),
+  `testing/test-event-dispatch.harness-gating.spec.ts` (patrón `jest.isolateModulesAsync` para arrancar
+  `AppModule` con otro entorno).
+- `libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts`.
+
+#### Trampa 1 — el AC3 (grep) contradice el propio Scope
+El Scope y el ADR dicen que `AppModule` llama a `PersistenceModule.forMode(loadEnvironment().PERSISTENCE_MODE)`;
+el AC3 dice que, fuera de `apps/api/src/persistence/`, `PERSISTENCE_MODE` solo aparece en
+`env.validation.ts` y en `data-source.ts`. `app.module.ts` está fuera de `persistence/`. Además hay
+apariciones legítimas en fixtures de specs, `.env.example`, `project.json` y compose.
+Recomendación: **sigue el Scope y el ADR** (`forMode(mode)` con el modo como parámetro, llamado desde
+`AppModule`), que es lo que mantiene `forMode` probable sin tocar el entorno; interpreta el AC3 como "ningún
+controlador, caso de uso, adaptador ni módulo *condiciona* por el modo" y **reporta** la redacción del AC
+para `architect-tech-lead`. Pega el grep completo y clasifica cada coincidencia.
+
+#### Trampa 2 — los overrides de los specs existentes dejan de encontrar el token
+`incident.module.spec.ts` y `log-incident.fixed-actor.spec.ts` hacen `.overrideProvider(INCIDENT_REPOSITORY)`;
+al sacar el token de `IncidentModule`, sin `PersistenceModule.forMode(PersistenceMode.Memory)` en los
+`imports` el override no tiene a quién sustituir y el use case no resuelve. Añádelo como pide el ticket.
+- En `incident.module.spec.ts`: mantén el caso actual con stub y **añade** uno sin override que pruebe que en
+  `memory` ambos tokens resuelven a la **misma** instancia de `InMemoryIncidentRepository` (el AC5 dice
+  "requiring no live database": pruébalo, no lo supongas).
+- En `log-incident.fixed-actor.spec.ts`: ya existe una clase **local** llamada `InMemoryIncidentRepository`
+  (un doble con identidad fija). No importes el adaptador real con el mismo nombre; recomendación: renombra
+  el doble local (p. ej. `FixedIdentityIncidentRepository`) y conserva el override. Cambio mínimo, justificado.
+
+#### Trampa 3 — probar "sin `POSTGRES_*`" de verdad
+El spec de arranque en `memory` debe arrancar `AppModule` (patrón `jest.isolateModulesAsync` del harness)
+con `PERSISTENCE_MODE=memory`, `NODE_ENV` distinto de `production` y **borrando** del `process.env` del caso
+las cinco `POSTGRES_*` (esta máquina las tiene globales). Ojo al `.env`: si Jest corre con el directorio de
+trabajo en la raíz, `ConfigModule` lo cargará y **re-inyectará** `POSTGRES_*` en el entorno, falseando
+"sin `POSTGRES_*`". **Comprueba** cuál es el cwd de `nx test api` y cómo se comporta; neutralízalo sin tocar
+`configuration.ts` si puedes (p. ej. aserción sobre lo que valida `ConfigService`, o `process.chdir` a un
+directorio temporal en el caso, restaurado en `afterEach`), y si no puedes, **repórtalo**. Afirma además:
+`moduleRef.get(DataSource)` (o `app.get`) falla — no hay proveedor `DataSource` — y `INCIDENT_REPOSITORY`
+es `instanceof InMemoryIncidentRepository`. Restaura `process.env` y el cwd en `afterEach`.
+Y el caso espejo en `postgres` (POSTGRES_* ficticias, `DataSource` perezoso, sin conectar):
+`INCIDENT_REPOSITORY` es `instanceof TypeOrmIncidentRepository` y `DataSource` sí resuelve.
+
+#### Trampa 4 — el AC7 de extremo a extremo sin HTTP real
+El ticket pide `@nestjs/testing` sin HTTP real ni BD, pero la configuración HTTP (`ValidationPipe`,
+`GlobalExceptionFilter`, prefijo) vive en `main.ts` y no se comparte. **No refactorices `main.ts`** (fuera de
+alcance). Recomendación, en dos niveles:
+1. **Spec**: en el contenedor arrancado en `memory`, resuelve `LogIncidentUseCase` y
+   `GetIncidentByReferenceUseCase` (y el actor de `INCIDENT_ACTOR_RESOLVER`), registra una incidencia y
+   léela por la referencia devuelta: los campos coinciden exactamente.
+2. **Prueba manual real** (el objetivo de la demo): `pnpm nx build api`, y desde un directorio **sin `.env`**
+   (p. ej. `dist/apps/api`) `env -u POSTGRES_HOST -u POSTGRES_PORT -u POSTGRES_DB -u POSTGRES_USER
+   -u POSTGRES_PASSWORD PERSISTENCE_MODE=memory NODE_ENV=staging PORT=3300 node main.js` — lo mismo que hará
+   Render —; `curl -X POST /api/incidents` con un cuerpo válido (mira el DTO) → 201 `{reference}`;
+   `curl /api/incidents/<reference>` → 200 con lo registrado; `curl /api/incidents/INC9999999` → 404
+   `NOT_FOUND`. Pega las tres respuestas y el log de arranque (no debe aparecer
+   "PostgreSQL DataSource constructed"). Cierra el proceso.
+
+#### Trampa 5 — `pg` en el camino `memory`
+El Scope dice que el grafo "prueba que `pg` no se carga" en `memory`. En el bundle de webpack no hay grafo
+separable; `pg` lo pide el driver de TypeORM al construir el `DataSource`. Lo demostrable es: en `memory` no
+se construye ningún `DataSource`. Si puedes probar además que `pg` no entra en `require.cache` en el spec de
+`memory`, hazlo; si no, **dilo** — no lo afirmes.
+
+#### Trampa 6 — exhaustividad y forma del módulo
+- `incidentPersistenceBindings: Record<PersistenceMode, Provider[]>` en
+  `apps/api/src/app/incident/incident-persistence.bindings.ts`. Prueba el AC4 sin dejar código roto en el
+  repo: p. ej. un `// @ts-expect-error` en un spec con un mapa al que le falta una clave, o describe el
+  experimento que hiciste (añadir un valor al enum y ver el fallo de `tsc`) y **revértelo**.
+- `PersistenceModule`: `@Global()`, `static forMode(mode: PersistenceMode): DynamicModule`, `providers` y
+  `exports` = concatenación de los mapas (hoy solo el de incident), `imports: [DatabaseModule]` **solo** en
+  `postgres`. En `memory`, `INCIDENT_REPOSITORY` con `useFactory: () => new InMemoryIncidentRepository()` y
+  `INCIDENT_READ_REPOSITORY` con `useExisting`: **una** instancia, singleton, dos puertos.
+- `IncidentModule` pierde solo las dos entradas de repositorio; todo lo demás igual. Actualiza sus
+  comentarios, que hoy dicen que `TypeOrmIncidentRepository` se enlaza ahí y que `DatabaseModule` es global
+  desde `AppModule`, y el comentario de `AppModule` sobre `DatabaseModule`.
+- Nada de `if (mode === …)` fuera de `PersistenceModule.forMode()` (y ahí, solo el de `DatabaseModule`).
+
+#### Lo que NO debes tocar
+`libs/**` (dominio, aplicación, infraestructura — incluido el adaptador en memoria), `apps/api/src/config/**`,
+`apps/api/src/data-source.ts`, `apps/api/src/database/**`, `apps/api/src/main.ts`, `apps/api-e2e/**`,
+`apps/web*/**`, cualquier `project.json`, `docker/**`, `.github/**`, `package.json`, `docs/**`,
+`CLAUDE.md`, `.env`, `prompts.md`, `.claude/**` (salvo tu memoria). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api --skip-nx-cache` en verde: spec nuevo (memory y postgres), los dos adaptados y el
+   harness-gating. Pega el resumen.
+2. `grep -rn "PERSISTENCE_MODE" apps libs --include=*.ts` → pégalo y clasifica cada línea (trampa 1).
+3. `grep -rn "INCIDENT_REPOSITORY\|INCIDENT_READ_REPOSITORY" apps/api/src --include=*.ts | grep -v spec`
+   → los `provide:` solo en `incident-persistence.bindings.ts`.
+4. La prueba manual de la trampa 4 (build + `node main.js` en `memory` sin `.env` ni `POSTGRES_*`): log de
+   arranque y las tres respuestas `curl`. Cierra el proceso y confirma 3300 libre.
+5. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde (camino `postgres`, sin cambios de
+   comportamiento). Pega el resumen.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros; `git status --porcelain` solo con ficheros del alcance.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Al terminar, nada escuchando en 3300/3333/4200 y ningún
+contenedor efímero en marcha (solo `sport-itsm-postgres-dev`).
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- Tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la redacción del AC3, lo que hayas visto del
+  `.env` y el cwd de Jest, si `pg` queda o no fuera en `memory`, la duplicación de la configuración HTTP de
+  `main.ts` (que impide probar el AC7 por HTTP en un spec) y cualquier cosa que `T-C10-79` (proxy nginx) o
+  el despliegue en Render deban saber.
+
+### Response:
+
