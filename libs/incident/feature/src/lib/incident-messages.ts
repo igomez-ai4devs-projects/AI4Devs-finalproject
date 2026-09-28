@@ -51,7 +51,7 @@ const COMMON_ERROR_MESSAGES = {
     'No hemos podido conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.',
   genericErrorMessage:
     'Algo ha fallado por nuestra parte. Inténtalo de nuevo en unos minutos.',
-  supportCodePrefix: 'Código de referencia:',
+  supportCodePrefix: 'Código para soporte:',
 } as const;
 
 /** The two fields a requester's intake request may carry (`LogIncidentRequesterRequest`) that this form renders a control for. */

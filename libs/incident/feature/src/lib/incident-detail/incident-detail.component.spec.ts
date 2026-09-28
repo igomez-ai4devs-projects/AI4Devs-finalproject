@@ -21,6 +21,7 @@ import {
   PRIORITY_LABELS,
 } from '../incident-messages';
 import { IncidentDetailComponent } from './incident-detail.component';
+import { DATE_DISPLAY_LOCALE } from './incident-detail-formatting';
 
 function detailUrl(reference: string): string {
   return `/api/incidents/${reference}`;
@@ -208,12 +209,12 @@ describe('IncidentDetailComponent (T-C1-101)', () => {
       );
     });
 
-    it("formats loggedAt in the reader's own locale/time zone, never the raw ISO string (NFR-I18N-03)", () => {
+    it("formats loggedAt in Spanish and the reader's own time zone, never the raw ISO string (NFR-I18N-03)", () => {
       setup('INC0000001');
       httpMock.expectOne(detailUrl('INC0000001')).flush(FULLY_EMPTY_INCIDENT);
       fixture.detectChanges();
 
-      const expected = new Intl.DateTimeFormat(undefined, {
+      const expected = new Intl.DateTimeFormat(DATE_DISPLAY_LOCALE, {
         dateStyle: 'long',
         timeStyle: 'short',
       }).format(new Date(FULLY_EMPTY_INCIDENT.loggedAt));
