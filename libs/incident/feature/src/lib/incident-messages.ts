@@ -65,6 +65,22 @@ export function isIncidentIntakeField(
 }
 
 export const INCIDENT_MESSAGES = {
+  /**
+   * `T-C1-103`'s home page at `/` — the Render demo's own landing surface, the
+   * smallest fragment of the eventual `C9` self-service portal
+   * (`FR-KNW-08`). Authored directly in Spanish (not a translation of the
+   * sections below: `intakeForm`/`detail`/`validation` stay in English until
+   * `T-C1-104`), and in the same plain language `NFR-USE-01` already requires
+   * of `intakeForm`/`detail`: no "incidencia"/"ticket"/"SLA"/"prioridad" in
+   * the heading or the intro. `linkLabel` is the user's own exact decision —
+   * "Reportar un problema" — not a paraphrase.
+   */
+  home: {
+    heading: 'Bienvenido a Sport ITSM',
+    intro:
+      'Si algo no funciona como esperabas en la plataforma, cuéntanoslo y lo revisaremos.',
+    linkLabel: 'Reportar un problema',
+  },
   intakeForm: {
     heading: 'Report a problem',
     intro: 'Tell us what went wrong. We will look into it and keep you posted.',

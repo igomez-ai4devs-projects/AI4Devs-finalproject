@@ -14,6 +14,19 @@ import { INCIDENT_MESSAGES } from './incident-messages';
 export const INCIDENT_INTAKE_ROUTE_PATH = 'new';
 
 /**
+ * Absolute URL of the requester intake form, mirroring `incidentDetailUrl`'s
+ * own reasoning below: the `/incidents` prefix belongs to the shell
+ * (`apps/web/src/app/app.routes.ts`'s `featureRoutes` entry), and
+ * `INCIDENT_INTAKE_ROUTE_PATH` is only the path segment relative to this
+ * library's own mount point. Declared once here — not repeated as a third
+ * `'/incidents/new'` literal — so `HomePageComponent`'s `routerLink`
+ * (`T-C1-103`, mounted outside this library's own `incidentRoutes`, so it
+ * cannot reuse a relative `routerLink` the way a sibling route could) and
+ * this route table's own path segment can never name the prefix differently.
+ */
+export const INCIDENT_INTAKE_URL = `/incidents/${INCIDENT_INTAKE_ROUTE_PATH}`;
+
+/**
  * Absolute URL of an Incident's detail screen for a given reference. Declared
  * here, in the one file that owns both today's writer (the intake form
  * navigates here on success, `T-C1-10` AC4, deviation 3) and the future

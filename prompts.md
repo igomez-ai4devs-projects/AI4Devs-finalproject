@@ -4908,3 +4908,138 @@ contenedor efímero en marcha (solo `sport-itsm-postgres-dev`).
 
 ### Response:
 
+Implementado ticket T-C10-78
+
+</br>
+
+**Prompt 32:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-103.md ·
+Página de inicio en `/` con enlace al formulario de registro
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Aplica **`sport-itsm-frontend`** (Angular 20.3: standalone, `OnPush`, signals,
+`@if`/`@for`, sin `NgModule`, accesibilidad escrita a mano, SCSS con custom properties locales) y
+`sport-itsm-architecture` (§7.1: el shell solo se acopla a los contextos por carga perezosa). Cierra con
+`sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Rebanada 1b, demo en Render. Hoy la raíz `/` sale **en blanco**: quien abra la URL de Render no ve nada.
+El usuario decidió una **página propia en `/`** (no una redirección), en **español**, con un título y un
+enlace **"Reportar un problema"** a `/incidents/new`. El backend de la demo (modo `memory`) ya está en commit;
+el proxy nginx (`T-C10-79`) va después de ti y su imagen incluirá esta página. La traducción al español del
+formulario y la ficha es `T-C1-104`, **no** este ticket.
+
+#### Precondición
+    git status --porcelain                  # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-feature,web   # verde
+
+#### Trampas del entorno — ya pagadas
+- Cypress desde el terminal de VS Code: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- `web-e2e` depende de `web:serve` (dev server en 4200, proxy `/api` → 3300). Antes de ejecutarlo,
+  comprueba que no hay procesos en 3300/4200 y ciérralos al terminar.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Context, Scope, 6 criterios, handoff).
+- `apps/web/src/app/app.routes.ts` (la ruta `''` vacía y sus comentarios), `app.component.ts`
+  (`main#main-content`, pureza del shell), `apps/web/src/index.html`.
+- `libs/incident/feature/src/`: `index.ts` (el barrel y su comentario), `lib/incident-routes.ts`
+  (`INCIDENT_INTAKE_ROUTE_PATH`, `incidentDetailUrl()`), `lib/incident-messages.ts` (secciones y la regla de
+  lenguaje llano `NFR-USE-01`), los componentes del formulario y de la ficha (patrón de estilos, foco, specs).
+- `apps/web-e2e/src/features/harness-smoke.feature` + `step-definitions/harness-smoke.steps.ts`, e
+  `incident-intake.feature` + sus steps (estilo de escenarios y viewport).
+
+#### Trampa 1 — la URL del enlace sin repetir `'/incidents/new'`
+`INCIDENT_INTAKE_ROUTE_PATH` es solo `'new'` (relativo); el prefijo `incidents` vive en el shell
+(`app.routes.ts`), y `incidentDetailUrl()` ya repite `'/incidents/'`. Recomendación: una constante o función
+exportada en `incident-routes.ts` junto a `incidentDetailUrl()` (p. ej. `INCIDENT_INTAKE_URL`, construida con
+`INCIDENT_INTAKE_ROUTE_PATH`) y úsala en el `routerLink`. No toques el shell para esto. Si ves que la
+duplicación del prefijo `incidents` entre shell y feature merece otra solución, **repórtalo**.
+
+#### Trampa 2 — el barrel y la carga perezosa
+El ticket pide `loadComponent: () => import('@sport-itsm/incident-feature').then((m) => m.HomePageComponent)`.
+`@sport-itsm/incident-feature` ya se carga de forma perezosa desde el shell: **no** lo importes estáticamente en
+ningún sitio de `apps/web` (la regla de fronteras marca la librería como perezosa y rompería). Exporta
+`HomePageComponent` en el barrel y actualiza su comentario. Anota en el informe que la página de inicio arrastra
+el mismo chunk que el formulario y la ficha (el barrel importa `incidentRoutes`); es aceptable para la demo,
+pero dilo.
+
+#### Trampa 3 — el texto: español, lenguaje llano, todo en constantes
+Nueva sección `home` en `INCIDENT_MESSAGES` (encabezado, una frase de introducción y la etiqueta del enlace),
+**en español**, sin jerga ("incidencia", "ticket", "SLA", "prioridad") en el encabezado ni en la introducción.
+La etiqueta del enlace es exactamente **"Reportar un problema"** (decisión del usuario). No traduzcas las
+secciones existentes (`intake`, `detail`, `validation`): eso es `T-C1-104`. Ningún literal de cara al usuario
+en la plantilla (AC5).
+
+#### Trampa 4 — `harness-smoke.feature` y quién escribe el E2E
+- El ticket dice "both of its scenarios", pero el fichero tiene **uno**. Debe seguir pasando **sin cambios**
+  en sus pasos. Su comentario de cabecera ("the shell renders none" de texto) deja de ser verdad para `/`:
+  puedes actualizar **solo ese comentario**, sin tocar el escenario; dilo.
+- El ticket asigna el E2E a `testing-implementer`, pero en esta rebanada el precedente (`T-C1-10`, `T-C1-101`)
+  es que el `frontend-engineer` escribe también sus escenarios de `apps/web-e2e`. Hazlo tú: un
+  `apps/web-e2e/src/features/home.feature` + steps — carga de `/`, un único `<h1>`, un único enlace al
+  formulario con `href` resuelto `/incidents/new`, navegación por teclado (Tab hasta el enlace, foco visible,
+  Enter navega a `/incidents/new`) y viewport de 360 px sin scroll horizontal. **Reporta** la desviación
+  del handoff. Para el teclado en Cypress sin plugins nuevos: enfoca con el método que ya use el repo o
+  justifica el tuyo, sin instalar `cypress-real-events` ni similares.
+
+#### Trampa 5 — comentarios del shell que ahora mienten
+`app.routes.ts` explica que `''` no tiene hijo enrutado y que "whichever ticket first needs one" decidirá;
+el comentario del comodín menciona que `T-C1-101` aún no registra la ruta de detalle (ya lo hizo).
+Actualiza esos comentarios para que describan lo que hay. `app.component.ts` y `app.config.ts` no se tocan.
+
+#### Trampa 6 — `lang="en"` y el título de la pestaña
+`apps/web/src/index.html` declara `lang="en"` y `<title>Sport ITSM</title>`, y ahora la página está en
+español (WCAG 3.1.1, idioma de la página). **No lo cambies aquí**: es de `T-C1-104` (que traduce toda la
+web) — **repórtalo** como hallazgo para ese ticket. Igual con un `title` de ruta para `/`: si lo añades,
+que salga de `INCIDENT_MESSAGES.home` sin importar internals de la librería en el shell; si no es posible
+sin romper el barrel, repórtalo.
+
+#### Lo que NO debes tocar
+`apps/api/**`, `apps/api-e2e/**`, `libs/incident/{domain,application,infrastructure,data-access,ui}/**`,
+`libs/shared/**`, las secciones existentes de `incident-messages.ts`, los componentes del formulario y de la
+ficha, `apps/web/src/app/{app.component.ts,app.config.ts}`, `apps/web/src/index.html`,
+`apps/web/proxy.conf.json`, los escenarios de `harness-smoke.feature` e `incident-intake.feature`,
+cualquier `project.json`, `docker/**`, `.github/**`, `package.json`, `docs/**`, `CLAUDE.md`, `prompts.md`,
+`.claude/**` (salvo tu memoria). El ticket no se edita. No instales dependencias.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-feature --skip-nx-cache` en verde con el spec nuevo
+   (`home-page.component.spec.ts`: un `<h1>`, un enlace con `href` `/incidents/new`, textos iguales a
+   `INCIDENT_MESSAGES.home`). Pega el resumen.
+2. AC5: `grep` de literales entre comillas en `home-page.component.html` → ninguno de cara al usuario.
+   Pega la salida.
+3. AC6: `grep -rnE "https?://" apps/web/src libs/incident/feature/src libs/incident/data-access/src` →
+   pega la salida y clasifica cada coincidencia (ninguna apunta a la API ni a Render).
+4. `pnpm nx lint incident-feature web` en verde; `grep -rnE "\*ngIf|\*ngFor|NgModule|::ng-deep|ngModel" libs/incident/feature/src` → vacío.
+5. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e web-e2e` en verde: `home.feature` nuevo, `harness-smoke.feature`
+   sin cambios en sus pasos, `incident-intake.feature` intacto. Pega el resumen.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros; `git status --porcelain` solo con ficheros del alcance;
+   nada escuchando en 3300/4200.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No hagas commit ni push. No ejecutes nada de `docker/**` (el compose de stage usa el 4200 y lo lanza
+`T-C10-79` después de ti).
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; los textos exactos de la sección `home`.
+- Tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo `lang="en"`/`<title>` para `T-C1-104`, la
+  desviación del handoff E2E, el chunk compartido y que el ticket debe re-alojarse en `C9` cuando se
+  despiece esa épica.
+
+### Response:
+
+Implementado ticket T-C1-103
+
+</br>

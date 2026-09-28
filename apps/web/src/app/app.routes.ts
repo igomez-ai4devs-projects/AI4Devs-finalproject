@@ -23,28 +23,32 @@ export const featureRoutes: Route[] = [
 /**
  * The shell's route table.
  *
- * `''` is a real, resolvable default route: it matches, so the router settles on
- * `/` instead of erroring, and the shell renders its `<router-outlet>` with no
- * routed child. `T-C1-10` deliberately leaves it this way rather than
- * redirecting `''` to `/incidents/new`: `apps/web-e2e`'s own
- * `harness-smoke.feature` already asserts the router settles on `/` with no
- * routed child for the bare root, and redirecting it would break that
- * existing, passing scenario for a landing page this ticket's Scope never
- * asked for. Whether `/` should eventually redirect to a real landing page is
- * left to whichever ticket first needs one.
+ * `''` is a real, resolvable default route. `T-C1-10`/`T-C1-101` left it
+ * resolving to no routed child at all — `apps/web-e2e`'s own
+ * `harness-smoke.feature` only asserted the router settled on `/`, never that
+ * anything rendered there. `T-C1-103` gives it its own page, the same way
+ * `featureRoutes` above lazily loads a bounded context's own routed surface:
+ * a per-component `loadComponent`, not a `loadChildren`, since this route has
+ * exactly one screen and no children of its own. `HomePageComponent` lives in
+ * `libs/incident/feature` — the only frontend feature library that exists
+ * today — even though this page is not one of that library's own
+ * `/incidents`-prefixed screens (see that component's own doc comment); it
+ * belongs, eventually, to the `C9` self-service portal epic.
  *
  * `'**'` is the wildcard not-found route. It sends every unmatched URL back to
  * the default route rather than to a dedicated not-found surface, because such a
  * surface is nothing but user-facing copy and hardcoded UI strings are forbidden
  * (CLAUDE.md §3) — its Transloco-keyed page belongs to the `NFR` epic i18n slice
- * that owns Transloco setup. Until `T-C1-101` registers the detail route inside
- * `incidentRoutes` (`libs/incident/feature/src/lib/incident-routes.ts`), a
- * navigation to `/incidents/<reference>` also falls through to this same
- * wildcard and lands back here — expected for now, see that file's own doc
- * comment.
+ * that owns Transloco setup. A navigation to an unmatched `/incidents/<segment>`
+ * also falls through to this same wildcard and lands back here, same as any
+ * other unmatched URL.
  */
 export const appRoutes: Route[] = [
   ...featureRoutes,
-  { path: '', pathMatch: 'full', children: [] },
+  {
+    path: '',
+    loadComponent: () =>
+      import('@sport-itsm/incident-feature').then((m) => m.HomePageComponent),
+  },
   { path: '**', redirectTo: '' },
 ];
