@@ -15,7 +15,11 @@ import {
   ErrorCode,
   IncidentDetailResponse,
 } from '@sport-itsm/shared-contracts';
-import { INCIDENT_MESSAGES, PRIORITY_LABELS } from '../incident-messages';
+import {
+  INCIDENT_MESSAGES,
+  ORIGIN_CHANNEL_LABELS,
+  PRIORITY_LABELS,
+} from '../incident-messages';
 import { IncidentDetailComponent } from './incident-detail.component';
 
 function detailUrl(reference: string): string {
@@ -145,7 +149,7 @@ describe('IncidentDetailComponent (T-C1-101)', () => {
         'The roster submission form times out for every team.',
       );
       expect(fieldValue(INCIDENT_MESSAGES.detail.originChannelLabel)).toBe(
-        'Self-service portal',
+        ORIGIN_CHANNEL_LABELS.portal,
       );
       expect(fieldValue(INCIDENT_MESSAGES.detail.affectedServiceLabel)).toBe(
         INCIDENT_MESSAGES.detail.affectedServiceUnset,

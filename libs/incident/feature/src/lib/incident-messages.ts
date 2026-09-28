@@ -48,10 +48,10 @@ export const SHORT_DESCRIPTION_MAX_LENGTH = 255;
  */
 const COMMON_ERROR_MESSAGES = {
   networkErrorMessage:
-    'We could not reach the server. Check your connection and try again.',
+    'No hemos podido conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.',
   genericErrorMessage:
-    'Something went wrong on our side. Please try again in a moment.',
-  supportCodePrefix: 'Support code:',
+    'Algo ha fallado por nuestra parte. Inténtalo de nuevo en unos minutos.',
+  supportCodePrefix: 'Código de referencia:',
 } as const;
 
 /** The two fields a requester's intake request may carry (`LogIncidentRequesterRequest`) that this form renders a control for. */
@@ -76,24 +76,25 @@ export const INCIDENT_MESSAGES = {
    * "Reportar un problema" — not a paraphrase.
    */
   home: {
-    heading: 'Bienvenido a Sport ITSM',
+    heading: 'Te damos la bienvenida a Sport ITSM',
     intro:
       'Si algo no funciona como esperabas en la plataforma, cuéntanoslo y lo revisaremos.',
     linkLabel: 'Reportar un problema',
   },
   intakeForm: {
-    heading: 'Report a problem',
-    intro: 'Tell us what went wrong. We will look into it and keep you posted.',
-    fieldsetLegend: 'About the problem',
-    shortDescriptionLabel: 'Sum up the problem in a few words',
-    shortDescriptionHint: `Up to ${SHORT_DESCRIPTION_MAX_LENGTH} characters.`,
-    descriptionLabel: 'What happened?',
+    heading: 'Reportar un problema',
+    intro:
+      'Cuéntanos qué ha fallado. Lo revisaremos y te mantendremos al tanto.',
+    fieldsetLegend: 'Sobre el problema',
+    shortDescriptionLabel: 'Resume el problema en pocas palabras',
+    shortDescriptionHint: `Hasta ${SHORT_DESCRIPTION_MAX_LENGTH} caracteres.`,
+    descriptionLabel: '¿Qué ha pasado?',
     descriptionHint:
-      'Describe what you were doing, what you expected, and what happened instead. If this relates to a specific match or competition, mention it here.',
-    submitLabel: 'Send report',
-    submitPendingLabel: 'Sending report…',
-    errorSummaryHeading: 'We could not send your report',
-    errorSummaryIntro: 'Please fix the following and try again:',
+      'Describe qué estabas haciendo, qué esperabas que pasara y qué ha pasado en su lugar. Si tiene que ver con un partido o una competición concretos, menciónalo aquí.',
+    submitLabel: 'Enviar aviso',
+    submitPendingLabel: 'Enviando aviso…',
+    errorSummaryHeading: 'No hemos podido enviar tu aviso',
+    errorSummaryIntro: 'Corrige lo siguiente e inténtalo de nuevo:',
     ...COMMON_ERROR_MESSAGES,
   },
   /**
@@ -104,12 +105,12 @@ export const INCIDENT_MESSAGES = {
    */
   detail: {
     /** Prefixes the route's own `:reference` value in the main heading (`incident-detail-heading`) — every state renders it, so a requester always knows which report they are looking at, even mid-load or on failure. */
-    headingPrefix: 'Report',
-    pageTitle: 'Your report',
-    loadingMessage: 'Loading your report…',
-    notFoundHeading: 'We could not find this report',
+    headingPrefix: 'Aviso',
+    pageTitle: 'Tu aviso',
+    loadingMessage: 'Cargando tu aviso…',
+    notFoundHeading: 'No hemos encontrado este aviso',
     notFoundMessage:
-      "We couldn't find a report with this reference. Double-check the link — the report may also no longer exist.",
+      'No hemos encontrado ningún aviso con esta referencia. Revisa el enlace; también es posible que el aviso ya no exista.',
     /**
      * Deliberately a different message from `notFoundMessage` (Trap 2's own
      * question). A reference failing `GetIncidentByReferenceParamsDto`'s
@@ -121,20 +122,20 @@ export const INCIDENT_MESSAGES = {
      * link itself". Reported as a finding either way, since this is a judgment
      * call with no ticket precedent to follow.
      */
-    invalidReferenceHeading: 'This does not look like a valid reference',
+    invalidReferenceHeading: 'Esta referencia no parece válida',
     invalidReferenceMessage:
-      "This reference isn't in the right format. Check that you copied the whole link and try again.",
+      'Esta referencia no tiene el formato correcto. Comprueba que has copiado el enlace completo e inténtalo de nuevo.',
     /** Heading shared by the network-error and server-error states — both are unexpected, transient failures, unlike `notFoundHeading`/`invalidReferenceHeading`, which describe a definite, non-transient outcome. */
-    errorHeading: 'Something went wrong',
+    errorHeading: 'Algo ha fallado',
     ...COMMON_ERROR_MESSAGES,
-    fieldsHeading: 'What we have on file',
-    referenceLabel: 'Reference',
-    loggedAtLabel: 'Reported on',
-    originChannelLabel: 'How it was reported',
-    shortDescriptionLabel: 'Summary',
-    descriptionLabel: 'Full description',
-    affectedServiceLabel: 'What this affects',
-    affectedServiceUnset: 'Not indicated',
+    fieldsHeading: 'Lo que tenemos registrado',
+    referenceLabel: 'Referencia',
+    loggedAtLabel: 'Registrado el',
+    originChannelLabel: 'Cómo nos llegó el aviso',
+    shortDescriptionLabel: 'Resumen',
+    descriptionLabel: 'Descripción completa',
+    affectedServiceLabel: 'A qué afecta',
+    affectedServiceUnset: 'No indicado',
     /**
      * Shown instead of the raw `affectedServiceId` UUID when it is present
      * (never yet, in this delivery slice — the intake form sends no such
@@ -146,20 +147,20 @@ export const INCIDENT_MESSAGES = {
      * plain-language reader) is replaced with this honest placeholder rather
      * than either the id itself or a fabricated name.
      */
-    affectedServicePresent: 'On file — a name is not available yet',
-    categoryLabel: 'Type of problem',
-    categoryUnset: 'Not sorted into a type yet',
-    categoryPresent: 'On file — a name is not available yet',
-    impactLabel: 'How much this is affecting things',
-    impactUnset: 'Not assessed yet',
-    urgencyLabel: 'How quickly this needs attention',
-    urgencyUnset: 'Not assessed yet',
-    priorityLabel: "How soon we'll get to it",
-    priorityUnset: 'Not decided yet',
+    affectedServicePresent: 'Registrado — el nombre todavía no está disponible',
+    categoryLabel: 'Tipo de problema',
+    categoryUnset: 'Todavía sin clasificar',
+    categoryPresent: 'Registrado — el nombre todavía no está disponible',
+    impactLabel: 'Cuánto está afectando esto',
+    impactUnset: 'Todavía sin evaluar',
+    urgencyLabel: 'Con qué rapidez hay que atenderlo',
+    urgencyUnset: 'Todavía sin evaluar',
+    priorityLabel: 'Cuándo lo atenderemos',
+    priorityUnset: 'Todavía sin decidir',
     competitionAffectsInProgressLabel:
-      'Affecting a competition that is currently in progress',
-    yes: 'Yes',
-    no: 'No, not currently',
+      'Afecta a una competición que está en marcha',
+    yes: 'Sí',
+    no: 'No, de momento no',
   },
   /**
    * One message per `{ field, rule }` pair this form can actually produce or
@@ -172,20 +173,27 @@ export const INCIDENT_MESSAGES = {
    */
   validation: {
     shortDescription: {
-      isDefined: 'Sum up the problem in a few words.',
-      isNotBlank: 'Sum up the problem in a few words.',
-      isString: 'Sum up the problem in a few words.',
-      maxLength: `Shorten this to ${SHORT_DESCRIPTION_MAX_LENGTH} characters or fewer.`,
+      isDefined: 'Resume el problema en pocas palabras.',
+      isNotBlank: 'Resume el problema en pocas palabras.',
+      isString: 'Resume el problema en pocas palabras.',
+      maxLength: `Acórtalo a ${SHORT_DESCRIPTION_MAX_LENGTH} caracteres o menos.`,
     },
     description: {
-      isDefined: 'Describe what happened.',
-      isNotBlank: 'Describe what happened.',
-      isString: 'Describe what happened.',
+      isDefined: 'Describe qué ha pasado.',
+      isNotBlank: 'Describe qué ha pasado.',
+      isString: 'Describe qué ha pasado.',
     },
   },
 } as const;
 
-const GENERIC_FIELD_MESSAGE = 'Please check this field and try again.';
+/**
+ * Exported (not from the library's barrel — `index.ts` still only exposes
+ * `incidentRoutes`/`HomePageComponent`, `T-C1-104` Trap 2) so
+ * `incident-intake-form.component.spec.ts` can assert against this constant
+ * instead of repeating its Spanish value as a second literal that a future
+ * wording tweak could silently desync from.
+ */
+export const GENERIC_FIELD_MESSAGE = 'Revisa este campo e inténtalo de nuevo.';
 
 /**
  * Maps one `{ field, rule }` pair to the one plain-language message
@@ -220,10 +228,10 @@ export function messageForFieldRule(field: string, rule: string): string {
  * instead of silently falling through at runtime.
  */
 export const ORIGIN_CHANNEL_LABELS: Record<IncidentOriginChannel, string> = {
-  portal: 'Self-service portal',
-  agent_logged: 'Logged by a support agent',
-  email: 'Email',
-  in_app: 'In-app',
+  portal: 'Formulario web',
+  agent_logged: 'Registrado por el equipo de soporte',
+  email: 'Correo electrónico',
+  in_app: 'Desde la aplicación',
 };
 
 /**
@@ -236,8 +244,8 @@ export const ORIGIN_CHANNEL_LABELS: Record<IncidentOriginChannel, string> = {
  * screen can ever render.
  */
 export const PRIORITY_LABELS: Record<IncidentPriority, string> = {
-  P1: 'Highest — we will get to this as soon as possible',
-  P2: 'High',
+  P1: 'Máxima — lo atenderemos lo antes posible',
+  P2: 'Alta',
   P3: 'Normal',
-  P4: 'Low',
+  P4: 'Baja',
 };

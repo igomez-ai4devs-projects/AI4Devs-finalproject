@@ -5192,3 +5192,143 @@ No instales dependencias en el repo. No hagas commit ni push. No lances el despl
 Implementado ticket T-C10-79
 
 </br>
+
+**Prompt 34:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-104.md ·
+Traducir al español el formulario de registro y la ficha
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Aplica **`sport-itsm-frontend`** y `sport-itsm-engineering-principles`. Cierra con
+`sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el **último ticket de la rebanada 1b**. La demo en Render ya funciona de punta a punta en memoria (el
+usuario lo ha probado en local): la página `/` está en español, pero el formulario `/incidents/new` y la ficha
+`/incidents/:reference` siguen en inglés. Decisión del usuario: **toda la web en español**, con los textos solo
+en el fichero de constantes (sin i18n real, deuda aceptada). Es un cambio **de contenido**: se sustituyen
+valores, no se reestructuran componentes, formularios ni rutas.
+
+#### Precondición
+    git status --porcelain                  # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-feature,web   # verde
+
+#### Trampas del entorno — ya pagadas
+- Esta máquina tiene variables **globales de Windows** `PORT=3000` y `POSTGRES_*` de otro proyecto que pisan
+  el `.env`. Si arrancas la API a mano, pasa `PORT=3300` (y el modo) en la misma llamada:
+  `PORT=3300 PERSISTENCE_MODE=memory NODE_ENV=development pnpm nx serve api`.
+- Cypress desde el terminal de VS Code: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- `web-e2e` depende de `web:serve` (4200, proxy `/api` → 3300). Antes, comprueba que no hay procesos en
+  3300/4200 (el usuario puede tener los suyos abiertos: **si los hay, no los mates; avísalo en el informe** y
+  no ejecutes el E2E hasta que estén libres) y ciérralos al terminar si son tuyos.
+- Prettier en Windows: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Context con la tabla de aserciones, Scope, 5 criterios).
+- `libs/incident/feature/src/lib/incident-messages.ts` **entero**, incluidos sus comentarios (`NFR-USE-01`).
+- Las plantillas y componentes del formulario y la ficha, para ver **cómo se compone cada texto en pantalla**
+  (p. ej. `detail.headingPrefix` + referencia → "Report INC0000001"; `supportCodePrefix` + código).
+- `incident-intake-form.component.spec.ts`, `incident-detail.component.spec.ts`,
+  `incident-detail-formatting.ts` (+ spec), `home-page.component.spec.ts`.
+- `apps/web-e2e/src/step-definitions/{incident-intake,home,harness-smoke}.steps.ts` y los `.feature`.
+- `apps/web/src/index.html`.
+
+#### Trampa 1 — el ticket se deja textos fuera
+El Scope enumera `intakeForm`, `detail`, `validation`, `COMMON_ERROR_MESSAGES`, `ORIGIN_CHANNEL_LABELS` y
+`PRIORITY_LABELS`, pero **`GENERIC_FIELD_MESSAGE`** ("Please check this field and try again.") también se
+renderiza y está en inglés. Tradúcelo. Criterio general (AC2): **ningún texto en inglés** en lo que pinta
+cualquiera de las dos pantallas, en ninguno de sus 6 estados de la ficha ni en los errores del formulario.
+Recorre el fichero entero y las plantillas, no solo la lista del ticket, y di qué añadiste.
+
+#### Trampa 2 — los specs **sí** afirman literales en inglés
+El AC5 dice que ningún spec Jest afirma un literal en inglés. **Es falso**: al menos
+`incident-intake-form.component.spec.ts` (~línea 260, `'Please check this field and try again.'`) e
+`incident-detail.component.spec.ts` (~línea 148, `'Self-service portal'`) lo hacen. El propio AC5 dice que un
+spec así se corrige en este ticket. Recomendación: que afirmen **contra la constante**
+(`ORIGIN_CHANNEL_LABELS.portal`, el mensaje genérico exportado o leído vía `messageForFieldRule`), no contra
+otro literal, para que la próxima traducción no los rompa. Si para eso necesitas exportar
+`GENERIC_FIELD_MESSAGE` dentro de la librería (no desde el barrel), hazlo y dilo. Los datos de prueba que
+"teclea" el usuario (`'Cannot submit match roster'`…) **no** se traducen: son datos, no interfaz. Haz un grep
+de literales en inglés en todos los specs de `incident-feature` y clasifica cada uno (dato de prueba / texto de
+interfaz).
+
+#### Trampa 3 — español llano y sin jerga, también en español
+`NFR-USE-01`: ni "ticket", "prioridad", "SLA", "triaje" ni "incidencia" en ningún texto visible (sí en
+comentarios técnicos). Cuidado con los calcos: el encabezado de la ficha es `headingPrefix` + referencia
+("Report INC0000001"); en español busca un sustantivo llano ("Aviso", "Tu aviso", "Problema"…) coherente con
+"Reportar un problema" de la página de inicio, y úsalo igual en `pageTitle`, `loadingMessage`, `notFound*`.
+**Coherencia de tratamiento**: la página de inicio tutea ("cuéntanoslo"); mantén el **tú** en todo.
+Lenguaje **inclusivo/neutro** cuando se pueda sin forzar. Las etiquetas de prioridad no deben decir
+"prioridad" (describen "cuándo lo atenderemos"). Conserva `${SHORT_DESCRIPTION_MAX_LENGTH}` y el `as const`.
+Entrega en el informe la **tabla completa inglés → español** de cada clave.
+
+#### Trampa 4 — la página de inicio y `index.html`
+- `home.heading` es "Bienvenido a Sport ITSM": masculino genérico. Propón una forma neutra coherente con el
+  tú (p. ej. "Te damos la bienvenida a Sport ITSM") y cámbiala; `Sport ITSM` es el nombre del producto y se
+  queda. Actualiza lo que dependa (spec, `home.steps.ts` si afirma el texto).
+- `apps/web/src/index.html` declara `lang="en"` con toda la web ya en español (WCAG 3.1.1): cámbialo a
+  `lang="es"`. El `<title>Sport ITSM</title>` es el nombre del producto: déjalo salvo que veas razón, y dilo.
+  Son dos cambios fuera del Scope literal del ticket, **autorizados por el usuario** (web entera en español);
+  menciónalos como tales en el informe.
+
+#### Trampa 5 — la fecha de la ficha depende del navegador
+`formatLoggedAt` usa `Intl.DateTimeFormat(undefined, …)`: el locale del **navegador del lector**
+(`NFR-I18N-03`, decisión de `T-C1-101`). En un navegador en inglés la fecha saldría en inglés en una página
+en español. **No lo cambies** (contradiría un NFR del PRD): **repórtalo** como hallazgo con tu recomendación,
+para que el usuario/PO decida.
+
+#### Trampa 6 — el E2E
+Las cuatro aserciones en inglés de `incident-intake.steps.ts` (líneas ~189, ~198, ~205, ~212) pasan a
+subcadenas estables del texto en español (subcadena, no el texto completo). El ticket asigna esta parte a
+`testing-implementer`; como en `T-C1-10`/`T-C1-101`/`T-C1-103`, hazla tú y **repórtalo**. Los `.feature` no
+cambian (texto Gherkin en inglés por norma del repo): verifícalo, no lo edites. Busca además cualquier otra
+aserción de texto de interfaz en `apps/web-e2e` (incluido `home.steps.ts`) que tu cambio rompa.
+
+#### Lo que NO debes tocar
+`apps/api/**`, `apps/api-e2e/**`, `libs/incident/{domain,application,infrastructure,data-access,ui}/**`,
+`libs/shared/**`, la lógica, estructura y reglas de validación de los componentes (solo texto), las claves y la
+forma de `INCIDENT_MESSAGES`, `messageForFieldRule`/`isIncidentIntakeField`, `incident-detail-formatting.ts`,
+los `.feature`, `apps/web/src/app/**`, `apps/web/proxy.conf.json`, cualquier `project.json`, `docker/**`,
+`.github/**`, `package.json`, `docs/**`, `CLAUDE.md`, `.env`, `prompts.md`, `.claude/**` (salvo tu memoria).
+En `apps/web/src/index.html`, solo el atributo `lang`. El ticket no se edita. No instales dependencias.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-feature --skip-nx-cache` en verde. Pega el resumen.
+2. AC1: pega la tabla inglés → español y un grep de `incident-messages.ts` para `ticket|prioridad|SLA|triaje|incidencia`
+   (sin `-i` para no confundir con comentarios en inglés, y luego con `-i`), clasificando cada coincidencia.
+3. Trampa 2: el grep de literales en los specs y su clasificación.
+4. `grep -rn "Self-service portal\|couldn't find\|isn't in the right\|could not reach" apps/web-e2e/src` → vacío.
+5. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e web-e2e` en verde (`incident-intake`, `home`, `harness-smoke`).
+   Pega el resumen.
+6. AC2 real: API en `memory` (`PORT=3300 PERSISTENCE_MODE=memory NODE_ENV=development pnpm nx serve api`) +
+   `pnpm nx serve web`; registra una incidencia por el formulario y abre su ficha, más una ficha inexistente
+   (`/incidents/INC9999999`) y una referencia inválida (`/incidents/abc`), y un envío con un campo vacío.
+   Comprueba (con Cypress contra los servidores reales, o el método que justifiques) que el texto visible
+   de cada pantalla no contiene inglés, y pégalo. Cierra los servidores al terminar.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde, `pnpm verify:boundaries` 10/10,
+   `pnpm prettier --check` sobre tus ficheros, `git status --porcelain` solo con ficheros del alcance y nada
+   escuchando en 3300/4200.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros modificados.
+- La tabla completa inglés → español y tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la fecha según el navegador, la falsedad del AC5 del
+  ticket (para `architect-tech-lead`), la desviación del handoff E2E, y cualquier texto en inglés que quede
+  fuera de estas dos pantallas (p. ej. títulos de pestaña o mensajes que vengan del servidor).
+
+### Response:
+
+Implementado ticket T-C10-104
+
+</br>

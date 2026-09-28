@@ -12,7 +12,7 @@ import {
 import { Router } from '@angular/router';
 import { ErrorCode } from '@sport-itsm/shared-contracts';
 import { IncidentStore } from '@sport-itsm/incident-data-access';
-import { INCIDENT_MESSAGES } from '../incident-messages';
+import { GENERIC_FIELD_MESSAGE, INCIDENT_MESSAGES } from '../incident-messages';
 import { IncidentIntakeFormComponent } from './incident-intake-form.component';
 
 const INTAKE_URL = '/api/incidents';
@@ -257,7 +257,7 @@ describe('IncidentIntakeFormComponent (T-C1-10)', () => {
       expect(
         fixture.nativeElement.querySelector('#incident-short-description-error')
           .textContent,
-      ).toContain('Please check this field and try again.');
+      ).toContain(GENERIC_FIELD_MESSAGE);
     });
 
     it('shows a generic message for a detail naming a field this form renders no control for', () => {

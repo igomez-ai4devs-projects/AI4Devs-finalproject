@@ -186,7 +186,7 @@ Then(
     // `originChannel` — it is server-assigned. Its presence on screen is
     // this scenario's own proof that the detail screen renders the
     // response, not an echo of what was submitted (AC1).
-    cy.contains('.incident-detail__fields', 'Self-service portal').should(
+    cy.contains('.incident-detail__fields', 'Formulario web').should(
       'be.visible',
     );
   },
@@ -195,21 +195,21 @@ Then(
 Then('the detail page shows a not-found message', () => {
   cy.get('.incident-detail__outcome').should(
     'contain.text',
-    "couldn't find a report",
+    'No hemos encontrado ningún aviso',
   );
 });
 
 Then('the detail page shows an invalid-reference message', () => {
   cy.get('.incident-detail__outcome').should(
     'contain.text',
-    "isn't in the right format",
+    'no tiene el formato correcto',
   );
 });
 
 Then('the detail page shows a network-error message', () => {
   cy.get('.incident-detail__outcome').should(
     'contain.text',
-    'We could not reach the server',
+    'No hemos podido conectar con el servidor',
   );
 });
 
