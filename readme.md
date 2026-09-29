@@ -3635,11 +3635,103 @@ Acceptance criteria (condensed):
 
 > Documenta 3 de los tickets de trabajo principales del desarrollo, uno de backend, uno de frontend, y uno de bases de datos. Da todo el detalle requerido para desarrollar la tarea de inicio a fin teniendo en cuenta las buenas prácticas al respecto.
 
-**Ticket 1**
+The three tickets below are reproduced, unmodified in substance, from [`docs/backlog/C1/tickets/`](docs/backlog/C1/tickets/) (the Architect / Tech Lead's artifact for epic **C1 · Incident Management**, derived from [`docs/backlog/C1/user-stories.md`](docs/backlog/C1/user-stories.md) per `CLAUDE.md` §4.3) and its companion [`docs/backlog/C1/test-plan.md`](docs/backlog/C1/test-plan.md). They are the same **Block B · Base record and intake** work that backs `US-C1-01` and `US-C1-05` in §5 above — one ticket per requested layer, exactly one backend, one frontend and one database task, all three from the intake ("adding/logging an Incident") flow: `T-C1-07` (the `LogIncidentUseCase`, backend/application), `T-C1-10` (the requester intake form, frontend/feature+ui) and `T-C1-04` (the reference sequence, immutability trigger and adapter, database/infrastructure). All three are **implemented** in this repository, verified below against the actual code and tests, not only planned.
 
-**Ticket 2**
+They follow the good practices `CLAUDE.md` and the `architect-tech-lead` skill require of every ticket in this backlog: sized to a **≤3h reviewable unit** (`T-C1-07` 3h, `T-C1-10` 2.5h, `T-C1-04` 2h); **single responsibility per DDD layer** (`T-C1-07` is the application use case only, with the HTTP adapter explicitly out of scope and left to `T-C1-08`; `T-C1-10` is the Angular feature/UI only, bound to contracts owned elsewhere; `T-C1-04` is the infrastructure migration/adapter only, with the aggregate and the `reference` column explicitly left to other tickets); **acceptance criteria written as Given/When/Then**, seeding the `.feature` files directly; a **named test plan** per scenario with an explicit test type and P0/P1/P2 priority and rationale; explicit **traceability** to a stable PRD requirement (`FR-INC-01`/`FR-INC-02`), a `US-C1-nn` story and, for `T-C1-04`, a `DATA-MODEL.md`/ADR decision (M18); and a stated **Definition of Done** covering code, tests, lint/boundaries and review — not just "it compiles."
 
-**Ticket 3**
+**Ticket 1 — Backend: `T-C1-07` · `LogIncidentUseCase` for a requester, reporter taken from the session**
+
+- **Epic/Story/Trace:** `C1` · `US-C1-01` · `FR-INC-01` · shape: gap · phase: disputed 0/1 (**F6**)
+- **Platform/Layer/Agent/Estimate:** backend · application · `backend-engineer` · **3h**
+- **Dependencies:** consumes the `Actor` resolved per request by `C10`'s composition root (`T-C10-39`/`T-C10-74` in this slice's no-auth cut); declares `SlaPolicyPort`, whose `apps/api` adapter is `T-C1-58` (not built in this slice — `incident` never imports `sla`); publishes through `EventPublisherPort` (dispatcher: `C10`'s `T-C10-73`).
+
+**Goal / Context.** `US-C1-01` requires the reporter to be taken from the authenticated session and **never** from a field the requester can type. `ARCHITECTURE.md` §9 places authorization in `type:application` use cases, expressed in domain terms and testable without HTTP. Two ADR-014 notes bound this slice: (1) the use case sets no lifecycle state — `Incident.log()` has no `workflow_id`/`state_id` slot yet, because the state model does not exist until `T-C1-49`/`T-C1-50`; (2) `SlaPolicyPort.attachFor()` receives an Incident with `priority: null` — Priority is not derived until `T-C1-30` — so its policy-resolution behavior for a not-yet-prioritized ticket is `C7`'s own open question, not answered here.
+
+**Scope — in.** `LogIncidentUseCase` in `libs/incident/application`: authorize the actor, allocate the reference, call `Incident.log()`, save in a single transaction, publish events **after commit**. Reporter resolved from the `Actor`; any reporter identifier present in the command is ignored rather than trusted. `SlaPolicyPort` declared in `libs/incident/domain` with `attachFor()`; the use case calls it and tolerates an unbound adapter in tests through a stub. Post-commit publication through `EventPublisherPort`, so a failing audit or notification subscriber cannot roll back a logged Incident (ADR-008, `NFR-AVL-03`).
+
+**Scope — out.** The HTTP adapter and DTOs (`T-C1-08`); the agent-on-behalf path (`T-C1-11`); the SLA adapter (`T-C1-58`); the scope-rule evaluation at intake (`T-C1-87`).
+
+**Acceptance criteria (BDD).**
+1. **Given** an authenticated requester and a valid command **When** the use case executes **Then** the Incident is persisted with its reference, the reporter equals the session actor, and `IncidentLogged` is published exactly once after the transaction commits.
+2. **Given** a command carrying a reporter identifier different from the session actor **When** the use case executes **Then** the persisted reporter is the session actor and the supplied value is discarded.
+3. **Given** a subscriber that throws when handling `IncidentLogged` **When** the use case executes **Then** the Incident remains persisted and the failure is isolated to the subscriber.
+4. **Given** the use case **When** it is unit-tested **Then** it runs against stubbed ports with no HTTP and no database.
+
+**Test plan** (from `docs/backlog/C1/test-plan.md`):
+
+| Scenario | Priority | Type | Impl owner | Summary |
+|---|---|---|---|---|
+| `AT-C1-01` | P0 | API-E2E (`apps/api-e2e`) | `testing-implementer` | Requester posts a report carrying a `reporter` field naming a different user → `201`, persisted reporter is the session actor, supplied value discarded, reference and contact channel present. |
+| `AT-C1-02` | P0 | API-E2E (`apps/api-e2e`) | `testing-implementer` | Impact/Urgency/Priority/competition-flag are each rejected at requester intake, no Incident created, no field silently stripped (`NFR-SEC-02`). |
+| AC4 (unit) | P0 | Unit (`*.spec.ts`) | `backend-engineer` | The use case runs fully against stubbed ports — no HTTP, no DB. |
+
+**Definition of Done.** All four acceptance criteria pass; `log-incident.use-case.spec.ts` green under `pnpm nx test incident-application`; `AT-C1-01`/`AT-C1-02` green under `pnpm nx e2e api-e2e`; `pnpm nx lint incident-application` passes (module boundaries: no framework/HTTP/ORM import into `application`); reporter/actor separation and post-commit event publication code-reviewed against `ARCHITECTURE.md` §8–§9; no `console.log`, ports injected via DI tokens.
+
+**Implementation (verified in this repository):** [`log-incident.use-case.ts`](libs/incident/application/src/lib/log-incident.use-case.ts) · unit tests: [`log-incident.use-case.spec.ts`](libs/incident/application/src/lib/log-incident.use-case.spec.ts) · wired at `POST /api/incidents` in [`incident.controller.ts`](apps/api/src/app/incident/incident.controller.ts) (`T-C1-08`) · API-E2E: [`incident-intake.feature`](apps/api-e2e/src/features/incident-intake.feature) / [`incident-intake.steps.ts`](apps/api-e2e/src/step-definitions/incident-intake.steps.ts).
+
+---
+
+**Ticket 2 — Frontend: `T-C1-10` · Requester intake form — plain language, mobile, WCAG 2.1 AA**
+
+- **Epic/Story/Trace:** `C1` · `US-C1-01` · `FR-INC-01` · shape: greenfield · phase: disputed 0/1 (**F6**) · `blocked_by: F29`
+- **Platform/Layer/Agent/Estimate:** frontend · feature + ui · `frontend-engineer` · **2.5h**
+- **Dependencies:** Reactive Form bound to the requester DTO of `T-C1-08`; routed on top of `incident/data-access` (`T-C1-09`); one component-level `aria-live` criterion is left pending on `libs/shared/ui`'s overlay/announcer primitive (`T-C10-12`–`14`, not part of this slice).
+
+**Goal / Context.** `US-C1-01` requires the requester-facing intake form to use plain language with no untranslated ITSM vocabulary (`NFR-USE-01`), to be operable on a mobile device (`NFR-USE-04`), to meet WCAG 2.1 AA, and to state for every validation error what happened and what to do next (`NFR-USE-05`). **Blocked by finding F29** (not resolved by this ticket): `FR-INC-01` is ambiguous about whether a requester may set the *structured* competition subject; this backlog reads it as *requesters supply free text, agents set the structured reference*, so the form ships with a free-text competition description and no structured subject picker — if the Product Owner confirms the opposite reading, this form and `T-C1-14`/`T-C1-16`'s permissions change. Three explicitly accepted deviations for delivery slice 1: (1) the design system is deferred (−0.5h) but accessibility is not — hand-written semantic HTML (`<label for>`, `<fieldset>`/`<legend>`, `aria-describedby`, `role="alert"`) meets the same WCAG 2.1 AA bar a design-system component would; (2) i18n is deferred to one exported constants file per feature, never inline and never through Transloco yet (accepted debt against `CLAUDE.md` §3); (3) "see it" is a **redirect** to the detail route at the returned reference, not an echo of what was typed.
+
+**Scope — in.** Routed intake page in `libs/incident/feature`; hand-built semantic HTML and component-scoped SCSS, no third-party component library. Reactive Form bound to the requester DTO; `OnPush`; built-in control flow (`@if`/`@for`). Every user-facing string sourced from the one exported constants file. Free-text field for competition context; **no** Impact, Urgency, Priority or competition-flag control anywhere in the form. Error summary and per-field messages stating the remedy, `role="alert"` + `aria-describedby`. On success, navigate to the detail route at the returned reference — no reference display on the form itself.
+
+**Scope — out.** Knowledge suggestions (`T-C1-90`); the scope-rule redirect surface (`T-C1-88`); the structured subject picker (`T-C1-16`); any `libs/shared/ui`/`libs/incident/ui` primitive.
+
+**Acceptance criteria (BDD).**
+1. **Given** a requester on the intake form **When** it is rendered **Then** it presents no Impact, Urgency, Priority or competition-in-progress control, at any breakpoint.
+2. **Given** a keyboard-only user on a 360px viewport **When** they complete and submit the form **Then** every control is reachable and operable without a pointer, no horizontal scrolling is required, and focus is managed across the submission.
+3. **Given** a submission that fails validation **When** the response returns **Then** each message states what happened and what to do next in the active language, exposed via `role="alert"` — and announced through the `aria-live` region from `T-C10-14`, **left pending on purpose** until `T-C10-12`–`14` land (not silently unmet).
+4. **Given** a successful submission **When** it returns **Then** the shell navigates to the detail route at the returned reference (`T-C1-101`) — the form itself never displays the reference or the persisted state.
+
+**Test plan** (from `docs/backlog/C1/test-plan.md`):
+
+| Scenario | Priority | Type | Impl owner | Summary |
+|---|---|---|---|---|
+| `AT-C1-03` | P1 | E2E (`apps/web-e2e`) | `testing-implementer` | On a 360px keyboard-only viewport, no priority-bearing control exists anywhere in the page, no horizontal scroll, every control reachable without a pointer, validation failure states what happened / what to do next in the active language. |
+| Component spec | P1 | Unit (`*.spec.ts`) | `frontend-engineer` | Form validity, string sourcing from the constants file, navigation on success — ticket-level, not repeated in the epic acceptance scenarios. |
+
+**Definition of Done.** All four acceptance criteria pass (AC3's live-region assertion tracked as explicitly pending, not silently skipped); `incident-intake-form.component.spec.ts` green under `pnpm nx test incident-feature`; `AT-C1-03` green under `pnpm nx e2e web-e2e`; `pnpm nx lint incident-feature` passes (no `NgModule`, `OnPush` present, no class-based interceptors); manual WCAG 2.1 AA pass (keyboard-only traversal, screen-reader label/error announcement where implemented); no hardcoded string outside the constants file.
+
+**Implementation (verified in this repository):** [`incident-intake-form.component.ts`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.ts) / [`.html`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.html) / [`.scss`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.scss) · validation: [`incident-intake-form-validation.ts`](libs/incident/feature/src/lib/intake-form/incident-intake-form-validation.ts) · routed at `/incidents/new` via [`incident-routes.ts`](libs/incident/feature/src/lib/incident-routes.ts) · unit tests: [`incident-intake-form.component.spec.ts`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.spec.ts) · E2E: [`incident-intake.feature`](apps/web-e2e/src/features/incident-intake.feature) / [`incident-intake.steps.ts`](apps/web-e2e/src/step-definitions/incident-intake.steps.ts).
+
+---
+
+**Ticket 3 — Database: `T-C1-04` · Reference-number sequence, immutability trigger, adapter and concurrency proof**
+
+- **Epic/Story/Trace:** `C1` · `US-C1-05` · `FR-INC-02` · shape: greenfield · phase: disputed 0/1 (**F6**)
+- **Platform/Layer/Agent/Estimate:** backend · infrastructure · `backend-engineer` · **2h**
+- **Dependencies:** runs after `T-C1-06`'s table-creating migration (which owns `reference varchar(20) NOT NULL` and `uq_incident_reference`); inside the `incident` schema namespace from `T-C1-02`; must precede the first production-reachable write path, `T-C1-07`'s `LogIncidentUseCase` (build order `03 → 05 → 06 → 04 → 07`, finding H2).
+
+**Goal / Context.** `US-C1-05` requires that two Incidents created concurrently never share a reference, guaranteed **by a database constraint, not by an application-level check a race can defeat**, and that a reference is never modified and never re-issued, including when an Incident is cancelled or deleted (`NFR-DAT-01`). The immutability mechanism is a decided architecture call (`DATA-MODEL.md` §3.2/§3.7, decision **M18**): a **column-immutability guard trigger**, not a `REVOKE UPDATE (reference)` — rejected because every current environment (`docker-compose.dev.yml`, `docker-compose.e2e.yml`) connects as `postgres`, which no column-level `REVOKE` binds while the role still holds table-level `UPDATE`.
+
+**Scope — in.** A migration, run after `T-C1-06`, adding inside the `incident` schema: `incident.incident_reference_seq`, declared `NO CYCLE` explicitly (never reused); `incident.fn_reject_reference_update()`, a `plpgsql` function raising on any attempted change; `tg_incident_ticket_reference_immutable`, a `BEFORE UPDATE OF reference ON incident.incident_ticket … WHEN (OLD.reference IS DISTINCT FROM NEW.reference)` trigger calling that function — fires for every role, the owner and a superuser included. Adapter implementation of `nextReference()` allocating from that sequence within the caller transaction. A reversible `down` migration dropping the trigger, then the function, then the sequence — no residual object survives a revert.
+
+**Scope — out.** The aggregate (`T-C1-05`); the `reference` column itself and `uq_incident_reference` (both `T-C1-06`); the mapper's `update: false` defence-in-depth mapping for `reference` (also `T-C1-06`).
+
+**Acceptance criteria (BDD).**
+1. **Given** two Incidents created concurrently in separate transactions **When** both commit **Then** their references differ, and the guarantee still holds with the application-level check removed, proving the constraint and not the code enforces it.
+2. **Given** an existing, persisted Incident **When** a direct SQL `UPDATE` changes its `reference`, run **as the `postgres` role** **Then** the write is rejected by the trigger, not by an application-level guard.
+3. **Given** an Incident that is cancelled and one that is deleted **When** the next reference is allocated **Then** it is a new value; neither released number is ever re-issued.
+4. **Given** the migration **When** it is run, reverted and run again **Then** the outcome is identical each time and no residual object remains after the revert.
+
+**Test plan** (from `docs/backlog/C1/test-plan.md`):
+
+| Scenario | Priority | Type | Impl owner | Summary |
+|---|---|---|---|---|
+| `AT-C1-12` | P0 | Integration (real PostgreSQL) | `backend-engineer` | Two concurrent creations never collide, with and without the application-level check — proves the constraint, not the code. |
+| `AT-C1-13` | P0 | Integration (real PostgreSQL) | `backend-engineer` | A reference is never modified and never re-issued after cancellation/deletion (`NFR-DAT-01`). |
+| `AT-C1-92` | P0 | Integration (real PostgreSQL) | `backend-engineer` | A direct `UPDATE` connected **as `postgres`** is rejected by `tg_incident_ticket_reference_immutable`, even though `postgres` is table owner and superuser. |
+| `AT-C1-14` | P0 | API-E2E (`apps/api-e2e`) | `testing-implementer` | Every Incident created through either intake route carries a reference in the documented, unambiguous-when-spoken format. |
+
+**Definition of Done.** All four acceptance criteria pass; `incident-reference-sequence.integration-spec.ts` green under `pnpm nx test incident-infrastructure --configuration=integration` against real PostgreSQL; `AT-C1-92` (rejection as `postgres`) and `AT-C1-12`/`13` verified against a live DB, not mocked; `pnpm typeorm migration:run` then `migration:revert` then `migration:run` again leaves an identical, residue-free schema; migration reviewed against `DATA-MODEL.md` §3.2/§3.7 (M18) and ADR guidance on trigger usage; no business rule encoded in the trigger itself (it only compares old/new `reference`).
+
+**Implementation (verified in this repository):** [`1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts`](apps/api/src/migrations/1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts) · adapter: `nextReference()` in [`typeorm-incident.repository.ts`](libs/incident/infrastructure/src/lib/typeorm-incident.repository.ts) · integration test: [`incident-reference-sequence.integration-spec.ts`](libs/incident/infrastructure/src/lib/incident-reference-sequence.integration-spec.ts) · policy consumed: [`incident-reference.policy.ts`](libs/incident/domain/src/lib/incident-reference.policy.ts) · in-memory equivalent used by the deployed demo (`PERSISTENCE_MODE=memory`, ADR-015): [`in-memory-incident.repository.ts`](libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts).
 
 ---
 
