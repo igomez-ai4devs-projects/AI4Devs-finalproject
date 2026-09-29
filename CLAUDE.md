@@ -15,7 +15,7 @@ Scope is the **SCMS platform** (its defects, entitled services, Changes, Release
 
 Sport ITSM is a single Nx monorepo hosting a NestJS API and an Angular web client that integrate **only** through shared typed contracts (`libs/shared/contracts`). Versions below are **pinned**.
 
-**Pin granularity (ADR-011).** Every row states **`major.minor`** for each technology already installed, and nothing finer; a technology not yet installed carries its **major** until the ticket that installs it fixes the minor here. The exact patch is owned by `package.json`, which is the single authority for what is installed — this table never repeats it, so the two cannot drift. Changing the `major.minor` of any row is an **approved change**: the major alone proved too coarse to be safe (it hid both a `>= 15.18.0` floor and a `< 15` ceiling until they collided inside an implementation ticket), and the patch is too fine to document without duplicating the manifest. Where a pin is constrained by another pin, the row says so inline — that constraint is the part that must never be rediscovered the hard way.
+**Pin granularity (ADR-011).** Every row states **`major.minor`** for each technology already installed, and nothing finer; a technology not yet installed carries its **major** until the ticket that installs it fixes the minor here. The exact patch is owned by `package.json`, which is the single authority for what is installed — this table never repeats it, so the two cannot drift. Changing the `major.minor` of any row is an **approved change**: the major alone proved too coarse to be safe (it hid both a `>= 15.18.0` floor and a `< 15` ceiling until they collided inside an implementation ticket), and the patch is too fine to document without duplicating the manifest. Where a pin is constrained by another pin, the row says so inline — that constraint is the part that must never be rediscovered the hard way. A technology marked *not yet installed* is part of the pinned target stack but is absent from `package.json` today.
 
 ### Backend
 
@@ -25,10 +25,10 @@ Sport ITSM is a single Nx monorepo hosting a NestJS API and an Angular web clien
 | Framework | **NestJS 11.2** on **Express 5** — `@nestjs/platform-express@11` has bundled Express 5 since `11.0.0`; NestJS 11 never shipped on Express 4. Do **not** add a pnpm override to force Express 4. |
 | Language | **TypeScript 5.9** (strict) |
 | Database / ORM | **PostgreSQL 18** (server major, and a **hard floor**: the schema's primary-key safety-net default is the core `uuidv7()` function — ADR-012, `DATA-MODEL.md` §3.1.1; not an npm pin) + **TypeORM 1.1** (`pg` driver ^8; requires Node ≥ 22.13); `synchronize` always `false`, schema changes via **migrations** only |
-| Auth | **Passport JWT** (`passport-jwt`, `@nestjs/jwt`), **bcrypt** hashing; `@LicenseFeature()` license gating |
+| Auth | **Passport JWT** (`passport-jwt`, `@nestjs/jwt`), **bcrypt** hashing — *not yet installed*; `@LicenseFeature()` license gating |
 | Validation / Config | `class-validator` + `class-transformer` (global `ValidationPipe`); `@nestjs/config` (validated schema, no raw `process.env`) |
-| i18n | **nestjs-i18n 10** (driven by `Accept-Language`) |
-| Observability | **@nestjs/terminus** health (`/health/live`, `/health/ready`), `@nestjs/swagger` (`/api/docs`, dev only), **nestjs-pino** structured logging |
+| i18n | **nestjs-i18n 10** (driven by `Accept-Language`) — *not yet installed* |
+| Observability | **@nestjs/terminus** health (`/health/live`, `/health/ready`), `@nestjs/swagger` (`/api/docs`, dev only), **nestjs-pino** structured logging — *not yet installed* |
 | Testing | **Jest 29.7** + `ts-jest`; **Cypress 15.20** API E2E in `apps/api-e2e`; **Cucumber/Gherkin** via **`@badeball/cypress-cucumber-preprocessor` 28.0** + **`@bahmutov/cypress-esbuild-preprocessor` 2.2** + a direct **`esbuild` 0.28** dev dependency. Cypress is driven by `nx:run-commands`, **not** by `@nx/cypress`, which cannot host Cypress 15 at Nx 21.6 — see **ADR-011** before changing either pin. The preprocessor sets the floor: Cypress below **15.18.0** is unsupported. |
 
 Authoritative source: **`sport-itsm-backend`** skill.
@@ -39,9 +39,9 @@ Authoritative source: **`sport-itsm-backend`** skill.
 |---|---|
 | Framework | **Angular 20.3** — standalone components, **signals**, built-in control flow |
 | Language | **TypeScript 5.9** (strict); **RxJS 7.8** used sparingly (signals-first) |
-| UI | **In-house components** — no third-party component library; plain HTML templates + **SCSS** with design tokens, hand-written a11y (native semantics + ARIA); **FullCalendar 6** (scheduling), **Leaflet** (venue maps) |
+| UI | **In-house components** — no third-party component library; plain HTML templates + **SCSS** with design tokens, hand-written a11y (native semantics + ARIA); **FullCalendar 6** (scheduling), **Leaflet** (venue maps) — both *not yet installed* |
 | State / Data | Angular **Signals** (local + shared via services); **Reactive Forms**; **HttpClient** with functional interceptors |
-| i18n | **Transloco** (UI strings); locale interceptor sets `Accept-Language` |
+| i18n | **Transloco** (UI strings) — *not yet installed*; locale interceptor sets `Accept-Language` |
 | Testing | **Jest 29.7** + `jest-preset-angular`; **Cypress 15.20** + Cucumber E2E in `apps/web-e2e`, on the same harness and the same preprocessor chain as the backend (see the backend table and **ADR-011**) |
 
 Authoritative source: **`sport-itsm-frontend`** skill.

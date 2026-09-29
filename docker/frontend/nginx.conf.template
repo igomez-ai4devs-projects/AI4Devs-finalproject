@@ -50,10 +50,13 @@ http {
         root /usr/share/nginx/html;
         index index.html;
 
-        # Security headers
-        add_header X-Frame-Options "SAMEORIGIN" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-XSS-Protection "1; mode=block" always;
+        # Security headers — shared with every location below that declares
+        # its own `add_header` (nginx does not merge a location's
+        # `add_header` with what it inherits from `server`; see
+        # docker/frontend/security-headers.conf for the full explanation).
+        # A location with no `add_header` of its own (`/`, `/api/`) still
+        # inherits these from here unchanged.
+        include /etc/nginx/security-headers.conf;
 
         # Security: Deny hidden files
         location ~ /\. {
@@ -71,12 +74,17 @@ http {
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";
+            # This location's own `add_header` above replaces (does not add
+            # to) the server-level security headers, so they are repeated
+            # here via the shared include — see the `server`-level comment.
+            include /etc/nginx/security-headers.conf;
         }
 
         # Sin cache para index.html
         location = /index.html {
             add_header Cache-Control "no-store, no-cache, must-revalidate";
             expires 0;
+            include /etc/nginx/security-headers.conf;
         }
 
         # Health check
@@ -84,6 +92,7 @@ http {
             access_log off;
             return 200 "healthy\n";
             add_header Content-Type text/plain;
+            include /etc/nginx/security-headers.conf;
         }
 
         # ADR-015 decision 4 — same-origin reverse proxy to the API service,
@@ -92,9 +101,9 @@ http {
         # REPLACES the server block's inherited ones instead of merging with
         # them (nginx semantics), so staying free of it is what lets this
         # location inherit the three security headers declared on `server`
-        # above (T-C10-79 Trap 5 — the other `add_header`-bearing locations
-        # above already lose them for the same reason; pre-existing,
-        # reported, not fixed by this ticket).
+        # above via the shared include (T-C10-79 Trap 5, fixed: every other
+        # `add_header`-bearing location above now repeats the same include
+        # instead of losing the inherited headers).
         location /api/ {
             # Resolved AT REQUEST TIME, not once at nginx startup — required
             # because a literal host in `proxy_pass` makes nginx resolve it

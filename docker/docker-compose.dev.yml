@@ -57,10 +57,15 @@ services:
       dockerfile: docker/backend/Dockerfile.dev
       args:
         - PORT=${PORT:-3300}
-    # `apps/api/src/data-source.ts` and the migration chain do not exist yet
-    # (T-C10-16 / T-C10-17), so there is nothing to run before `nx serve` today
-    # — the auto-run-on-boot step (gated to development only) is added here
-    # once those tickets land, not invented ahead of them.
+    # `apps/api/src/data-source.ts` and the migration chain
+    # (`apps/api/src/migrations/`, T-C10-16 / T-C10-17) exist now, but nothing
+    # here runs them: `migrationsRun` is `false` on the data source and
+    # migrations are never auto-run on application boot, in any environment
+    # (`apps/api/src/migrations/README.md`). `PERSISTENCE_MODE=postgres`
+    # below (ADR-015) only selects the TypeORM adapter at the composition
+    # root — it does not apply schema. Apply migrations explicitly, against
+    # this service's postgres (host port 5452), before the API needs them:
+    #   pnpm typeorm migration:run -d apps/api/src/data-source.ts
     command: pnpm exec nx serve api --host 0.0.0.0
     ports:
       - '${PORT:-3300}:${PORT:-3300}'

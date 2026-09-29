@@ -37,6 +37,14 @@ ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
 COPY docker/frontend/nginx.conf.template /etc/nginx/templates/nginx.conf.template
 
+# Shared security-header `add_header` lines, `include`d by the rendered
+# nginx.conf at `server` level and again inside every location that sets its
+# own `add_header` (see docker/frontend/security-headers.conf and
+# nginx.conf.template for why). Plain static config — no `${...}`
+# placeholder — so it is COPYed directly rather than routed through
+# /etc/nginx/templates/ and envsubst.
+COPY docker/frontend/security-headers.conf /etc/nginx/security-headers.conf
+
 # Fails the container before nginx ever starts when API_UPSTREAM_URL is
 # unset, or shaped in a way `location /api/`'s `proxy_pass $variable;`
 # cannot safely handle (a path or a trailing slash — see the script).
