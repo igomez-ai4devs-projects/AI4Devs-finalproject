@@ -3739,8 +3739,30 @@ They follow the good practices `CLAUDE.md` and the `architect-tech-lead` skill r
 
 > Documenta 3 de las Pull Requests realizadas durante la ejecución del proyecto
 
-**Pull Request 1**
+**Pull Request 1 — [#266 `feature-entrega1-IGR`](https://github.com/LIDR-academy/AI4Devs-finalproject/pull/266)**
 
-**Pull Request 2**
+- **Source → target:** `igomez-ai4devs-projects:main` → `LIDR-academy:main` (course submission for delivery 1; the branch `feature-entrega1-IGR` was merged into the fork's `main` in `1274597`). **State:** open.
+- Product discovery with AI: `service-desk-expert` skill, product purpose and the core ITSM capabilities of Sport ITSM.
+- `sport-itsm-product-owner` agent and the first product docs: `PRD.md`, `ARCHITECTURE.md`, `DATA-MODEL.md`, `COMPONENTS.md`, `PROJECT-STRUCTURE.md`.
+- `CLAUDE.md` with the pinned technology stack, conventions and folder structure.
+- Engineering skills: `sport-itsm-architecture` (+ architect agent), `sport-itsm-backend`, `sport-itsm-frontend`, `sport-itsm-engineering-principles`, `feature-docs`, plus the external `nestjs-best-practices` / `angular-developer` references.
+- `readme.md` §0–§3 filled in and `prompts.md` updated (112 files, documentation and AI tooling only — no application code yet).
 
-**Pull Request 3**
+**Pull Request 2 — [#1 "Merge branch 'feature-entrega2-IGR'"](https://github.com/igomez-ai4devs-projects/AI4Devs-finalproject/pull/1)** (also submitted upstream as [#313](https://github.com/LIDR-academy/AI4Devs-finalproject/pull/313))
+
+- **Source → target:** `feature-entrega2-IGR` → `main` of the fork. **State:** merged (2026-09-07, merge commit `a51cf94`). Upstream #313 (`feature-entrega2-IGR` → `LIDR-academy:main`) is open.
+- Backlog pipeline: `business-analyst` agent and Mode 2 of the Product Owner; epic map, user stories and tickets for **C1 · Incident Management** and **C10 · Identity & Access Management** (plus Audit Trail stories).
+- UI decision: Angular Material replaced by an in-house SCSS component layer.
+- Monorepo scaffolding: Nx workspace with pnpm (`T-C10-01`), ESLint 9 flat config + Prettier 3 (`T-C10-02`), module-boundary type/scope matrix (`T-C10-03`).
+- Application shells: `apps/api` on NestJS 11 (`T-C10-04`), `apps/web` Angular 20 standalone shell (`T-C10-05`), `apps/api-e2e` / `apps/web-e2e` with Cypress + Cucumber (`T-C10-06`).
+- DevOps: Dockerfiles, `docker-compose`, GitHub Actions pipeline, PostgreSQL 18; API on port 3300; new `testing-implementer` and `ci-cd-expert` agents.
+
+**Pull Request 3 — `finalproject-IGR` → `main`**
+
+- **Source → target:** `finalproject-IGR` → `main` (compare range `main..finalproject-IGR`, 65 commits on top of `a51cf94`). **State:** no pull request found on GitHub yet — PR link: _to be added_.
+- Shared foundations: `libs/shared/util` (`T-C10-07`), `libs/shared/domain` kernel primitives + `EventPublisherPort` (`T-C10-08`, `T-C10-09`), `libs/shared/contracts` (`T-C10-11`).
+- Persistence: TypeORM data source (`T-C10-16`), base migration chain (`T-C10-17`), post-commit event dispatcher (`T-C10-73`), `PERSISTENCE_MODE` switch with an in-memory repository and `PersistenceModule.forMode()` (`T-C10-75` … `T-C10-78`).
+- MVP vertical slice "log an Incident and see it": six `incident` libraries (`T-C1-01`), `Incident` aggregate and `TicketReference` policy (`T-C1-03`, `T-C1-05`), TypeORM adapter and reference sequence with immutability trigger (`T-C1-04`, `T-C1-06`).
+- Use cases and API: `LogIncidentUseCase` (`T-C1-07`), intake contracts rejecting requester-set priority (`T-C1-08`), `GetIncidentByReference` + `GET /incidents/{reference}` (`T-C1-99`, `T-C1-100`).
+- Frontend: Incident data-access (`T-C1-09`), plain-language intake form (`T-C1-10`), Incident detail (`T-C1-101`), home page (`T-C1-103`), Spanish translation (`T-C1-104`); nginx reverse proxy for `/api/` (`T-C10-79`).
+- Backlog/docs: C10 stories and tickets regenerated against the decided PRD, MVP re-cut, and `readme.md` §1.3–§6 completed.
