@@ -52,6 +52,8 @@ Sports Competition Management System (SCMS)
 
 > Puedes tenerlo alojado en público o en privado, en cuyo caso deberás compartir los accesos de manera segura. Puedes enviarlos a [alvaro@lidr.co](mailto:alvaro@lidr.co) usando algún servicio como [onetimesecret](https://onetimesecret.com/). También puedes compartir por correo un archivo zip con el contenido
 
+> My public URL Github Repository - AI4Devs-finalproject - IGR: https://github.com/igomez-ai4devs-projects/AI4Devs-finalproject
+
 ---
 
 ## 1. Descripción general del producto
@@ -139,9 +141,321 @@ Sport ITSM delivers the following core capabilities, spanning end-user support a
 
 > Proporciona imágenes y/o videotutorial mostrando la experiencia del usuario desde que aterriza en la aplicación, pasando por todas las funcionalidades principales.
 
+The demonstration MVP covers the first step of every Incident's life, seen from the **Requester** — a player, team manager, organizer or match official who hits a defect in the SCMS platform. In three screens the Requester lands on Sport ITSM, **reports the problem** through the Self-Service Portal's intake form and **checks what the Service Desk has recorded**:
+
+**Home page** (`/`) → **Report a problem** (`/incidents/new`) → **Incident record** (`/incidents/INC0000001`)
+
+The demo's user interface is **in Spanish** and written in **plain language**: ITSM vocabulary is deliberately kept off the requester-facing screens (NFR-USE-01). The Requester reads about an _aviso_ (a report), never about an "incident", a "ticket", a "priority" or an "SLA". Where this section quotes on-screen text, the Spanish original comes first, followed by its English translation in parentheses.
+
+#### 1.3.1 Home page — `/`
+
+![Sport ITSM home page: a welcome heading, a one-line invitation to report anything that does not work on the platform, and a blue "Report a problem" button](img/01.main_page.jpg)
+
+The landing page is the entry point of the Self-Service Portal. It welcomes the visitor — _"Te damos la bienvenida a Sport ITSM"_ ("Welcome to Sport ITSM") — and states the promise in one sentence: _"Si algo no funciona como esperabas en la plataforma, cuéntanoslo y lo revisaremos."_ ("If something on the platform isn't working as you expected, tell us and we'll look into it.").
+
+There is exactly one action on the page, **_"Reportar un problema"_ ("Report a problem")**, which opens the intake form. This page is the first fragment of the full Self-Service Portal (FR-KNW-08), which will later add knowledge search, catalog requests and the Requester's own ticket list.
+
+#### 1.3.2 Report a problem — `/incidents/new`
+
+![Report a problem form: a one-line summary field limited to 255 characters, a multi-line "What happened?" field with guidance text, and a blue "Send report" button](img/02.report_incident.jpg)
+
+This screen **logs an Incident** from the Self-Service Portal (FR-INC-01). Under the heading _"Reportar un problema"_ ("Report a problem") and the reassurance _"Cuéntanos qué ha fallado. Lo revisaremos y te mantendremos al tanto."_ ("Tell us what went wrong. We'll look into it and keep you posted."), the form asks for exactly **two mandatory fields**, grouped as _"Sobre el problema"_ ("About the problem"):
+
+| Field on screen | What the Requester provides | ITSM meaning |
+|---|---|---|
+| _"Resume el problema en pocas palabras"_ ("Summarize the problem in a few words") — hint _"Hasta 255 caracteres."_ ("Up to 255 characters.") | A one-line summary. The field does not accept more than **255 characters**. | The Incident's **short description** |
+| _"¿Qué ha pasado?"_ ("What happened?") | Free text. The hint asks what the Requester was doing, what they expected and what happened instead, and invites them to mention the specific match or competition involved. | The Incident's **detailed description**, including any competition context in the Requester's own words |
+
+What the form deliberately does **not** ask: the Requester never chooses Impact, Urgency, Priority, a category or whether a competition in progress is affected. Those are assessed later by the Service Desk (FR-INC-01, FR-INC-05), so no Requester can inflate the urgency of their own report.
+
+**Validation and error messages.** Both fields are checked when the Requester presses **_"Enviar aviso"_ ("Send report")**; a field containing only spaces counts as empty. If anything is missing, the form does not submit and instead:
+
+- shows a summary at the top — _"No hemos podido enviar tu aviso"_ ("We couldn't send your report") and _"Corrige lo siguiente e inténtalo de nuevo:"_ ("Fix the following and try again:") — with one link per problem that jumps straight to the field concerned, and moves the keyboard focus onto that summary;
+- marks each faulty field and shows its message beneath it: _"Resume el problema en pocas palabras."_ ("Summarize the problem in a few words.") for the summary, _"Describe qué ha pasado."_ ("Describe what happened.") for the description, and _"Acórtalo a 255 caracteres o menos."_ ("Shorten it to 255 characters or fewer.") should an over-long summary ever reach the Service Desk.
+
+Every failure says what happened and what to do next; none is silent (NFR-USE-05). If the connection drops, the Requester reads _"No hemos podido conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo."_ ("We couldn't reach the server. Check your connection and try again."); if the service itself fails, _"Algo ha fallado por nuestra parte. Inténtalo de nuevo en unos minutos."_ ("Something went wrong on our side. Try again in a few minutes."), together with a _"Código para soporte:"_ ("Support code:") that the Service Desk can use to trace the exact failed attempt. While the report is being sent, the button reads _"Enviando aviso…"_ ("Sending report…") and cannot be pressed twice.
+
+**On success**, the Incident is logged and immediately receives its **reference number**: `INC` followed by seven digits (for example `INC0000001`), unique and never reused (FR-INC-02). The Requester is taken straight to the Incident record for that reference.
+
+#### 1.3.3 Incident record — `/incidents/INC0000001`
+
+![Incident record for INC0000001: the reference, the logging date and time, the origin channel "Web form", the summary and the full description, followed by the not-yet-triaged fields such as category, impact, urgency and priority, each marked as not yet assessed](img/03.detail_incident.jpg)
+
+The record is headed _"Aviso INC0000001"_ ("Report INC0000001") and lists, under _"Lo que tenemos registrado"_ ("What we have on record"), exactly what the system recorded. It is read-only: the Requester consults it, and can come back to it at any time through its address, `/incidents/<reference>`.
+
+**What the system recorded at logging**
+
+| Label on screen | English | What it is |
+|---|---|---|
+| _Referencia_ | Reference | The Incident's unique reference number (FR-INC-02). |
+| _Registrado el_ | Logged on | The date and time the Incident was logged, written out in Spanish (for example _"29 de septiembre de 2026 a las 19:04"_) and shown in the viewer's own time zone. |
+| _Cómo nos llegó el aviso_ | How the report reached us | The **origin channel**, set by the system and never by the Requester (FR-OMN-02). A report sent from this form always shows _"Formulario web"_ ("Web form") — the Self-Service Portal channel. |
+| _Resumen_ | Summary | The short description, exactly as submitted. |
+| _Descripción completa_ | Full description | The detailed description, exactly as submitted. |
+
+**What the Service Desk will complete at triage.** The remaining fields belong to **triage** — the Service Desk's assessment of a newly logged Incident — and are therefore still open on a new record. The screen says so explicitly instead of hiding the fields or filling them with a default:
+
+| Label on screen | English | ITSM field and what it means for the customer | Shown on a new record |
+|---|---|---|---|
+| _A qué afecta_ | What it affects | **Affected service** — which SCMS service is failing. Optional when reporting, because the Requester may not know; the Service Desk records it before the Incident moves forward (FR-INC-19). | _"No indicado"_ ("Not specified") |
+| _Tipo de problema_ | Type of problem | **Category** — the classification that routes the Incident to the right Resolver Group (FR-INC-03). | _"Todavía sin clasificar"_ ("Not classified yet") |
+| _Cuánto está afectando esto_ | How much this is affecting things | **Impact** — how widely the failure disrupts users or competitions. | _"Todavía sin evaluar"_ ("Not assessed yet") |
+| _Con qué rapidez hay que atenderlo_ | How quickly it needs attention | **Urgency** — how quickly the business needs it restored. | _"Todavía sin evaluar"_ ("Not assessed yet") |
+| _Cuándo lo atenderemos_ | When we'll deal with it | **Priority** — derived from Impact × Urgency, never chosen by the Requester. Until both are assessed the Incident has no Priority, and the screen says so rather than showing a default one (FR-INC-04). | _"Todavía sin decidir"_ ("Not decided yet") |
+| _Afecta a una competición que está en marcha_ | Affects a competition in progress | **Competition-in-progress flag** — set only by the Service Desk, with a justification, when the failure disrupts a live event; it raises the Impact and therefore the Priority (FR-INC-05). | _"No, de momento no"_ ("No, not for now") |
+
+If the record cannot be shown, the screen says why and what to do: _"Cargando tu aviso…"_ ("Loading your report…") while it loads; _"No hemos encontrado este aviso"_ ("We couldn't find this report") for a well-formed reference that does not exist; _"Esta referencia no parece válida"_ ("This reference doesn't look valid") for an address that is not shaped like a reference, with advice to check the link; and the same connection and service-failure messages as the form.
+
+#### 1.3.4 Accessibility
+
+What the demo screens do today (towards NFR-USE-03 and NFR-USE-04):
+
+- **One main heading per screen**, and the page is declared as Spanish so screen readers pronounce it correctly.
+- **Full keyboard operation**: every action is a native link, field or button, reachable with Tab and activated with Enter, with a clearly visible focus outline.
+- **Focus is placed where it matters**: on the error summary when a submission fails, and on the record's heading when the record opens.
+- **Fields are properly labelled**: each field is tied to its label, its hint and — when there is one — its error message, and faulty fields are announced as invalid; the error summary is announced as an alert.
+- **Mobile-ready**: the three screens fit a 360-pixel-wide phone screen without horizontal scrolling.
+
+#### 1.3.5 Current scope and limitations of the demo
+
+The demo shows the Requester's first interaction end to end — report a problem, see it recorded — and nothing beyond it. For an honest reading:
+
+- **No sign-in.** The demo does not ask who you are. Anyone who knows a reference can open its record. In the product, every user is authenticated (FR-IAM-01), every report carries the Requester's identity (FR-OMN-04) and a Requester sees only their own tickets.
+- **Demonstration data only.** Reports are held temporarily and are **lost whenever the service restarts**; numbering then starts again at `INC0000001`, and a link to an earlier record answers _"No hemos encontrado este aviso"_. Please do not enter real personal data.
+- **The first visit may be slow.** After a period without traffic the demo service goes to sleep, and the first request can take a little while as it wakes up; subsequent requests respond normally.
+- **Consultation only.** There is no list of "my reports", no way to add comments or attachments, no editing, no status notifications, and no Service Desk screens yet.
+
+**What comes next** (PRD §14, no dates committed): the foundations — authenticated users with roles, the categorization taxonomy and the audit trail — then the **MVP**: the complete Incident lifecycle with Service Desk triage (category, Impact × Urgency → Priority, affected service, competition-in-progress flag), SLA targets and escalation, notifications, Service Requests from the Service Catalog, the Knowledge Base and the full Self-Service Portal, and the guard that redirects in-application sport decisions to the right path before submission (FR-INC-15). Governance of SCMS Changes, Releases, Problems and the CMDB follows in the next phase.
+
 ### **1.4. Instrucciones de instalación:**
 
 > Documenta de manera precisa las instrucciones para instalar y poner en marcha el proyecto en local (librerías, backend, frontend, servidor, base de datos, migraciones y semillas de datos, etc.)
+
+This section gets a fresh clone running locally, verified step by step. Commands are given in **bash** (Git Bash / macOS / Linux); where the syntax changes — inline environment variables, copying a file — the **PowerShell** equivalent follows. §2.3.6 ["Useful commands"](#236-useful-commands) is the full command surface (lint, boundary verification, bootstrap acceptance criteria); this section only points to it rather than repeating it.
+
+#### 1.4.1 Prerequisites
+
+| Tool | Required version | Where it is pinned | Check |
+|---|---|---|---|
+| **Node.js** | 22 LTS | `.nvmrc` (`22`), `package.json` → `engines.node` (`>=22.0.0 <23.0.0`) | `node --version` |
+| **pnpm** | 10.18.3, via **Corepack** — pnpm is the *only* supported package manager; `npm install`/`yarn` here produces a second lockfile | `package.json` → `packageManager` | `corepack enable` (once per machine), then `pnpm --version` |
+| **Docker** | any recent version with Compose v2 (`docker compose`, not `docker-compose`) — needed for the local PostgreSQL and for the Cypress E2E suites; **not** needed for the quick-start path (A) below | — | `docker --version` |
+| **Git** | any recent version | — | `git --version` |
+
+These steps were last verified with `node v22.20.0`, `pnpm 10.18.3` and `Docker 27.3.1`.
+
+#### 1.4.2 Clone and install
+
+```bash
+git clone https://github.com/igomez-ai4devs-projects/AI4Devs-finalproject.git
+cd AI4Devs-finalproject
+corepack enable
+pnpm install
+```
+
+`pnpm install` is the only install command — it writes a single `pnpm-lock.yaml` at the repository root. Nothing else (`npm`, `yarn`) is supported.
+
+#### 1.4.3 Configure the environment
+
+```bash
+cp .env.example .env
+```
+
+```powershell
+# PowerShell equivalent
+Copy-Item .env.example .env
+```
+
+`.env` is gitignored; `.env.example` is the committed template and the only in-repo record of which keys the API needs. The API validates this environment at boot (`apps/api/src/config/env.validation.ts`) and **refuses to start**, naming every offending key, rather than falling back to a plausible default.
+
+| Key | Mandatory when | Meaning |
+|---|---|---|
+| `NODE_ENV` | always | `development \| test \| staging \| production` |
+| `PORT` | always | TCP port the API binds to (1–65535); `3300` in every local path below |
+| `PERSISTENCE_MODE` | **always, with no default** (ADR-015) | `postgres \| memory` — choosing the non-durable `memory` store must be an explicit act, never an inferred one |
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | **only when `PERSISTENCE_MODE=postgres`** | The connection to the local PostgreSQL (Path B below). Ignored, and never read by any code path, in `memory` mode |
+
+One combination is rejected outright: **`PERSISTENCE_MODE=memory` together with `NODE_ENV=production` aborts the boot** — a non-durable store must never be selected in production (there is no production environment for this delivery, ADR-013, but the guard is unconditional).
+
+#### 1.4.4 Run it — three paths
+
+Pick one. All three use the same ports (API `3300`, web `4200`), so **run only one path at a time**.
+
+**A. Quick start, no database** (`PERSISTENCE_MODE=memory`) — this is what the deployed demo runs (ADR-015).
+
+```bash
+# terminal 1
+PERSISTENCE_MODE=memory pnpm nx serve api
+
+# terminal 2
+pnpm nx serve web
+```
+
+```powershell
+# PowerShell — terminal 1
+$env:PERSISTENCE_MODE = "memory"; pnpm nx serve api
+
+# PowerShell — terminal 2
+pnpm nx serve web
+```
+
+(If `.env` already sets `PERSISTENCE_MODE=memory`, the inline variable above is redundant but harmless.) Open **`http://localhost:4200/`** — `apps/web/proxy.conf.json` forwards `/api` to `http://localhost:3300`, so the browser never talks to the API port directly. You should see the Sport ITSM home page in Spanish, with one button, *"Reportar un problema"*.
+
+**B. With PostgreSQL** (`PERSISTENCE_MODE=postgres`) — start **only** the `postgres` service of the development compose file, never a bare `up` (see Troubleshooting):
+
+```bash
+docker compose -f docker/docker-compose.dev.yml up -d postgres
+pnpm migration:run
+pnpm migration:show
+```
+
+```powershell
+# PowerShell — identical, docker compose and pnpm read the same way
+docker compose -f docker/docker-compose.dev.yml up -d postgres
+pnpm migration:run
+pnpm migration:show
+```
+
+`pnpm migration:show` must list every migration with `[X]` (applied) — 4 today:
+
+```
+[X] 5 CreateIamSchemaAndExtensions1790349248155
+[X] 6 CreateIncidentSchema1790366187635
+[X] 7 CreateIncidentTicketTable1790380866140
+[X] 8 CreateIncidentReferenceSequenceAndImmutabilityTrigger1790383684993
+```
+
+Then start the API and the web client as in Path A, with `PERSISTENCE_MODE=postgres` instead:
+
+```bash
+PERSISTENCE_MODE=postgres pnpm nx serve api
+pnpm nx serve web
+```
+
+```powershell
+$env:PERSISTENCE_MODE = "postgres"; pnpm nx serve api
+pnpm nx serve web
+```
+
+Open `http://localhost:4200/` as in Path A. Data now survives an API restart — Path A's counter resets to `INC0000001` on every restart, Path B's does not.
+
+**C. Production-like (stage topology)** — builds both applications and runs the same images the pipeline pushes to `ghcr.io` (ADR-013/ADR-015): nginx on `4200` serving the built Angular bundle and reverse-proxying `/api/` to the API, which runs `PERSISTENCE_MODE=memory` (the stage prototype has no database, ADR-015).
+
+```bash
+pnpm nx build api
+pnpm nx run api:build-migrations
+pnpm nx build web
+docker compose -f docker/docker-compose.stage.yml up -d --build
+```
+
+```powershell
+pnpm nx build api
+pnpm nx run api:build-migrations
+pnpm nx build web
+docker compose -f docker/docker-compose.stage.yml up -d --build
+```
+
+Open `http://localhost:4200/` — the browser only ever talks to this one origin, same as on Render. Tear it down with `docker compose -f docker/docker-compose.stage.yml down` once you are done (§1.4.8).
+
+#### 1.4.5 Database, migrations and seed data
+
+The schema changes **only** through TypeORM migrations — `synchronize` is always `false` (`CLAUDE.md` §3). The chain lives in `apps/api/src/migrations/` (conventions in its own `README.md`), applied against the data source at `apps/api/src/data-source.ts`:
+
+```bash
+pnpm migration:run       # apply every pending migration
+pnpm migration:revert    # roll back the last applied migration
+pnpm migration:show      # list migrations and their applied state
+```
+
+These shorthands already carry `-d apps/api/src/data-source.ts` — do not append a second `-d`. They need a reachable PostgreSQL, i.e. Path B's `postgres` service on host port **5452** (not 5432 — see Troubleshooting).
+
+**There is no seed data, and none is needed.** The demo registers every Incident under a single fixed Requester actor set at boot (`T-C10-74`) — there is no sign-in yet (§1.3.5) — so no user, role or reference data has to be seeded for the flow in §1.4.6 to work. The only "data" a fresh environment needs is the schema itself, produced by the migrations above.
+
+#### 1.4.6 Verify it works
+
+**Through the browser** (any of the three paths): open `http://localhost:4200/`, click *"Reportar un problema"*, fill in the summary and description, submit, and confirm you land on the Incident record (`/incidents/INC000000N`) showing what you just typed, with every triage field marked as not yet assessed (§1.3.3).
+
+**From the command line**, the same flow plus the 404 case, always through `http://localhost:4200` — the dev-server proxy in Paths A and B, nginx in Path C:
+
+```bash
+curl -i -X POST http://localhost:4200/api/incidents \
+  -H "Content-Type: application/json" \
+  -d '{"shortDescription":"Smoke test","description":"Verifying the install steps in readme.md section 1.4."}'
+# -> 201, body: {"reference":"INC000000N"}
+
+curl -i http://localhost:4200/api/incidents/INC000000N
+# -> 200, the full record
+
+curl -i http://localhost:4200/api/incidents/INC9999999
+# -> 404, body: {"error":{"code":"NOT_FOUND"}}
+```
+
+```powershell
+Invoke-WebRequest -Method Post -Uri http://localhost:4200/api/incidents `
+  -ContentType "application/json" `
+  -Body '{"shortDescription":"Smoke test","description":"Verifying the install steps in readme.md section 1.4."}'
+
+Invoke-WebRequest -Uri http://localhost:4200/api/incidents/INC9999999
+# throws / reports 404 — Invoke-WebRequest raises on a non-2xx status; read $_.Exception.Response.StatusCode
+```
+
+Expected result, verified end to end on all three paths: `201` on the `POST`, `200` on the matching `GET`, `404` with `{"error":{"code":"NOT_FOUND"}}` on `INC9999999`.
+
+#### 1.4.7 Run the tests
+
+| Suite | Command | Notes |
+|---|---|---|
+| Unit tests, lint, build | `pnpm nx run-many -t lint test build` | Every project of the workspace (13 today); no database or Docker needed |
+| API E2E (Cypress + Cucumber) | `pnpm nx e2e api-e2e` | Brings up its own ephemeral PostgreSQL (host port **5499**), migrates it, serves the built API, runs, and tears the stack down — pass or fail. Needs Docker running |
+| Web E2E (Cypress + Cucumber) | `pnpm nx e2e web-e2e` | Starts the web dev server on `4200` itself (keep that port free); no database involved |
+
+From a VS Code integrated terminal, `ELECTRON_RUN_AS_NODE` is inherited and breaks the Cypress binary — unset it in the **same** command (see Troubleshooting). The full command surface — boundary verification, the bootstrap/lint acceptance criteria, formatting, the dependency graph — is §2.3.6 ["Useful commands"](#236-useful-commands); this table only orients a first run.
+
+#### 1.4.8 Stop and clean up
+
+```bash
+# Stop nx serve api / nx serve web: Ctrl+C in each terminal. If a process
+# outlived its terminal, find the PID actually holding the port and kill that:
+netstat -ano | grep -E ':3300|:4200'      # note the PID in the last column
+taskkill //PID <pid> //F                  # Git Bash on Windows
+kill -9 <pid>                             # macOS / Linux
+
+# Path C containers
+docker compose -f docker/docker-compose.stage.yml down
+
+# Path B's PostgreSQL is meant to stay up between sessions — stop it only when
+# you are done with local development entirely:
+docker compose -f docker/docker-compose.dev.yml down       # keeps postgres-data
+docker compose -f docker/docker-compose.dev.yml down -v    # also deletes it (destructive)
+```
+
+```powershell
+Get-NetTCPConnection -LocalPort 3300,4200 -ErrorAction SilentlyContinue |
+  Select-Object LocalPort, OwningProcess
+Stop-Process -Id <pid> -Force
+
+docker compose -f docker/docker-compose.stage.yml down
+docker compose -f docker/docker-compose.dev.yml down        # keeps postgres-data
+docker compose -f docker/docker-compose.dev.yml down -v     # also deletes it (destructive)
+```
+
+#### 1.4.9 Troubleshooting
+
+**The API listens on the wrong port, or won't connect to the database, even though `.env` looks right.** A variable **already set in your shell or system environment always wins over `.env`** — neither `@nestjs/config`'s loader nor `node --env-file-if-exists` overwrites a variable that is already there. If your machine happens to export `PORT`, or `POSTGRES_HOST`/`POSTGRES_USER`/etc. — commonly left behind by another local project — the API silently binds to that port, or authenticates against that other database, instead of the values in `.env`.
+
+- Check in bash: `echo "PORT=$PORT POSTGRES_HOST=$POSTGRES_HOST POSTGRES_USER=$POSTGRES_USER"`
+- Check in PowerShell: `"PORT=$env:PORT POSTGRES_HOST=$env:POSTGRES_HOST POSTGRES_USER=$env:POSTGRES_USER"`
+- Fix without touching your global environment: pass the value on the **same command line** as the one that starts the process (`PORT=3300 pnpm nx serve api` / `$env:PORT = "3300"; pnpm nx serve api`) — an inline assignment does take precedence. Or clear it for the current session (`unset PORT` / `Remove-Item Env:PORT`); on Windows, a persistent user-level variable is removed with `[Environment]::SetEnvironmentVariable('PORT', $null, 'User')`, after which every terminal (and VS Code) must be reopened.
+
+**The development compose file's `api` and `web` services do not work — start `postgres` only.** `docker/docker-compose.dev.yml` is reported (`T-C10-76`) to have a broken `api` service (it declares no `POSTGRES_*` variables, so it fails environment validation on its own) and both `docker/backend/Dockerfile.dev` / `docker/frontend/Dockerfile.dev` still comment "there is no `libs/` directory yet", which is no longer true and means neither copies `libs/` into the image. This section deliberately documents `docker compose -f docker/docker-compose.dev.yml up -d postgres` — the service name is required — and never a bare `up`. These are pre-existing findings, reported here and to the CI/CD owner, not fixed as a side effect of this section.
+
+**Port 5452, not 5432.** The development PostgreSQL container still listens on `5432` internally, but the compose file publishes it on host port **5452** (5432 is commonly already taken by another local PostgreSQL). Every local `POSTGRES_PORT` in this section is `5452`; never propose `5432`.
+
+**Cypress fails with `bad option --smoke-test` from a VS Code integrated terminal.** The inherited `ELECTRON_RUN_AS_NODE=1` breaks the Cypress binary before any test runs. Unset it in the same command: `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` (bash) or `Remove-Item Env:ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` (PowerShell).
+
+**`api-e2e` and the `incident-infrastructure` integration suite cannot run at the same time.** Both use the same ephemeral PostgreSQL on host port 5499; run one, let it tear down, then the other.
+
+**Ports already in use.** Paths B and C, and a plain `pnpm nx serve web`, all use `3300`/`4200`. Stop whichever path is running (§1.4.8) before starting another.
 
 ---
 
@@ -160,8 +474,8 @@ flowchart TB
     USER["Requesters and Service Organization<br/>browser, desktop and mobile"]
 
     subgraph boundary["Sport ITSM system boundary"]
-        WEB["<b>Web Client</b> - apps/web<br/>Angular 20.3, standalone components, signals,<br/>in-house SCSS component library, Reactive Forms, Transloco<br/>Self-Service Portal, Agent Workspace, Admin Console"]
-        API["<b>API</b> - apps/api<br/>NestJS 11 on Express 5, Node.js 22 LTS<br/>Inbound HTTP adapter plus composition root<br/>Passport JWT, class-validator, nestjs-i18n, pino"]
+        WEB["<b>Web Client</b> - apps/web<br/>Angular 20.3, standalone components, signals,<br/>Reactive Forms, hand-written SCSS<br/>served by nginx, which reverse-proxies /api/<br/>target: Transloco, in-house design system,<br/>Self-Service Portal, Agent Workspace, Admin Console"]
+        API["<b>API</b> - apps/api<br/>NestJS 11 on Express 5, Node.js 22 LTS<br/>Inbound HTTP adapter plus composition root<br/>class-validator, @nestjs/config, PERSISTENCE_MODE switch<br/>target: Passport JWT, nestjs-i18n, pino, terminus"]
         DB[("<b>PostgreSQL 18</b><br/>single system of record<br/>tickets, SLA timers, catalog, knowledge,<br/>approvals, append-only audit<br/>TypeORM 1.1, synchronize always false")]
     end
 
@@ -170,14 +484,14 @@ flowchart TB
     SCMS["SCMS competition reference data"]
 
     USER -->|"HTTPS"| WEB
-    WEB -->|"HTTPS / JSON REST - typed by libs/shared/contracts<br/>Bearer JWT plus Accept-Language"| API
-    API -->|"TCP 5432 - pg driver, migrations only"| DB
-    API -->|"validate token and read profile"| IDP
-    API -->|"send notification"| MAIL
-    API -->|"read competition identifiers - optional, ACL"| SCMS
+    WEB -->|"HTTPS / JSON REST under /api - typed by libs/shared/contracts<br/>X-Correlation-Id; target: Bearer JWT plus Accept-Language"| API
+    API -->|"TCP 5432 - pg driver, migrations only<br/>PERSISTENCE_MODE=postgres only"| DB
+    API -.->|"target - validate token and read profile"| IDP
+    API -.->|"target - send notification"| MAIL
+    API -.->|"target - read competition identifiers, optional, ACL"| SCMS
 ```
 
-There is deliberately **no message broker, no cache tier and no separate reporting store**: one API process, one database, one client.
+Solid arrows exist today; dashed arrows are target integrations with no adapter yet (see the Status note below). There is deliberately **no message broker, no cache tier and no separate reporting store**: one API process, one database, one client.
 
 #### Layering and the dependency rule
 
@@ -254,7 +568,7 @@ Honest accounting of what this architecture costs:
 - **Eventual consistency in the cross-cutting path.** Audit and notification writes sit outside the ticket transaction. Mitigated with an in-process dispatcher with retry and audit-completeness assertions in acceptance tests, but it is a real trade-off against strict transactional auditing.
 - **Learning curve.** DDD + hexagonal + Nx tags is a steep onboarding cost, and the discipline degrades quickly if boundary violations are silenced instead of fixed.
 
-> **Status:** this is the **target architecture**, now partly materialized. The Nx workspace, the pinned toolchain, the ESLint 9 / Prettier 3 layer and the three-axis tag scheme all exist (`T-C10-01` … `T-C10-03`), and `@nx/enforce-module-boundaries` enforces the type matrix, the scope rule and the platform rule — proven to bite by `pnpm verify:boundaries` (9/9). All four applications are scaffolded: `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and the two Cypress + Cucumber acceptance harnesses `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`), so `pnpm nx show projects` reports exactly `api`, `api-e2e`, `web` and `web-e2e` and `pnpm nx lint` passes for all four. What is still absent is everything the boundary rules are actually *for*: there is **no `libs/` directory**, so no bounded context, no hexagon layer and not a single cross-project dependency edge exists. `pnpm nx graph` shows four nodes and zero edges — each acceptance suite reaches its application through an Nx *task* dependency, which is not a code edge and puts nothing in the graph.
+> **Status:** this is the **target architecture**, materialized today as **one vertical slice of the `incident` context**. The Nx workspace, the pinned toolchain, the ESLint 9 / Prettier 3 layer and the three-axis tag scheme all exist (`T-C10-01` … `T-C10-03`), and `@nx/enforce-module-boundaries` enforces the type matrix, the scope rule and the platform rule — proven to bite by `pnpm verify:boundaries` (10/10). The workspace holds **13 projects**: the four applications (`api`, `web`, `api-e2e`, `web-e2e`), the shared kernel (`shared-util`, `shared-domain`, `shared-contracts`; there is no `libs/shared/ui` yet) and the six `incident-*` libraries; `pnpm nx run-many -t lint` is green for all 13. The slice is real end to end: a requester **logs an Incident** (`POST /api/incidents`) and **reads it back by reference** (`GET /api/incidents/:reference`, e.g. `INC0000001`) through the web intake form (`/incidents/new`) and detail page (`/incidents/:reference`) in `incident-feature`, the signal store and `HttpClient` service in `incident-data-access`, the thin `IncidentController` in `apps/api`, the `LogIncident` / `GetIncidentByReference` use cases in `incident-application`, the `Incident` aggregate and its ports in `incident-domain`, and two interchangeable repository adapters in `incident-infrastructure` — TypeORM over PostgreSQL and an in-memory one — selected once at boot by `PERSISTENCE_MODE=postgres|memory` (ADR-015). `pnpm nx graph` shows 13 nodes and **20 code edges**, every one of them legal: the backend chain `incident-infrastructure → incident-domain`, `incident-application → incident-domain`, all three plus `incident-domain` onto the shared kernel; the frontend chain `web ⇢ incident-feature` (lazy, dynamic import) `→ incident-data-access → shared-contracts`; `api → incident-{domain,application,infrastructure}` and the shared kernel as composition root; and `web-e2e → shared-contracts`. No context-to-context and no frontend-to-backend edge exists. `incident-ui` is still empty (no edge, no test). Still absent: every other bounded context, authentication and authorization (a fixed requester actor stands in), the real SLA adapter (a provisional no-op binds `SlaPolicyPort`), every event subscriber (audit, notification, reporting), the external integrations (dashed arrows above) and the API health probes. In the container images the Web Client is served by **nginx**, which also reverse-proxies `/api/` to the API service (`T-C10-79`); deployment is covered in [§2.4](#24-infraestructura-y-despliegue).
 
 ### **2.2. Descripción de componentes principales:**
 
@@ -262,41 +576,47 @@ Honest accounting of what this architecture costs:
 
 The system is composed of two deployables — the Angular **Web Client** and the NestJS **API** — plus one PostgreSQL system of record. Everything else is an Nx library: each bounded context contributes a **backend hexagon** (`domain` / `application` / `infrastructure`) and, where it has a UI, a **frontend slice** (`feature` / `ui` / `data-access`). The components below are described by responsibility and technology; their allowed dependencies are the ones already shown in §2.1.
 
+The tables describe the **target design**. Each one carries a **Today** column so that no component reads as built when it is not: **Built** means the code exists and is exercised by tests, **Partial** means a narrower form exists (the column says which), and **Target** means nothing of it exists yet — in particular, none of `@nestjs/swagger`, `nestjs-pino`, `@nestjs/terminus`, `nestjs-i18n`, `passport-jwt` / `@nestjs/jwt`, `bcrypt` or Transloco is installed (`package.json`).
+
 #### 2.2.1 Web Client — `apps/web`
 
 The client is an **Angular 20.3** application: standalone components only, signals for state, `OnPush` everywhere, Reactive Forms, an in-house component library built with plain HTML templates and SCSS design tokens — no third-party component library — and Transloco for i18n. It is a **pure presentation layer**: it holds no authorization decision, derives no Priority and computes no SLA target — it renders what the API decided (NFR-SEC-02).
 
-| Component | Responsibility | Technology |
-| --- | --- | --- |
-| **Application shell** (`apps/web`) | Bootstrap via `bootstrapApplication` + `provide*` functions, lazy routing, global error handler, theming, cross-context page composition | Angular 20.3, `provideRouter`, `provideHttpClient`, centralized SCSS design tokens as the theming layer |
-| **Self-Service Portal** | Requester surface: knowledge search first, log an Incident, request a published catalog offering, track own tickets and SLA status, comment, confirm or reject a resolution, submit CSAT | `knowledge/feature`, `incident/feature`, `service-catalog/feature`, `service-request/feature`, `approval/feature` |
-| **Agent Workspace** | Supply-side surface: prioritized work list, triage, categorization, the competition-in-progress flag with mandatory justification, work notes, assignment, resolution | `incident/feature`, `service-request/feature`, `knowledge/feature`, SLA countdown rendered by `incident/ui` |
-| **Admin Console** | Configuration-as-data surface: taxonomy, Impact × Urgency matrix, SLA policies, catalog offerings, workflows, notification templates, roles and resolver groups | `service-catalog/feature`, `identity-access/feature` + configuration feature libs |
-| **Management dashboards** | Operational and management KPI views (FCR, MTTA, MTTR, SLA compliance, backlog) | `reporting/feature` + `reporting/ui` |
-| **`type:feature` libs** | Routed containers: orchestrate the store, drive Reactive Forms, own explicit loading / error / empty states | Angular standalone components, signals, Reactive Forms |
-| **`type:ui` libs** | Presentational building blocks with zero injected services (`PriorityBadge`, `SlaCountdown`, `StateChip`, `WorkNoteList`, `CompetitionSubjectPicker`) | Angular `input()` / `output()`, `OnPush`, hand-written HTML + scoped SCSS, native semantics plus ARIA, keyboard handling, focus trap/restore and `aria-live` regions for WCAG 2.1 AA |
-| **`libs/shared/ui`** | The in-house **design system**: domain-agnostic presentational primitives every context reuses (button, form field, dialog/overlay, menu, table, tabs, toast, badge, chip), the SCSS design-token layer and the hand-written a11y primitives (focus-trap/restore directive, `aria-live` announcer). State in, events out: no injected service, no store, no I/O. Tagged `platform:frontend scope:shared type:ui` (ADR-010) | Angular `input()` / `output()`, `OnPush`, hand-written HTML + component-scoped SCSS over the shared design tokens; no third-party component library |
-| **`type:data-access` libs** | The **only** outbound edge of the client: typed API services plus injectable signal stores exposing `asReadonly()` / `computed()` | `HttpClient` typed exclusively by `libs/shared/contracts`, Angular signals (no NgRx) |
-| **Functional interceptors** | `jwtInterceptor` (Bearer token), `localeInterceptor` (`Accept-Language`), `httpErrorInterceptor` (contract error code → Transloco key) | Angular functional interceptors (`withInterceptors`), Transloco |
-| **Route guards** | `authGuard` / `roleGuard` — usability only; never the security boundary | Angular functional guards |
+| Component | Responsibility | Technology | Today |
+| --- | --- | --- | --- |
+| **Application shell** (`apps/web`) | Bootstrap via `bootstrapApplication` + `provide*` functions, lazy routing, global error handler, theming, cross-context page composition | Angular 20.3, `provideRouter`, `provideHttpClient`, centralized SCSS design tokens as the theming layer | **Partial** — `bootstrapApplication`, `provideBrowserGlobalErrorListeners`, `provideRouter` (lazy `/incidents` + a home page at `/`), `provideHttpClient(withInterceptors([]))`; no design-token layer yet (`styles.scss` only reserves its import) |
+| **Self-Service Portal** | Requester surface: knowledge search first, log an Incident, request a published catalog offering, track own tickets and SLA status, comment, confirm or reject a resolution, submit CSAT | `knowledge/feature`, `incident/feature`, `service-catalog/feature`, `service-request/feature`, `approval/feature` | **Partial** — only *log an Incident* (`/incidents/new`) and *view it by reference* (`/incidents/:reference`), from `incident-feature` |
+| **Agent Workspace** | Supply-side surface: prioritized work list, triage, categorization, the competition-in-progress flag with mandatory justification, work notes, assignment, resolution | `incident/feature`, `service-request/feature`, `knowledge/feature`, SLA countdown rendered by `incident/ui` | Target |
+| **Admin Console** | Configuration-as-data surface: taxonomy, Impact × Urgency matrix, SLA policies, catalog offerings, workflows, notification templates, roles and resolver groups | `service-catalog/feature`, `identity-access/feature` + configuration feature libs | Target |
+| **Management dashboards** | Operational and management KPI views (FCR, MTTA, MTTR, SLA compliance, backlog) | `reporting/feature` + `reporting/ui` | Target |
+| **`type:feature` libs** | Routed containers: orchestrate the store, drive Reactive Forms, own explicit loading / error / empty states | Angular standalone components, signals, Reactive Forms | **Built** for `incident-feature`: `HomePageComponent`, `IncidentIntakeFormComponent`, `IncidentDetailComponent` |
+| **`type:ui` libs** | Presentational building blocks with zero injected services (`PriorityBadge`, `SlaCountdown`, `StateChip`, `WorkNoteList`, `CompetitionSubjectPicker`) | Angular `input()` / `output()`, `OnPush`, hand-written HTML + scoped SCSS, native semantics plus ARIA, keyboard handling, focus trap/restore and `aria-live` regions for WCAG 2.1 AA | Target — `incident-ui` is scaffolded but empty |
+| **`libs/shared/ui`** | The in-house **design system**: domain-agnostic presentational primitives every context reuses (button, form field, dialog/overlay, menu, table, tabs, toast, badge, chip), the SCSS design-token layer and the hand-written a11y primitives (focus-trap/restore directive, `aria-live` announcer). State in, events out: no injected service, no store, no I/O. Tagged `platform:frontend scope:shared type:ui` (ADR-010) | Angular `input()` / `output()`, `OnPush`, hand-written HTML + component-scoped SCSS over the shared design tokens; no third-party component library | Target — the library does not exist |
+| **`type:data-access` libs** | The **only** outbound edge of the client: typed API services plus injectable signal stores exposing `asReadonly()` / `computed()` | `HttpClient` typed exclusively by `libs/shared/contracts`, Angular signals (no NgRx) | **Built** for `incident-data-access`: `IncidentApiService`, `IncidentStore`, `IncidentApiError`, `INCIDENT_API_BASE_URL` |
+| **Functional interceptors** | `jwtInterceptor` (Bearer token), `localeInterceptor` (`Accept-Language`), `httpErrorInterceptor` (contract error code → Transloco key) | Angular functional interceptors (`withInterceptors`), Transloco | Target — the chain is registered and empty |
+| **Route guards** | `authGuard` / `roleGuard` — usability only; never the security boundary | Angular functional guards | Target |
+| **UI strings (i18n)** | Every user-facing string translatable, `Accept-Language` driven | Transloco | **Partial** — Transloco is not installed; every string of the incident screens lives in one file, `incident-feature/src/lib/incident-messages.ts` (Spanish copy), and dates are formatted with `Intl.DateTimeFormat('es-ES')` in the viewer's time zone. Migrating that file to Transloco keys is the accepted, isolated debt |
 
 #### 2.2.2 API — `apps/api`
 
 `apps/api` is simultaneously the **inbound HTTP adapter** and the **composition root**: it is the only project allowed to see more than one bounded context, because it is where ports are bound to adapters (ADR-002, ADR-003).
 
-| Component | Responsibility | Technology |
-| --- | --- | --- |
-| **Controllers** | Thin inbound adapter: route, validate, delegate to a use case, map the result to a contract response. No business logic. | NestJS 11 on Express 5, `@nestjs/swagger` decorators |
-| **Global `ValidationPipe`** | Reject unvalidated or unexpected payloads (`whitelist`, `forbidNonWhitelisted`, `transform`) | `class-validator` + `class-transformer` |
-| **Auth guards & strategy** | Verify the JWT, resolve the actor and their roles for the use-case authorization check | Passport JWT (`passport-jwt`, `@nestjs/jwt`), `bcrypt` for local credentials |
-| **License gating** | `@LicenseFeature()` decorator restricting access to gated capabilities | Custom NestJS decorator + guard |
-| **Exception filter** | Map domain errors to a stable, contract-declared error-code envelope (codes are contract, text is not) | NestJS exception filter + `nestjs-i18n` |
-| **i18n** | Localize API messages and email templates from `Accept-Language` | `nestjs-i18n` 10 |
-| **Logging** | Structured logs with request correlation; no `console.log` | `nestjs-pino` |
-| **Health probes** | `/health/live`, `/health/ready` — unprefixed, so Sport ITSM outages are detectable independently of user reports (NFR-CFG-03) | `@nestjs/terminus` |
-| **API documentation** | OpenAPI at `/api/docs`, **development only** | `@nestjs/swagger` |
-| **Composition root modules** | Bind each port token to its adapter (`{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }`), and host the **cross-context adapters** (`SlaPolicyAdapter`, `ApprovalAdapter`, `NotificationAdapter`, `AuditAdapter`) | NestJS DI, `Symbol` injection tokens declared beside each port |
-| **Scheduled jobs** | Second inbound adapter: SLA warning/breach sweep and auto-close after the confirmation period | NestJS scheduling over the same application use cases |
+| Component | Responsibility | Technology | Today |
+| --- | --- | --- | --- |
+| **Controllers** | Thin inbound adapter: route, validate, delegate to a use case, map the result to a contract response. No business logic. | NestJS 11 on Express 5, `@nestjs/swagger` decorators | **Built** — `IncidentController`: `POST /api/incidents` (201) and `GET /api/incidents/:reference`; no Swagger decorators (not installed) |
+| **Global `ValidationPipe`** | Reject unvalidated or unexpected payloads (`whitelist`, `forbidNonWhitelisted`, `transform`) | `class-validator` + `class-transformer` | **Built** — plus `stopAtFirstError` and an `exceptionFactory` that turns violations into contract `{ field, rule }` details |
+| **Auth guards & strategy** | Verify the JWT, resolve the actor and their roles for the use-case authorization check | Passport JWT (`passport-jwt`, `@nestjs/jwt`), `bcrypt` for local credentials | Target — no authentication exists; a disposable `FixedRequesterActorResolver` bound to `INCIDENT_ACTOR_RESOLVER` supplies one static requester actor |
+| **License gating** | `@LicenseFeature()` decorator restricting access to gated capabilities | Custom NestJS decorator + guard | Target |
+| **Exception filter** | Map domain errors to a stable, contract-declared error-code envelope (codes are contract, text is not) | NestJS exception filter + `nestjs-i18n` | **Partial** — `GlobalExceptionFilter` + `incident-domain-error.mapper.ts` map validation, not-found and domain errors to the `ErrorEnvelope` / `ErrorCode` of `shared-contracts` and never leak internals ([§2.5.3](#253-error-handling-that-does-not-leak-internals)); no `nestjs-i18n` |
+| **Correlation id** | One id per request, echoed in the response and carried into the use case context | `X-Correlation-Id` (`CORRELATION_ID_HEADER` in `shared-contracts`) | **Built** — `resolveCorrelationId()` accepts a UUID-shaped inbound header or mints one |
+| **Configuration** | Validated environment, no raw `process.env` in feature code | `@nestjs/config` + `class-validator` schema | **Built** — `env.validation.ts` aborts boot on a missing or malformed key and forbids `PERSISTENCE_MODE=memory` with `NODE_ENV=production` |
+| **Persistence mode switch** | Choose, once at boot, which repository adapter backs each port (ADR-015) | `PersistenceModule.forMode(PERSISTENCE_MODE)` | **Built** — `postgres` imports `DatabaseModule` and binds `TypeOrmIncidentRepository`; `memory` binds `InMemoryIncidentRepository` and opens no connection |
+| **i18n** | Localize API messages and email templates from `Accept-Language` | `nestjs-i18n` 10 | Target — not installed; the API returns stable error codes, and the client owns the wording |
+| **Logging** | Structured logs with request correlation; no `console.log` | `nestjs-pino` | **Partial** — NestJS's built-in `Logger` (plain text), no `console.log`; `nestjs-pino` is not installed |
+| **Health probes** | `/health/live`, `/health/ready` — unprefixed, so Sport ITSM outages are detectable independently of user reports (NFR-CFG-03) | `@nestjs/terminus` | Target — only the prefix exclusion for both paths is reserved (`global-prefix.ts`); the container health checks are TCP-only for the API, and nginx answers its own static `/health` |
+| **API documentation** | OpenAPI at `/api/docs`, **development only** | `@nestjs/swagger` | Target — not installed |
+| **Composition root modules** | Bind each port token to its adapter (`{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }`), and host the **cross-context adapters** (`SlaPolicyAdapter`, `ApprovalAdapter`, `NotificationAdapter`, `AuditAdapter`) | NestJS DI, `Symbol` injection tokens declared beside each port | **Partial** — `PersistenceModule` binds `INCIDENT_REPOSITORY` / `INCIDENT_READ_REPOSITORY` from `incident-persistence.bindings.ts`; `IncidentModule` binds `CLOCK` (`SystemClock`), `INCIDENT_ACTOR_RESOLVER`, the two use cases and `SLA_POLICY` — the latter to `ProvisionalNoopSlaPolicyAdapter`; no real cross-context adapter exists |
+| **Scheduled jobs** | Second inbound adapter: SLA warning/breach sweep and auto-close after the confirmation period | NestJS scheduling over the same application use cases | Target |
 
 #### 2.2.3 Bounded-context libraries
 
@@ -316,6 +636,8 @@ Each context owns its hexagon. Phase 1 scaffolds the MVP contexts; `problem`, `c
 | `reporting` | 1 | Denormalized read models for operational and management dashboards | read models only, no aggregate |
 | `problem`, `change`, `release`, `asset-config` | 2 | RCA/KEDB, change authorization and scheduling, release & deployment, CMDB impact analysis | `Problem`/`KnownError`, `Change`, `Release`, `ConfigurationItem`/`CiRelationship` |
 
+**Today only `incident` exists**, and only its intake slice. `incident-domain` holds the `Incident` aggregate (`Incident.log()`, raising `IncidentLogged`), the `OriginChannel` value object, `IncidentReferencePolicy` (the `INC0000001` format) and three ports — `IncidentRepositoryPort`, `IncidentReadRepositoryPort` and the outbound `SlaPolicyPort`; `Priority`, `ImpactLevel`, `UrgencyLevel` and `TicketReference` come from `shared-domain`. `incident-application` holds `LogIncidentUseCase` (with the authorization check against an `IncidentActor`) and `GetIncidentByReferenceUseCase`. `incident-infrastructure` holds `IncidentEntity`, `IncidentMapper` and the two repository adapters, `TypeOrmIncidentRepository` and `InMemoryIncidentRepository`. `CompetitionImpactFlag`, `CompetitionSubject`, `PriorityCalculator`, work notes, triage and every other context in the table are **target**.
+
 Inside every context the three backend libraries have fixed roles, and the technology allowed in each is what the boundary rules enforce:
 
 | Library | Responsibility | Technology allowed |
@@ -333,9 +655,13 @@ Inside every context the three backend libraries have fixed roles, and the techn
 | `libs/shared/ui` | The in-house design system reused by every context: presentational primitives, the SCSS design-token layer and the accessibility primitives (focus-trap/restore directive, `aria-live` announcer). Angular code with a shared scope, so it is tagged `platform:frontend scope:shared type:ui`, not `platform:shared` (ADR-010) | Angular 20.3 standalone components, `OnPush`, component-scoped SCSS |
 | `libs/shared/util` | Pure, dependency-free helpers | Pure TypeScript |
 
+Today `shared-contracts` holds the incident intake and detail contracts, `ErrorCode`, `ErrorEnvelope`, `CORRELATION_ID_HEADER` and a pagination shape; `shared-domain` holds `Identity`, `TicketReference`, `ImpactLevel`, `UrgencyLevel`, `Priority`, `DateTimeRange`, `DomainError`, `DomainEvent`, `EventPublisherPort`, `ClockPort` and `FixedClock` (`StateModel` is still target); `shared-util` holds `Result` (`ok` / `err`), `isNonEmptyString` and `assertNever`. `libs/shared/ui` does **not** exist yet.
+
 #### 2.2.5 Persistence
 
-**PostgreSQL 18** is the single system of record for every context: tickets, SLA timer timestamps, catalog, knowledge, approvals and the append-only audit trail. Access goes exclusively through **TypeORM 1.1** repositories in `type:infrastructure`, where persistence entities are **separate classes** from domain aggregates with an explicit mapper (ADR-005). `synchronize` is always `false`; the schema evolves only through **migrations** (`pnpm typeorm migration:generate|run|revert -d apps/api/src/data-source.ts`), auto-run only in development. No business rule lives in a trigger or stored procedure. All instants are stored in UTC so SLA timers survive restarts and remain time-zone correct.
+**PostgreSQL 18** is the single system of record for every context: tickets, SLA timer timestamps, catalog, knowledge, approvals and the append-only audit trail. Access goes exclusively through **TypeORM 1.1** repositories in `type:infrastructure`, where persistence entities are **separate classes** from domain aggregates with an explicit mapper (ADR-005). `synchronize` is always `false`; the schema evolves only through **migrations** (`pnpm typeorm migration:generate|run|revert -d apps/api/src/data-source.ts`), never auto-run at startup in any environment. No business rule lives in a trigger or stored procedure. All instants are stored in UTC so SLA timers survive restarts and remain time-zone correct.
+
+**Today** the migration chain has four migrations: the bootstrap (`iam` schema, `citext`, `pg_trgm`), the `incident` schema, the `incident_ticket` table, and the Incident reference sequence plus the one guard trigger that makes `reference` immutable once assigned. `migrationsRun` is `false` everywhere, so migrations are never auto-run by the API process: they are applied explicitly (`pnpm migration:run`), by the `api-e2e` and `incident-infrastructure:integration` targets against their own ephemeral PostgreSQL, and by the deploy pre-command (`pnpm migration:run:deploy`). The API can also run with **no database at all**: `PERSISTENCE_MODE=memory` (ADR-015) binds the in-memory repository adapter and never constructs a `DataSource`; boot validation forbids that mode with `NODE_ENV=production`, and the stage environment runs it by design (§2.4).
 
 #### 2.2.6 Cross-cutting components
 
@@ -396,14 +722,14 @@ flowchart TB
     CTL --> IDPAD
 ```
 
-| Component | Responsibility | Technology / placement |
-| --- | --- | --- |
-| **Domain-event dispatcher** | Single in-process publisher; use cases commit the aggregate first and publish afterwards, so a failing subscriber can never roll back ticket intake (NFR-AVL-03) | `EventPublisherPort` in each context's domain, `InProcessEventPublisher` in `apps/api`; no broker in the MVP |
-| **Audit component** | Records an immutable entry for every state transition, field change, assignment, comment, approval, notification and rule execution. Immutability is structural: `AuditRepositoryPort` exposes no update or delete method | `audit` context, TypeORM append-only table |
-| **Notification component** | Templated, localizable in-app and email notifications to requesters, agents, approvers and Major Incident stakeholders; every dispatch is recorded against its source record | `notification` context + email gateway adapter, `nestjs-i18n` templates |
-| **SLA timer engine** | Attaches a policy at creation, recalculates targets from the original creation time on Priority change, pauses/resumes on configured pending states, raises warnings and breach records, triggers escalation | `sla` context; timer state persisted as UTC timestamps in PostgreSQL, swept by a scheduled job — never in-memory counters |
-| **Configuration as data** | Taxonomy, Impact × Urgency matrix, SLA policies, state models, approval chains and notification templates are persisted aggregates edited from the Admin Console, not code | Owning contexts + Admin Console |
-| **Observability** | Structured request-correlated logs and liveness/readiness probes | `nestjs-pino`, `@nestjs/terminus` |
+| Component | Responsibility | Technology / placement | Today |
+| --- | --- | --- | --- |
+| **Domain-event dispatcher** | Single in-process publisher; use cases commit the aggregate first and publish afterwards, so a failing subscriber can never roll back ticket intake (NFR-AVL-03) | `EventPublisherPort` in `shared-domain`, `InProcessEventDispatcher` in `apps/api/src/event-dispatch/`; no broker in the MVP | **Built** — `LogIncidentUseCase` publishes `IncidentLogged` after the save; **no product subscriber is registered yet** (only the `NODE_ENV=test` harness subscribes), so the event currently reaches nobody in development or stage |
+| **Audit component** | Records an immutable entry for every state transition, field change, assignment, comment, approval, notification and rule execution. Immutability is structural: `AuditRepositoryPort` exposes no update or delete method | `audit` context, TypeORM append-only table | Target |
+| **Notification component** | Templated, localizable in-app and email notifications to requesters, agents, approvers and Major Incident stakeholders; every dispatch is recorded against its source record | `notification` context + email gateway adapter, `nestjs-i18n` templates | Target |
+| **SLA timer engine** | Attaches a policy at creation, recalculates targets from the original creation time on Priority change, pauses/resumes on configured pending states, raises warnings and breach records, triggers escalation | `sla` context; timer state persisted as UTC timestamps in PostgreSQL, swept by a scheduled job — never in-memory counters | Target — `SlaPolicyPort.attachFor()` is called by `LogIncidentUseCase` but bound to a no-op |
+| **Configuration as data** | Taxonomy, Impact × Urgency matrix, SLA policies, state models, approval chains and notification templates are persisted aggregates edited from the Admin Console, not code | Owning contexts + Admin Console | Target |
+| **Observability** | Structured request-correlated logs and liveness/readiness probes | `nestjs-pino`, `@nestjs/terminus` | **Partial** — `X-Correlation-Id` response header on every incident response and every error response, NestJS built-in `Logger`; neither `nestjs-pino` nor `@nestjs/terminus` is installed and there is no `/health/*` endpoint on the API |
 
 #### 2.2.7 External integrations
 
@@ -415,7 +741,7 @@ Every integration is a **port with an adapter**, so none of them is a hard runti
 | **SCMS Identity Provider / SSO** | Authentication and profile/entitlement attributes | `IdentityProviderPort` in `identity-access/domain`; local-credential adapter first, SSO adapter later (FR-IAM-04) |
 | **Email gateway** | Outbound notification delivery | Adapter behind the `notification` context's outbound port (SMTP/HTTPS) |
 
-> **Status:** as in §2.1, these components describe the **target architecture**. Two of them now exist as scaffolding — the **API** (`apps/api`, NestJS 11, `T-C10-04`) and the **Web Client** (`apps/web`, Angular 20 standalone shell, `T-C10-05`), both building and linting green. Neither carries any of the responsibilities described above yet, and **no other component listed here has been scaffolded**: there is no `libs/` directory, no PostgreSQL database and no external gateway. The boundary rule that checks these components against each other is configured and proven (`T-C10-03`), but with no library to import it has nothing real to police.
+> **Status:** as in §2.1, these components describe the **target architecture**; the **Today** columns above say exactly which parts exist. What runs today is the **Incident intake slice**: the **Web Client** (`apps/web`) lazily loads `incident-feature`, whose home page, intake form and detail page call the API through `incident-data-access`; the **API** (`apps/api`) exposes `POST /api/incidents` and `GET /api/incidents/:reference` behind the global `ValidationPipe`, `GlobalExceptionFilter` and correlation id, and binds the `incident` ports to adapters, choosing TypeORM or in-memory persistence from `PERSISTENCE_MODE` (ADR-015). **PostgreSQL 18** holds the `incident.incident_ticket` table and its reference sequence, created by four migrations; it runs as containers only — `docker/docker-compose.dev.yml` for development (host port 5452) and ephemeral instances for `api-e2e` (host port 5499) and the `incident-infrastructure` integration suite. In the container images the Web Client is served by **nginx**, which reverse-proxies `/api/` to the API service (`T-C10-79`); in development the Angular dev server proxies `/api` to `localhost:3300` (`apps/web/proxy.conf.json`). Not implemented: authentication/authorization (a fixed requester actor stands in), license gating, API health probes, OpenAPI, structured logging, i18n infrastructure on either platform (the Web Client's Spanish copy lives in one messages file), every event subscriber, scheduled job and cross-context adapter (SLA is a no-op), `libs/shared/ui`, and every external integration. Current test evidence is in [§2.6.6](#266-coverage-as-run-today); security controls actually in place are in [§2.5](#25-seguridad).
 
 ### **2.3. Descripción de alto nivel del proyecto y estructura de ficheros**
 
@@ -426,6 +752,8 @@ Sport ITSM is delivered as a **single Nx 21.6 monorepo**, managed with **pnpm** 
 The layout is a direct projection of the architecture described in §2.1 and §2.2. Each ITSM capability is a **bounded context** with its own folder under `libs/`, and inside that folder the **hexagonal layers** are separate Nx libraries: `domain` (pure model and ports), `application` (use cases), `infrastructure` (outbound adapters) on the backend side, and `feature` / `ui` / `data-access` on the frontend side. `libs/shared/` holds the shared kernel, the typed contracts that are the only permitted coupling between the two platforms, and `libs/shared/ui`, the in-house design system reused by every context. In this repository the **folder structure _is_ the architecture**: a file's path determines the tags of the project it belongs to, and those tags determine what it is allowed to import. A standalone version of this section lives in [`docs/product/PROJECT-STRUCTURE.md`](docs/product/PROJECT-STRUCTURE.md).
 
 #### 2.3.1 Directory tree
+
+The tree shows the **target shape** of the repository. What exists today is a subset of it — the four applications, the shared kernel and the `incident` context — and the Status note at the end of §2.3.6 lists which paths are still target.
 
 ```text
 AI4Devs-finalproject/
@@ -444,6 +772,8 @@ AI4Devs-finalproject/
 │  │  ├─ src/
 │  │  │  ├─ main.ts                 # bootstrap: global prefix /api, ValidationPipe, pino, i18n, Swagger (dev only)
 │  │  │  ├─ data-source.ts          # TypeORM DataSource used by the migration CLI (synchronize: false)
+│  │  │  ├─ event-dispatch/         # single post-commit domain-event dispatcher, bound to EVENT_PUBLISHER
+│  │  │  ├─ testing/                # test-only HTTP harness, in the module graph only when NODE_ENV=test
 │  │  │  ├─ app/
 │  │  │  │  ├─ app.module.ts        # root module: imports every context composition module
 │  │  │  │  ├─ incident/            # composition root slice for the incident context
@@ -460,9 +790,7 @@ AI4Devs-finalproject/
 │  │  │  │  │  ├─ sla.module.ts
 │  │  │  │  │  └─ jobs/sla-sweep.job.ts         # second inbound adapter: warning/breach sweep, auto-close
 │  │  │  │  ├─ service-request/  knowledge/  service-catalog/  identity-access/
-│  │  │  │  ├─ approval/  notification/  audit/  reporting/
-│  │  │  │  └─ events/
-│  │  │  │     └─ in-process-event-publisher.ts # single post-commit domain-event dispatcher
+│  │  │  │  └─ approval/  notification/  audit/  reporting/
 │  │  │  ├─ common/
 │  │  │  │  ├─ filters/domain-error.filter.ts   # domain error -> contract error-code envelope
 │  │  │  │  ├─ guards/jwt-auth.guard.ts
@@ -479,16 +807,21 @@ AI4Devs-finalproject/
 │  │  │  │  ├─ en/{errors,notifications}.json
 │  │  │  │  └─ es/{errors,notifications}.json
 │  │  │  └─ migrations/
-│  │  │     ├─ 1712345678901-CreateIdentityAccessTables.ts
-│  │  │     └─ 1712345679002-CreateIncidentTables.ts
+│  │  │     ├─ README.md                        # naming, registration and reversibility conventions
+│  │  │     ├─ 1790349248155-CreateIamSchemaAndExtensions.ts   # bootstrap: iam schema, citext, pg_trgm
+│  │  │     └─ <timestamp>-CreateIncidentTables.ts             # target: one migration per context schema
 │  │  ├─ jest.config.ts
 │  │  ├─ project.json                           # Nx targets + the three tags
 │  │  └─ tsconfig.{json,app.json,spec.json}
 │  │
 │  ├─ api-e2e/                       # platform:backend  scope:shared  type:e2e
 │  │  ├─ src/
-│  │  │  ├─ features/log-incident.feature       # Gherkin, traced to PRD acceptance criteria
-│  │  │  ├─ step-definitions/log-incident.steps.ts
+│  │  │  ├─ features/                           # Gherkin, traced to PRD acceptance criteria
+│  │  │  │  ├─ harness-smoke.feature            # exists (T-C10-06): the API under test answers HTTP
+│  │  │  │  ├─ event-dispatch-harness.feature   # exists (T-C10-73): post-commit dispatch via the NODE_ENV=test harness
+│  │  │  │  ├─ incident-intake.feature          # exists (C1): log an Incident - POST /api/incidents
+│  │  │  │  └─ incident-detail.feature          # exists (C1): read an Incident by reference
+│  │  │  ├─ step-definitions/                   # one *.steps.ts per feature
 │  │  │  └─ support/
 │  │  ├─ cypress.config.ts
 │  │  └─ project.json
@@ -587,17 +920,21 @@ AI4Devs-finalproject/
 │  ├─ approval/  notification/  audit/  reporting/    # generic supporting contexts (ADR-001)
 │  └─ problem/  change/  release/  asset-config/      # PHASE 2 - deliberately not scaffolded yet
 │
-├─ docs/product/
-│  ├─ PRD.md                         # product requirements (behavioral authority for the MVP)
-│  ├─ ARCHITECTURE.md                # target architecture: C4, context map, hexagon, ADR-001..010
-│  ├─ COMPONENTS.md                  # main components (companion to §2.2)
-│  ├─ PROJECT-STRUCTURE.md           # companion to this section
-│  └─ adr/                           # ADRs promoted to individual files when scaffolding starts
+├─ docs/
+│  ├─ product/
+│  │  ├─ PRD.md                      # product requirements (behavioral authority for the MVP)
+│  │  ├─ ARCHITECTURE.md             # target architecture: C4, context map, hexagon, ADR-001..013 (§10)
+│  │  ├─ DATA-MODEL.md               # prescriptive relational schema, per context schema
+│  │  ├─ COMPONENTS.md               # main components (companion to §2.2)
+│  │  └─ PROJECT-STRUCTURE.md        # companion to this section
+│  ├─ backlog/                       # derived from the PRD: epic-map.md, <key>/user-stories.md, <key>/tickets/
+│  └─ adr/                           # target, not created yet: ADRs still live in ARCHITECTURE.md §10
 │
 ├─ .claude/
-│  ├─ agents/{sport-itsm-architect.md,sport-itsm-product-owner.md}
+│  ├─ agents/{sport-itsm-product-owner,sport-itsm-architect,business-analyst,architect-tech-lead,
+│  │         backend-engineer,frontend-engineer,testing-implementer,ci-cd-expert}.md
 │  └─ skills/{sport-itsm-architecture,sport-itsm-backend,sport-itsm-frontend,
-│             sport-itsm-engineering-principles,service-desk-expert,feature-docs,…}/
+│             sport-itsm-engineering-principles,sport-itsm-workflow,service-desk-expert,feature-docs,…}/
 │
 ├─ CLAUDE.md                         # operational context for AI agents working in this repo
 ├─ readme.md                         # this document
@@ -620,11 +957,11 @@ AI4Devs-finalproject/
 | `libs/<context>/ui` | Presentational Angular components with `OnPush` and zero injected services. |
 | `libs/<context>/data-access` | The only outbound edge of the client: typed API services and signal stores. |
 | `libs/shared/contracts` | The single typed API surface shared by frontend and backend — DTO shapes, enums and error codes. Types only. |
-| `libs/shared/domain` | Shared kernel primitives genuinely used by three or more contexts (`Identity`, `TicketReference`, `Priority`, `DomainEvent`, `StateModel`, `ClockPort`). Deliberately kept small. |
+| `libs/shared/domain` | Shared kernel primitives genuinely used by three or more contexts (`Identity`, `TicketReference`, `Priority`, `DomainEvent`, `StateModel` — target, not built yet (`T-C10-10`) — and `ClockPort`). Deliberately kept small. |
 | `libs/shared/ui` | The in-house **design system**: domain-agnostic presentational components reusable by any context (button, form field, dialog/overlay, menu, table, tabs, toast, badge, chip), the SCSS design-token layer and the hand-written accessibility primitives (focus-trap/restore directive, `aria-live` announcer). Angular code with a shared scope, therefore tagged `platform:frontend scope:shared type:ui`, not `platform:shared` (ADR-010). It injects no service and performs no I/O. |
 | `libs/shared/util` | Pure, dependency-free helpers. |
-| `docs/` | Engineering documentation: PRD, architecture, components, project structure, and `docs/adr/` for Architecture Decision Records. |
-| `.claude/` | The AI operating model: **agents** (Product Owner, Software Architect) and **skills** (architecture, backend, frontend, engineering principles, ITSM domain, documentation standard). |
+| `docs/` | `docs/product/`: PRD, architecture, data model, components and project structure. `docs/backlog/`: the backlog derived from the PRD (epic map, user stories, tickets). `docs/adr/` is the intended home of individual Architecture Decision Records; it does not exist yet — the ADRs still live in `ARCHITECTURE.md` §10. |
+| `.claude/` | The AI operating model: **agents** (Product Owner, Software Architect, Business Analyst, Architect / Tech Lead, backend engineer, frontend engineer, testing implementer, CI/CD expert) and **skills** (architecture, backend, frontend, engineering principles, workflow, CI/CD, ITSM domain, backlog roles, documentation standard). |
 
 #### 2.3.3 Naming and file conventions
 
@@ -657,14 +994,14 @@ The consequence worth stating plainly: **in this repository the folder structure
 #### 2.3.5 Documentation, specification and agent folders
 
 - **`docs/product/PRD.md`** is the single canonical source of **product behavior**, for the life of the project. There is no `openspec/` directory and no spec-delta workflow: a behavior change is made in the PRD by the Product Owner, and the derived backlog under `docs/backlog/` is regenerated from it.
-- **`docs/`** also holds the engineering counterpart: the architecture document, the component reference, the project-structure document, and `docs/adr/` where the structural decisions currently embedded in `ARCHITECTURE.md` §10 are promoted to individual ADR files once scaffolding starts.
-- **`.claude/`** holds the AI operating model: **agents** (`sport-itsm-product-owner`, `sport-itsm-architect`) are roles, and **skills** are the layered, reusable guardrails they consume — business (`service-desk-expert`), system (`sport-itsm-architecture`), craft (`sport-itsm-engineering-principles`), stack (`sport-itsm-backend`, `sport-itsm-frontend`) and documentation (`feature-docs`). `CLAUDE.md` at the root is the entry point that ties them together.
+- **`docs/`** also holds the engineering counterpart: the architecture document, the component reference, the project-structure document, and `docs/adr/`, the intended home of the structural decisions currently embedded in `ARCHITECTURE.md` §10 once they are promoted to individual ADR files. That promotion has not happened: `docs/adr/` does not exist today, and `ARCHITECTURE.md` §10 remains the only ADR record.
+- **`.claude/`** holds the AI operating model: **agents** (`sport-itsm-product-owner`, `sport-itsm-architect`, `business-analyst`, `architect-tech-lead`, `backend-engineer`, `frontend-engineer`, `testing-implementer`, `ci-cd-expert`) are roles, and **skills** are the layered, reusable guardrails they consume — business (`service-desk-expert`), system (`sport-itsm-architecture`), craft (`sport-itsm-engineering-principles`), stack (`sport-itsm-backend`, `sport-itsm-frontend`) and documentation (`feature-docs`). `CLAUDE.md` at the root is the entry point that ties them together.
 
 #### 2.3.6 Useful commands
 
 Every command runs from the **repository root**, through **pnpm + Nx**. **Node 22 LTS** is required (pinned in `.nvmrc` and in `package.json` → `engines`) and **pnpm is the only supported package manager** — running `npm install` or `yarn` here would produce a second lockfile and is forbidden.
 
-The **Availability** column distinguishes what runs *today* — on a workspace holding the four applications `apps/api`, `apps/web`, `apps/api-e2e` and `apps/web-e2e`, and nothing else — from what only becomes meaningful once `libs/` is generated.
+The **Availability** column distinguishes what runs *today* — on a workspace holding the four applications, the shared kernel (`shared-util`, `shared-domain`, `shared-contracts`) and the six `incident-*` libraries that carry the Incident intake slice (`incident-ui` is still empty), 13 projects in all — from what only becomes meaningful once more of `libs/` is generated.
 
 **Workspace and toolchain**
 
@@ -680,7 +1017,7 @@ ESLint 9 uses a **flat config** at `eslint.config.mjs` (there is no `.eslintrc` 
 
 | Command | What it does | Availability |
 | --- | --- | --- |
-| `pnpm nx run-many -t lint` | Runs the `lint` target of every project — today `api`, `web`, `api-e2e` and `web-e2e`, all green. It no longer exits `0` vacuously, but a green lint over legal code still does not prove the boundary rule bites; see the boundary verification below. | Now |
+| `pnpm nx run-many -t lint` | Runs the `lint` target of every project — today all 13, all green. It no longer exits `0` vacuously, but a green lint over legal code still does not prove the boundary rule bites; see the boundary verification below. | Now |
 | `pnpm eslint <path>` | Lints files directly, bypassing Nx and its project graph. Useful for exercising the config on a path that belongs to no project. | Now |
 | `pnpm eslint --print-config <path>` | Prints the fully resolved config for one file path. Use it to check *which* rules apply where — Angular rules must appear on `apps/web/**` and the frontend library types, and must be absent on `apps/api/**`. | Now |
 | `pnpm prettier --check .` | Fails if any non-ignored file deviates from `.prettierrc` (`singleQuote`, `semi`). The CI formatting gate. | Now |
@@ -691,8 +1028,8 @@ ESLint 9 uses a **flat config** at `eslint.config.mjs` (there is no `.eslintrc` 
 
 | Command | What it does | Availability |
 | --- | --- | --- |
-| `pnpm nx show projects` | Lists every Nx project in the workspace. Currently returns exactly `api`, `api-e2e`, `web` and `web-e2e`; anything else means a project was generated outside its ticket. | Now |
-| `pnpm nx graph` | Opens the interactive dependency graph in a browser. The visual check that a context depends only on itself and `scope:shared`. | Now |
+| `pnpm nx show projects` | Lists every Nx project in the workspace. Currently returns exactly 13: `api`, `api-e2e`, `web`, `web-e2e`, `shared-contracts`, `shared-domain`, `shared-util` and the six `incident-*` libraries (`domain`, `application`, `infrastructure`, `feature`, `ui`, `data-access`); anything else means a project was generated outside its ticket. | Now |
+| `pnpm nx graph` | Opens the interactive dependency graph in a browser. The visual check that a context depends only on itself and `scope:shared`. Today: 13 nodes and 20 code edges, all legal — see the §2.1 Status note. | Now |
 | `pnpm nx graph --file=tmp/graph.json` | Writes the same graph as JSON without opening a browser — the CI-friendly and scriptable form. | Now |
 | `pnpm nx lint <project>` | Runs ESLint on one project, **including `@nx/enforce-module-boundaries`**. This is the command that turns the three-axis tag scheme of §2.3.4 into a build failure. | Now |
 | `pnpm verify:boundaries` | Proves the boundary rule still bites, by scaffolding deliberate violations and asserting each is caught. See the boundary verification below. | Now |
@@ -704,22 +1041,23 @@ ESLint 9 uses a **flat config** at `eslint.config.mjs` (there is no `.eslintrc` 
 | --- | --- | --- |
 | `pnpm nx serve api` / `pnpm nx serve web` | Runs the NestJS API / the Angular web client in development mode with watch. | Now |
 | `pnpm nx build api` / `pnpm nx build web` | Produces the production bundle of each application under `dist/`. | Now |
-| `pnpm nx test <project>` | Runs the Jest unit/component suite of one project (`incident-domain`, `api`, `web`…). Runs today for `api` and `web`, but **both suites are empty** and pass via `passWithNoTests` — a green result proves the runner works, nothing more. | Now |
-| `pnpm nx e2e api-e2e` / `pnpm nx e2e web-e2e` | Runs the Cypress + Cucumber acceptance suites (Gherkin `*.feature` + `*.steps.ts`). Each target starts the application under test itself and tears it down afterwards. Both hold **one smoke scenario** proving the harness runs end to end; the epic's own scenarios arrive with the tickets that own the behavior. | Now |
+| `pnpm nx test <project>` | Runs the Jest unit/component suite of one project (`incident-domain`, `api`, `web`…). `pnpm nx run-many -t test` runs all of them: **48 suites / 399 tests** across 11 projects today. `incident-ui` and `web` have no spec yet and pass via `passWithNoTests` — there a green result proves the runner works, nothing more. Per-project counts: [§2.6.6](#266-coverage-as-run-today). | Now |
+| `pnpm nx run incident-infrastructure:integration` | Runs the TypeORM repository and reference-sequence integration specs (**2 suites / 13 tests**) against a real, ephemeral PostgreSQL that the target brings up and migrates itself; needs a running Docker daemon. | Now |
+| `pnpm nx e2e api-e2e` / `pnpm nx e2e web-e2e` | Runs the Cypress + Cucumber acceptance suites (Gherkin `*.feature` + `*.steps.ts`). Each target starts the application under test itself and tears it down afterwards; `api-e2e` also brings up its own ephemeral PostgreSQL (host port 5499), applies the migrations to it and tears it down, pass or fail, so it needs a running Docker daemon. `api-e2e` holds **4 features / 19 scenarios** (harness smoke, event-dispatch harness, Incident intake, Incident detail), `web-e2e` **3 features / 11 scenarios** (harness smoke, home page, Incident intake). From a VS Code integrated terminal, run `unset ELECTRON_RUN_AS_NODE` in the same command first — the inherited variable makes the Cypress binary fail before any test runs. | Now |
 
 **Schema evolution (TypeORM)**
 
-The data source lives at `apps/api/src/data-source.ts`. `synchronize` is always `false`: migrations are the **only** mechanism for schema change.
+The data source lives at `apps/api/src/data-source.ts`, and the chain in `apps/api/src/migrations/` (conventions in its `README.md`; today four migrations — the `iam` bootstrap, the `incident` schema, the `incident_ticket` table, and the reference sequence with its immutability trigger). `synchronize` is always `false`: migrations are the **only** mechanism for schema change. Every command needs a reachable PostgreSQL — locally `docker/docker-compose.dev.yml`, published on **host port 5452**. The shorthand scripts `pnpm migration:generate <path/Name>`, `pnpm migration:run`, `pnpm migration:revert` and `pnpm migration:show` already carry `-d apps/api/src/data-source.ts` — do not add a second `-d`; `pnpm migration:run:deploy` runs the compiled `dist/apps/api/data-source.js` produced by `pnpm nx run api:build-migrations`.
 
 | Command | What it does | Availability |
 | --- | --- | --- |
-| `pnpm typeorm migration:generate -d apps/api/src/data-source.ts <path/Name>` | Diffs the entity model against the database and writes a new timestamped migration. | Once `apps/api/src/data-source.ts` exists |
-| `pnpm typeorm migration:run -d apps/api/src/data-source.ts` | Applies every pending migration. | Once `apps/api/src/data-source.ts` exists |
-| `pnpm typeorm migration:revert -d apps/api/src/data-source.ts` | Rolls back the last applied migration. | Once `apps/api/src/data-source.ts` exists |
+| `pnpm typeorm migration:generate -d apps/api/src/data-source.ts <path/Name>` | Diffs the entity model against the database and writes a new timestamped migration. | Now (one entity exists: `IncidentEntity`) |
+| `pnpm typeorm migration:run -d apps/api/src/data-source.ts` | Applies every pending migration. | Now |
+| `pnpm typeorm migration:revert -d apps/api/src/data-source.ts` | Rolls back the last applied migration. | Now |
 
 ##### Bootstrap verification
 
-The four checks below are the acceptance criteria of ticket **`T-C10-01` · Bootstrap the Nx workspace with pnpm and strict TypeScript**. They are purely mechanical and they all run **today**, on the empty workspace — re-run them after any clone, any toolchain upgrade or any change to `package.json`, `nx.json` or `tsconfig.base.json`.
+The four checks below are the acceptance criteria of ticket **`T-C10-01` · Bootstrap the Nx workspace with pnpm and strict TypeScript**. They are purely mechanical, were first satisfied on the empty workspace, and all still run **today** — re-run them after any clone, any toolchain upgrade or any change to `package.json`, `nx.json` or `tsconfig.base.json`.
 
 **AC1 — `pnpm install` succeeds and leaves exactly one lockfile.** No `package-lock.json` and no `yarn.lock` may be produced anywhere.
 
@@ -783,7 +1121,7 @@ pnpm nx show projects
 
 Expected: the command exits `0`, writes `tmp/graph.json` (a gitignored path), prints `projects: 0`, and `pnpm nx show projects` returns nothing.
 
-> This criterion was satisfied **at `T-C10-01`**, when the workspace was empty, and is recorded here as that ticket's evidence. **Re-running it today gives `projects: 4`** — `api` (`T-C10-04`), `web` (`T-C10-05`) and `api-e2e` / `web-e2e` (`T-C10-06`). The re-runnable form of the check is now "exactly the projects the tickets created, and nothing else": `pnpm nx show projects` must return `api`, `api-e2e`, `web` and `web-e2e`.
+> This criterion was satisfied **at `T-C10-01`**, when the workspace was empty, and is recorded here as that ticket's evidence. **Re-running it today gives `projects: 13`** — `api` (`T-C10-04`), `web` (`T-C10-05`), `api-e2e` / `web-e2e` (`T-C10-06`), `shared-util` (`T-C10-07`), `shared-domain` (`T-C10-08`, `T-C10-09`), `shared-contracts` (`T-C10-11`) and the six `incident-*` libraries (`T-C1-01`). The re-runnable form of the check is now "exactly the projects the tickets created, and nothing else": `pnpm nx show projects` must return those 13.
 
 ##### Lint and format verification
 
@@ -795,7 +1133,7 @@ These are the acceptance criteria of ticket **`T-C10-02` · ESLint 9 flat config
  NX   No tasks were run
 ```
 
-**Zero projects meant zero lint tasks, so that exit code proved nothing about the configuration.** Today the same command runs real tasks for all four applications and passes — but a green lint over *legal* code still proves only that the config loads, never that an illegal import is caught; that is what `pnpm verify:boundaries` below is for. To exercise the config on a path belonging to no project, drive ESLint directly:
+**Zero projects meant zero lint tasks, so that exit code proved nothing about the configuration.** Today the same command runs real tasks for all 13 projects and passes — but a green lint over *legal* code still proves only that the config loads, never that an illegal import is caught; that is what `pnpm verify:boundaries` below is for. To exercise the config on a path belonging to no project, drive ESLint directly:
 
 ```bash
 pnpm eslint --print-config eslint.config.mjs   # resolves 456 rules, 69 enabled
@@ -854,17 +1192,20 @@ The script scaffolds throwaway projects under `libs/__boundary-probe/`, each car
 | `p4` | a project with two tags instead of three | fail — §5.2, "no exceptions" |
 | `p5` | `type:infrastructure` → `type:app` | fail — nothing may depend on the composition root |
 | `p6` | `type:e2e` → `type:infrastructure` | fail — `e2e` may use only `contracts` and `util` |
+| `p7` | `type:util` → `type:contracts` | fail — `util` is the innermost type and may depend only on `util` |
 
-The three `pass` rows matter as much as the six `fail` rows: a configuration that forbade everything would satisfy the failures and silently block `apps/api` and `libs/shared/ui`.
+The three `pass` rows matter as much as the seven `fail` rows: a configuration that forbade everything would satisfy the failures and silently block `apps/api` and `libs/shared/ui`.
 
 Run it after **any** change to the tag vocabulary, the type matrix or the `depConstraints` block — adding a context, widening a row, introducing an ADR-driven exception. Real project code cannot replace it: legal code never exercises the prohibition.
-> **Status:** the workspace **bootstrap** (`T-C10-01`), the **lint/format toolchain and tag vocabulary** (`T-C10-02`) and the **enforced `depConstraints` matrix** (`T-C10-03`) are done, and every check above passes. All **four applications** are now scaffolded on top of them — `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and both Cypress + Cucumber acceptance harnesses, `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`) — so `pnpm nx lint` runs against real project code and passes for all four, and `pnpm verify:boundaries` still reports 9/9 with both platforms in the graph. That green lint is **not** evidence the boundary rule bites: no application imports another project, so no permanent dependency edge has ever been judged. The `type:e2e` row was additionally probed against the real `apps/api-e2e` while closing `T-C10-06` — the illegal import was rejected, and the probe reverted — but the standing proof remains `verify:boundaries`, not the applications. Everything under `libs/` on this page remains **target structure**: there is no `libs/` directory. The two acceptance suites are executable and hold **one smoke scenario each**, proving the harness reaches a live API process and the served shell; the epic's own acceptance scenarios belong to the tickets that own the behavior.
+> **Status:** the workspace **bootstrap** (`T-C10-01`), the **lint/format toolchain and tag vocabulary** (`T-C10-02`) and the **enforced `depConstraints` matrix** (`T-C10-03`) are done, and every check above passes. All **four applications** are scaffolded on top of them — `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and both Cypress + Cucumber acceptance harnesses, `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`) — together with the shared kernel (`shared-util`, `shared-domain`, `shared-contracts`; `T-C10-07` … `T-C10-11`) and the six `incident-*` libraries (`T-C1-01`), five of which now carry the Incident intake slice (`incident-ui` is still empty): **13 projects**, `pnpm nx lint` green for all of them, and `pnpm verify:boundaries` reporting 10/10. The graph holds **20 legal code edges** (listed in the §2.1 Status note) — none context-to-context, none frontend-to-backend — so the boundary rule judges real dependencies; but legal edges still cannot show that an illegal one is caught, and the standing proof remains `verify:boundaries`. Two rows were additionally probed against real projects and then reverted — `type:e2e` against `apps/api-e2e` while closing `T-C10-06`, and `type:util` against `shared-util` while closing `T-C10-07`, both rejected as required — and the `type:util` row is now the permanent probe `p7`. Tests today: **48 unit suites / 399 tests** across 11 projects (`incident-ui` and `web` pass through `passWithNoTests`), **2 integration suites / 13 tests** in `incident-infrastructure` against real PostgreSQL, **`api-e2e` 4 features / 19 scenarios** and **`web-e2e` 3 features / 11 scenarios**, all green — per-project breakdown in [§2.6.6](#266-coverage-as-run-today). `apps/api` owns `main.ts`, `app/` (the root module, `GlobalExceptionFilter`, correlation id, the `incident/` composition slice with its controller, DTOs and bindings), `bootstrap/` (the disposable fixed requester actor), `config/`, `database/`, `persistence/` (the `PERSISTENCE_MODE` switch), `data-source.ts`, `migrations/` (conventions README plus four migrations), `event-dispatch/` and a `NODE_ENV=test`-only `testing/` harness. `apps/web/src/app/` is still only the shell (`app.config.ts`, `app.routes.ts`, `app.component.ts`); its screens live in `incident-feature`. **Consequently the §2.3.1 tree is the target shape, not a listing**: paths it shows that do not exist today include `apps/api/src/{common,health,i18n}/`, every context folder other than `incident` under `apps/api/src/app/` and `libs/`, `apps/web/src/app/{interceptors,guards}/`, `libs/shared/ui/`, and the finer `model/` / `use-cases/` / `persistence/` sub-folders inside the backend incident libraries, whose files sit flat under `src/lib/` today (`incident-feature` groups by screen: `home-page/`, `intake-form/`, `incident-detail/`).
 
 ### **2.4. Infraestructura y despliegue**
 
 > Detalla la infraestructura del proyecto, incluyendo un diagrama en el formato que creas conveniente, y explica el proceso de despliegue que se sigue
 
 The deployment model is fixed by [ADR-013](docs/product/ARCHITECTURE.md#adr-013--stage-only-deployment-on-render-from-prebuilt-ghcrio-images-configured-in-the-dashboard): the system runs on **Render**, deployed as **prebuilt container images** pulled from **GitHub Container Registry**, in a **single stage environment**. There is **no production environment** and none is planned for this delivery — driver K8 in the architecture document ("academic/portfolio delivery capacity") is the reason. The scope is stated up front because several product non-functional requirements (availability targets, backup and restore drills, load behavior) presuppose a production environment and therefore cannot be demonstrated here.
+
+[ADR-015](docs/product/ARCHITECTURE.md#adr-015--stage-prototype-on-render-two-services-no-database-a-configuration-selected-in-memory-persistence-adapter) amends ADR-013 for stage only, and is what the rest of this section describes as running **today**: a temporary, Product-Owner-approved prototype with no database on Render and no CORS, reversed once specific triggers occur (§2.4.2, §2.4.3). It changes no product behavior, no target schema and no boundary rule — it changes only what is deployed to Render right now.
 
 The infrastructure is deliberately as small as the architecture allows. Sport ITSM is a **modular monolith** (ADR-004): two deployables — the NestJS API and the nginx-served Angular bundle — plus one PostgreSQL 18 system of record. No message broker, no cache tier, no separate reporting store, no orchestrator.
 
@@ -875,10 +1216,12 @@ The infrastructure is deliberately as small as the architecture allows. Sport IT
 | **Local (native)** | Developer machine, Node 22 | `pnpm nx serve api` / `pnpm nx serve web` | Dockerized PostgreSQL 18.6 | Day-to-day development with hot reload |
 | **Local (Docker)** | Developer machine, containers | `docker compose -f docker/docker-compose.dev.yml up` | `postgres:18.6` service, named volume | Run the system the way it is packaged, before pushing |
 | **E2E** | Developer machine or CI | `docker/docker-compose.e2e.yml` | Disposable `postgres:18.6` | Cypress + Cucumber acceptance runs against a throwaway database |
-| **Stage** | **Render** | Deployed by the GitHub Actions pipeline | **Render managed PostgreSQL** | The only hosted environment; the deployed system |
+| **Stage** | **Render** | Deployed by the GitHub Actions pipeline | **None today** — `PERSISTENCE_MODE=memory` (ADR-015, prototype); no `POSTGRES_*` set | The only hosted environment; the deployed system, volatile by design while ADR-015 is in force |
 | ~~Production~~ | — | — | — | **Does not exist.** Out of scope for this delivery |
 
 The three local environments are described by the compose files under `docker/`; they are platform-neutral and owned by the CI/CD role. Stage is the only environment whose configuration lives outside this repository — see §2.4.4.
+
+PostgreSQL therefore still backs every environment that actually runs one today **except** stage: Local (native and Docker) provisions `postgres:18.6` for day-to-day development and migrations, and the `api-e2e` acceptance suite brings up its own disposable PostgreSQL for every run (`docker/docker-compose.e2e.yml`, host port 5499) and tears it down afterward. `postgres` remains the mode the data source, the migration chain and the acceptance suite are built against; stage is the one place it is currently switched off, and switching it back on is the first of ADR-015's reversal triggers (§2.4.3).
 
 #### 2.4.2 Stage topology
 
@@ -891,10 +1234,9 @@ flowchart LR
         GHCR[("<b>ghcr.io</b><br/>GitHub Container Registry - private<br/>api image + web image")]
     end
 
-    subgraph RND["Render - stage environment only"]
-        WEBSVC["<b>Web service: web</b><br/>image-backed<br/>nginx alpine serving dist/apps/web/browser<br/>SPA fallback, gzip, security headers, /health"]
-        APISVC["<b>Web service: api</b><br/>image-backed<br/>Node 22, NestJS 11 on Express 5<br/>pre-deploy command: TypeORM migration:run<br/>/health/live and /health/ready"]
-        PG[("<b>Render managed PostgreSQL 18</b><br/>single system of record<br/>reached over Render's private network")]
+    subgraph RND["Render - stage environment only (ADR-013, amended by ADR-015)"]
+        WEBSVC["<b>Web service: web</b><br/>image-backed<br/>nginx alpine serving dist/apps/web/browser<br/>SPA fallback, gzip, security headers<br/>reverse-proxies /api/ to the API service, /health"]
+        APISVC["<b>Web service: api</b><br/>image-backed<br/>Node 22, NestJS 11 on Express 5<br/>PERSISTENCE_MODE=memory, empty pre-deploy command<br/>no health check path configured on Render yet"]
     end
 
     USER["Browser<br/>Requesters and Service Organization"]
@@ -906,23 +1248,22 @@ flowchart LR
     GHCR -.->|"image pull - read:packages PAT held as a Render registry credential"| WEBSVC
     GHCR -.->|"image pull"| APISVC
 
-    USER -->|"HTTPS"| WEBSVC
-    USER -->|"HTTPS / JSON REST - Bearer JWT, Accept-Language"| APISVC
-    APISVC -->|"TCP 5432, private network"| PG
+    USER -->|"HTTPS - same origin"| WEBSVC
+    WEBSVC -->|"proxy_pass /api/ - resolved at request time, X-Forwarded-*, no CORS"| APISVC
 
     classDef ci fill:#1f6feb,stroke:#0b3d91,color:#ffffff
     classDef reg fill:#6e40c9,stroke:#3f1f75,color:#ffffff
     classDef svc fill:#0969da,stroke:#0b3d91,color:#ffffff
-    classDef store fill:#0e7c66,stroke:#064e40,color:#ffffff
     classDef extn fill:#e8e8e8,stroke:#8b8b8b,color:#111111
     class GHA ci
     class GHCR reg
     class WEBSVC,APISVC svc
-    class PG store
     class DEV,USER extn
 ```
 
-Three Render resources, created by hand in the dashboard: two **web services**, each backed by an image rather than by a platform-side source build, and one **managed PostgreSQL** instance reached over Render's private network at its internal address. The API is the only consumer of the database. The web service serves a static bundle behind nginx and holds no server-side state, no session and no secret — the browser calls the API directly, so nginx is not an API reverse proxy in this topology.
+Two Render resources, created by hand in the dashboard: two **web services**, each backed by an image rather than by a platform-side source build. **There is no Render PostgreSQL and no third resource** — ADR-015 excludes a database from the stage prototype, and the API runs with `PERSISTENCE_MODE=memory`, holding Incidents in process only; data is lost on every redeploy, restart, crash or Render's own idle spin-down (free-tier instances).
+
+The web service serves a static bundle behind nginx and holds no server-side state, no session and no secret, but it **is** an API reverse proxy in this topology, not merely a static server: since [T-C10-79](docs/backlog/C10/tickets/T-C10-79.md) (commit `2df53a3`, ADR-015 decision 4), `docker/frontend/nginx.conf.template` adds a `location /api/` that proxies every matching request to the API service at `API_UPSTREAM_URL` — resolved at request time (not cached at nginx startup), with `Host`/`X-Forwarded-*` headers set and a 60s timeout to absorb Render's free-tier cold start. `docker/frontend/docker-entrypoint.d/10-check-api-upstream-url.sh` refuses to start the container if `API_UPSTREAM_URL` is unset or malformed. The browser therefore only ever talks to **one origin** — the web service — and the API enables no CORS.
 
 #### 2.4.3 Deployment process, end to end
 
@@ -932,12 +1273,12 @@ Three Render resources, created by hand in the dashboard: two **web services**, 
 | 2 | Build the two images from `docker/docker-compose.stage.yml` | GitHub Actions | That compose file's purpose is now the **image build definition**, not a description of how stage runs — Render is |
 | 3 | Tag and push both images to `ghcr.io` | GitHub Actions | Private registry; the push credential is a GitHub Actions secret |
 | 4 | **Call each service's Render deploy hook** | GitHub Actions | **Mandatory, explicit step** — see the warning below |
-| 5 | Pull the image and run the **pre-deploy command** | Render | `migration:run` against the managed database. A failing migration fails the deploy **before** the new version serves traffic |
-| 6 | Start the new version and cut traffic over | Render | Health endpoints: `/health/live` and `/health/ready` on the API, `/health` on nginx |
+| 5 | Pull the image and run the **pre-deploy command** | Render | **Empty on the API service today.** ADR-015 removes the database from stage, so there is nothing to migrate; `apps/api/src/data-source.ts` itself refuses to load unless `PERSISTENCE_MODE=postgres`, so `migration:run` would fail loudly if configured against `memory` mode. `migration:run` is the target value of this cell, restored once ADR-015's first reversal trigger occurs (a database is provisioned for stage) |
+| 6 | Start the new version and cut traffic over | Render | `/health` on nginx (served by nginx itself). The API has **no health check path configured on Render yet** — `/health/live` and `/health/ready` are reserved in `apps/api/src/main.ts`'s prefix-exclusion list but not implemented, so Render falls back to port detection for the API service |
 
 > **The step that cannot be skipped.** An image-backed Render service **does not redeploy automatically when a new image is pushed to its tag**. Pushing to `ghcr.io` deploys nothing. If the pipeline omits the deploy-hook call, the build goes green while Render keeps serving the previous image — a silent failure. The deploy hook is a per-service URL taken from the service's Settings page, callable by `GET` or `POST`, and it accepts an optional `imgURL` query parameter that pins the exact tag or digest to deploy; passing the tag just pushed makes a deploy name its own artifact instead of trusting a moving tag.
 
-**Migrations are a deploy step, never a boot step.** `synchronize` is `false` in every environment, and `docker/backend/docker-entrypoint.sh` deliberately runs no migration — it only hands off to the container's `CMD`. On Render, schema evolution is the service's **pre-deploy command**, which runs before the new version starts serving. This is the rule in `CLAUDE.md` §3 ("no unconditional migration auto-run in staging/prod") given a concrete home.
+**Migrations are a deploy step, never a boot step.** `synchronize` is `false` in every environment, and `docker/backend/docker-entrypoint.sh` deliberately runs no migration — it only hands off to the container's `CMD`. On Render, schema evolution is *designed* as the service's **pre-deploy command**, but that command is **empty today**, because ADR-015's stage prototype has no database to evolve. Where the Postgres path is exercised today: Local (native and Docker) runs `pnpm migration:run` by hand against its own `postgres:18.6` container, and `pnpm nx e2e api-e2e` runs it automatically against its ephemeral database on every acceptance run. Restoring the pre-deploy command on stage is the mechanical part of reversing ADR-015 (§2.4.1) — no code change, only provisioning a database and flipping `PERSISTENCE_MODE` back to `postgres`. This is the rule in `CLAUDE.md` §3 ("no unconditional migration auto-run in staging/prod") given a concrete home: migrations are never a boot step, in any mode, on any environment.
 
 #### 2.4.4 Configuration and secrets
 
@@ -945,8 +1286,9 @@ There is **no `render.yaml` blueprint in this repository, and no infrastructure-
 
 | Value | Lives in |
 |---|---|
-| API runtime configuration (`NODE_ENV`, `PORT`, database connection…) | Render dashboard, on the API service |
-| Database credentials | Render dashboard — the managed PostgreSQL instance's own connection variables, copied onto the API service |
+| API runtime configuration (`NODE_ENV`, `PORT`, `PERSISTENCE_MODE`) | Render dashboard, on the API service — today `PERSISTENCE_MODE=memory` and no `POSTGRES_*` (ADR-015) |
+| Web → API routing (`API_UPSTREAM_URL`) | Render dashboard, on the web service — the API service's public Render URL, origin only, no path or trailing slash (ADR-015 decision 4) |
+| Database credentials | **Not applicable today** — no Render PostgreSQL exists while ADR-015 is in force. Once reversed, the managed instance's own connection variables are copied onto the API service here |
 | `ghcr.io` **pull** credential | Render registry credential: a GitHub username plus a personal access token scoped `read:packages` |
 | `ghcr.io` **push** credential and the deploy hook URLs | GitHub Actions secrets. A deploy hook URL is itself a secret — anyone holding it can trigger a deploy |
 | The **names** of the variables the API requires | `.env.example`, in this repository — the only in-repo record. The API validates them at boot through `@nestjs/config` and aborts naming any missing key |
@@ -957,15 +1299,291 @@ The consequence is stated plainly because it is a real property of the system: *
 
 Both images are plain OCI containers built from Dockerfiles that contain nothing Render-specific, and the API reads every setting from environment variables through its validated configuration schema. Moving to another container host is a pipeline change plus a dashboard exercise: no application code, no library boundary, no Nx tag and no database schema is involved. The dependency on Render is deliberately shallow.
 
-> **Status.** This section records a **decision**, not a running system. Nothing is deployed yet: the images build and run locally, and the GitHub Actions workflow that implements the steps above does not exist under `.github/workflows/` at the time of writing. Pipeline implementation is owned by the CI/CD role; this section and ADR-013 are the specification it implements.
+> **Status.** This section records a **decision** (ADR-013), a **temporary amendment** (ADR-015) and the pipeline that implements both. `.github/workflows/deploy-stage.yml` exists and runs three jobs on every push and pull request unless noted: `verify` (`pnpm prettier --check .`, `pnpm nx run-many -t lint test build`, `pnpm nx run api:build-migrations`, `pnpm verify:boundaries`); `acceptance`, gated on `verify` (`pnpm nx e2e api-e2e` against its own ephemeral PostgreSQL, then `pnpm nx e2e web-e2e`); and `deploy-stage`, gated on both — build and push both images to `ghcr.io`, then call the Render deploy hooks — **only** on a push to `main`, never a branch or a pull request. The two deploy-hook steps are themselves skipped until the `RENDER_DEPLOY_HOOK_API` / `RENDER_DEPLOY_HOOK_WEB` repository secrets exist; whether the Render services are configured, and with which environment variables, is dashboard state (ADR-013/ADR-015) and cannot be verified from this repository. **Not run anywhere in the pipeline today:** `libs/incident/infrastructure`'s `integration` target (`pnpm nx run incident-infrastructure:integration`), which round-trips `TypeOrmIncidentRepository` against a real PostgreSQL — it needs a live database `verify`'s job does not provision and is a distinct Nx target from the plain `test` that `run-many -t lint test build` executes, so `verify` never runs it and `acceptance` runs Cypress suites, not this target. It is runnable locally against the same ephemeral stack `api-e2e` uses. Pipeline implementation is owned by the CI/CD role; this section and ADR-013/ADR-015 are the specification it implements.
 
 ### **2.5. Seguridad**
 
 > Enumera y describe las prácticas de seguridad principales que se han implementado en el proyecto, añadiendo ejemplos si procede
 
+This section covers only the security practices that exist in the repository **today**, and each one was checked against the code, configuration or pipeline that implements it. The product's security requirements (`NFR-SEC-01` … `NFR-SEC-07` in [`docs/product/PRD.md`](docs/product/PRD.md) §8) and the target design ([`docs/product/ARCHITECTURE.md`](docs/product/ARCHITECTURE.md) §9) go much further: authentication, RBAC, requester-scoped visibility and an append-only audit trail. Those parts are **not built yet**. They are listed separately in §2.5.10 so that nobody takes them for implemented controls.
+
+The current build is the first vertical slice: log an Incident, then read it back by reference. Its security is concentrated at the edges it actually has. That means strict input validation, error responses that reveal nothing internal, fail-fast configuration, safe persistence, a hardened static edge and a locked-down supply chain.
+
+#### 2.5.1 At a glance
+
+| # | Practice | Where it lives | Enforced by |
+| --- | --- | --- | --- |
+| 1 | Allow-list input validation; unknown fields rejected, not ignored | [`apps/api/src/main.ts`](apps/api/src/main.ts), request DTOs | Global `ValidationPipe` + `class-validator` |
+| 2 | Server-side authority over Priority: the client cannot submit Impact, Urgency or Priority | [`log-incident-requester.dto.ts`](apps/api/src/app/incident/dto/log-incident-requester.dto.ts) | `forbidNonWhitelisted` + API acceptance scenario |
+| 3 | Error responses that never leak messages or stack traces | [`global-exception.filter.ts`](apps/api/src/app/global-exception.filter.ts) | Global exception filter + unit spec |
+| 4 | Responses expose only what the caller needs; no internal identifiers | [`incident.controller.ts`](apps/api/src/app/incident/incident.controller.ts), [`incident-detail-response.mapper.ts`](apps/api/src/app/incident/incident-detail-response.mapper.ts) | Contract types + acceptance scenario |
+| 5 | Validated, fail-fast configuration; no raw `process.env` outside `config/` | [`apps/api/src/config/env.validation.ts`](apps/api/src/config/env.validation.ts) | `@nestjs/config` `validate` hook |
+| 6 | Secrets kept out of Git and out of images | [`.gitignore`](.gitignore), [`.env.example`](.env.example), both Dockerfiles | Git ignore rules, runtime-only images |
+| 7 | Parameterized data access, migrations-only schema, database-level invariants | `libs/incident/infrastructure`, `apps/api/src/migrations/` | TypeORM repository API, `synchronize: false`, PostgreSQL trigger |
+| 8 | Use case authorizes before touching any port (deny-by-default seam) | [`log-incident.use-case.ts`](libs/incident/application/src/lib/log-incident.use-case.ts) | Unit spec |
+| 9 | No HTML injection surface in the client; no CORS opened | `libs/incident/feature`, [`nginx.conf.template`](docker/frontend/nginx.conf.template) | Angular template escaping, same-origin reverse proxy |
+| 10 | nginx security headers, hidden files denied, upstream validated at startup | [`docker/frontend/`](docker/frontend/) | nginx config + entrypoint check |
+| 11 | Supply chain: frozen lockfile, build-script allow-list, SHA-pinned Actions, least-privilege tokens | [`pnpm-workspace.yaml`](pnpm-workspace.yaml), [`.github/workflows/deploy-stage.yml`](.github/workflows/deploy-stage.yml) | CI |
+| 12 | Architecture boundaries as a security control: no backend code can reach the browser bundle | [`eslint.config.mjs`](eslint.config.mjs), [`tools/boundary-probes/verify.mjs`](tools/boundary-probes/verify.mjs) | `@nx/enforce-module-boundaries` + `pnpm verify:boundaries` |
+
+#### 2.5.2 Input validation at the API boundary
+
+Every request body and route parameter passes through one global `ValidationPipe` before any controller code runs. The pipe works as an **allow-list**. A property that the DTO does not declare is not silently dropped: the whole request is rejected with `400 VALIDATION_FAILED`, so an unexpected field can never leak into a use case.
+
+```ts
+// apps/api/src/main.ts
+app.useGlobalPipes(
+  new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+    stopAtFirstError: true,
+    exceptionFactory: (errors) =>
+      new RequestValidationException(flattenValidationErrors(errors)),
+  }),
+);
+```
+
+- **Typed, bounded DTOs.** [`LogIncidentRequesterDto`](apps/api/src/app/incident/dto/log-incident-requester.dto.ts) requires `shortDescription` (string, not blank, at most 255 characters, matching the `varchar(255)` column) and `description` (string, not blank). `affectedServiceId` is optional and must be a UUID. A custom `@IsNotBlank()` validator rejects whitespace-only values that `IsNotEmpty` would let through.
+- **Route parameters are validated too.** `GET /api/incidents/:reference` accepts only `^[A-Z]{3}[0-9]{7}$` ([`get-incident-by-reference-params.dto.ts`](apps/api/src/app/incident/dto/get-incident-by-reference-params.dto.ts)). A malformed reference is rejected before it reaches the use case or the database.
+- **Server-side authority over business-critical fields (NFR-SEC-02).** The requester intake DTO does not declare `impact`, `urgency`, `priority` or `competitionAffectsInProgress`. The API therefore **rejects** a request that tries to set any of them, and creates nothing. The API acceptance suite proves this over real HTTP for all four fields. After each rejected request it checks that the reference sequence did not advance:
+
+  ```gherkin
+  # apps/api-e2e/src/features/incident-intake.feature
+  Scenario Outline: The server rejects a priority-bearing field the client is never offered, and creates nothing
+    ...
+    Then the response is a validation failure naming "<field>"
+    And no Incident was created since the baseline
+  ```
+
+- **Untrusted headers are shape-checked.** The inbound `X-Correlation-Id` header is echoed back and written into logs only if it is a well-formed UUID. Any other value is replaced with a freshly generated `randomUUID()` ([`correlation-id.util.ts`](apps/api/src/app/correlation-id.util.ts)). A caller therefore cannot inject arbitrary text into logs or responses through that header.
+- **The client validates too, but only for usability.** The Reactive Form in `libs/incident/feature` applies the same required, not-blank and max-length rules. It is not the security boundary: the server re-validates everything.
+
+#### 2.5.3 Error handling that does not leak internals
+
+A single global `@Catch()` filter ([`global-exception.filter.ts`](apps/api/src/app/global-exception.filter.ts)) turns **every** exception into the contract's `ErrorEnvelope`: a machine-readable code from a closed set, plus `{ field, rule }` details for validation failures. Nothing else is returned. For anything unexpected, the message and the stack go only to the server log, keyed by the correlation id. The caller receives a generic code:
+
+```ts
+// apps/api/src/app/global-exception.filter.ts
+// Anything else is unexpected: never reflect the underlying error back
+// to the caller (no `message`, no `stack`) — only `Logger` and the
+// correlation id see it.
+this.logger.error(
+  `Unhandled error (correlationId: ${correlationId})`,
+  exception instanceof Error ? exception.stack : String(exception),
+);
+return {
+  status: HttpStatus.INTERNAL_SERVER_ERROR,
+  body: { error: { code: ErrorCode.INTERNAL_ERROR } },
+};
+```
+
+- The error vocabulary is fixed in [`libs/shared/contracts/src/lib/error-code.ts`](libs/shared/contracts/src/lib/error-code.ts) (`UNAUTHENTICATED`, `FORBIDDEN`, `VALIDATION_FAILED`, `NOT_FOUND`, `INTERNAL_ERROR`). The `rule` in a validation detail is the constraint key (`maxLength`, `isUuid`, `whitelistValidation`), never a free-text message.
+- Database errors, including constraint violations and the reference-immutability trigger, fall into the generic `500 INTERNAL_ERROR` branch. SQL text, table names and driver messages never reach the client.
+- A unit spec asserts this. Its test is named *"maps any other error to 500 INTERNAL_ERROR without leaking a stack or the internal message"*, and it checks that the serialized response does not contain `stack`.
+- On the client side, [`incident-api-error.ts`](libs/incident/data-access/src/lib/incident-api-error.ts) accepts only codes that belong to the contract enum. Each code maps to a fixed, human-written message; a server-supplied string is never rendered. The correlation id is shown to the user as a support code, which enables tracing without exposing internals.
+
+#### 2.5.4 Minimal data exposure
+
+- `POST /api/incidents` returns **only** the human-facing reference (`{ reference: "INC0000001" }`). The internal UUID primary key is never exposed.
+- `GET /api/incidents/:reference` builds its response field by field from the aggregate snapshot through an explicit mapper ([`incident-detail-response.mapper.ts`](apps/api/src/app/incident/incident-detail-response.mapper.ts)). It is never a serialized entity, so a column added to the table cannot leak by accident. An acceptance scenario asserts that the response has no `id`, no `reporterId` and no `loggedBy`.
+- A reference with the right shape but a foreign record-type prefix (e.g. `SRQ0000001`) returns the same `404 NOT_FOUND` as any other unknown reference, so the response does not reveal which record types exist.
+
+#### 2.5.5 Configuration and secrets
+
+- **Fail-fast, validated configuration.** [`env.validation.ts`](apps/api/src/config/env.validation.ts) is the *only* declaration of what the API reads from its environment. Every key is mandatory and has **no in-code default**, so a missing or malformed value aborts the boot and the error names the variable. A default would let the process start with a plausible but wrong value. `NODE_ENV` and `PERSISTENCE_MODE` are enums, so a typo cannot silently select a "non-production" branch. Reading `process.env` is limited to `apps/api/src/config/`; everything else receives typed values through `ConfigService`.
+- **A mechanical safety rail.** `PERSISTENCE_MODE=memory` combined with `NODE_ENV=production` fails validation. A volatile store can never run as production, and this is enforced by the validator rather than by convention. The TypeORM CLI entry point ([`data-source.ts`](apps/api/src/data-source.ts)) also refuses to run unless `PERSISTENCE_MODE=postgres`.
+- **Secrets never enter Git.** `.env` and `.env.*` are git-ignored (except `.env.example`). The committed [`.env.example`](.env.example) contains only the variable *names* and the local development values that match the throwaway Docker PostgreSQL.
+- **Secrets never enter images.** Both Dockerfiles are runtime-only. They copy the built output (`dist/apps/api`, `dist/apps/web/browser`) and their own configuration, never the source tree or a `.env` file. Stage configuration lives in the Render dashboard, and the CI credentials live in GitHub Actions secrets (§2.4.4).
+
+#### 2.5.6 Persistence safety
+
+- **Parameterized access only.** The TypeORM repository reads through the repository API (`findOne({ where: { reference: reference.value } })`), which binds values as parameters. It contains only two raw queries, and both are constant strings with no interpolated input: `SELECT uuidv7() AS id` and `SELECT nextval('incident.incident_reference_seq')`. No SQL is ever built from request data.
+- **Schema changes only through migrations.** `synchronize: false` and `migrationsRun: false` are hard-coded once in [`database-connection.ts`](apps/api/src/config/database-connection.ts), not left for each caller to get right. Migrations are reversible and run as a separate deploy step, never at boot ([`docker/backend/docker-entrypoint.sh`](docker/backend/docker-entrypoint.sh) runs none).
+- **Invariants enforced by the database as well as the domain.** The ticket reference is `UNIQUE`. Once assigned it cannot be changed: a `BEFORE UPDATE` trigger raises an exception ([`…-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts`](apps/api/src/migrations/1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts)). Even code that bypasses the aggregate cannot rewrite a record's identity.
+- **Server-generated identifiers.** Primary keys are UUID v7, generated by PostgreSQL `uuidv7()` or, in memory mode, from `node:crypto` `randomBytes`. Clients never supply identifiers.
+- **A bound on the unauthenticated in-memory store.** The stage prototype runs with `PERSISTENCE_MODE=memory` and no authentication (ADR-015). The in-memory repository therefore enforces a **10 000-Incident capacity ceiling** and returns a typed error beyond it, so an anonymous caller cannot exhaust the process memory ([`in-memory-incident.repository.ts`](libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts)).
+
+#### 2.5.7 Authorization seam and test-only surfaces
+
+- **The use case authorizes first.** `LogIncidentUseCase` calls `actor.canLogIncidentAsRequester()` *before* touching any port. A denial throws `IncidentLogAuthorizationError`, which the filter maps to `403 FORBIDDEN`, and nothing else happens: no reference is used up, nothing is persisted, no event is published. A unit spec covers this (*"Authorization — deny-by-default"*). The check lives in the application layer, not in a controller decorator, so no other inbound adapter can skip it.
+- **But the actor is fixed today.** Authentication does not exist yet. `FixedRequesterActorResolver` always returns the same bootstrap Requester, so every caller is that Requester in practice. The seam is real and tested, but it protects nothing until the per-request resolver described in §2.5.10 replaces this class. The rebinding is a single line in `IncidentModule`.
+- **Test-only routes are not in production builds.** The event-dispatch test controller used by the API acceptance suite is imported into `AppModule` only when `NODE_ENV=test`. In any other environment its route returns `404`, and a Jest spec checks this gating.
+
+#### 2.5.8 Web client and edge
+
+- **No HTML injection surface.** The web client renders all data through Angular template interpolation, which escapes it automatically. There is no `[innerHTML]`, no `bypassSecurityTrust*` and no direct DOM write anywhere in `apps/web` or `libs/`. The client holds no secret and no authorization decision.
+- **Same origin, no CORS.** The API never calls `enableCors()`. In stage, nginx reverse-proxies `/api/` to the API service (ADR-015), so the browser talks to a single origin. In development, `apps/web/proxy.conf.json` does the same job.
+- **nginx hardening** ([`nginx.conf.template`](docker/frontend/nginx.conf.template), [`security-headers.conf`](docker/frontend/security-headers.conf)):
+
+  ```nginx
+  # security-headers.conf — a location whose own `add_header` REPLACES
+  # (does not merge with) what it inherits from `server`, so this file
+  # is `include`d both at `server` level and again inside every
+  # location that declares its own `add_header`, keeping the headers
+  # on every response route instead of only the ones with none of
+  # their own.
+  add_header X-Frame-Options "SAMEORIGIN" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-XSS-Protection "1; mode=block" always;
+
+  location ~ /\. { deny all; access_log off; log_not_found off; }
+  ```
+
+  In addition, `index.html` is served with `Cache-Control: no-store`, and envsubst may substitute **only** `API_UPSTREAM_URL` and `NGINX_LOCAL_RESOLVERS`. A startup script ([`10-check-api-upstream-url.sh`](docker/frontend/docker-entrypoint.d/10-check-api-upstream-url.sh)) stops the container before nginx starts if the upstream URL is missing, is not `http(s)://`, or carries a path. Such a URL would otherwise send every proxied request to the wrong route without any error.
+
+#### 2.5.9 Supply chain, CI/CD and architecture enforcement
+
+- **One package manager, reproducible installs.** pnpm only, pinned through `packageManager: pnpm@10.18.3`. CI runs `pnpm install --frozen-lockfile` against the committed `pnpm-lock.yaml`. Following pnpm 10's default, dependency install scripts are **blocked** unless the package appears in the `onlyBuiltDependencies` allow-list, which contains only `cypress` and `esbuild`.
+- **Hardened workflow** ([`deploy-stage.yml`](.github/workflows/deploy-stage.yml)). Every third-party Action is pinned to a **full commit SHA**, not to a movable tag. The default token permission is `contents: read`, and only the deploy job adds `packages: write`. Images are pushed with the built-in `GITHUB_TOKEN` instead of a long-lived personal token. Render deploy-hook URLs are stored as repository secrets. Deployment runs **only** on a push to `main`, after the `verify` and `acceptance` jobs pass. Images are tagged with the commit SHA, and the deploy hook is called with that exact image.
+- **Lean runtime images.** The API image installs only the production dependencies of the generated `package.json` (`pnpm install --prod`), with no devDependencies and no frontend packages. The PostgreSQL image is pinned to a patch release (`postgres:18.6`).
+- **Architecture as a security control.** `@nx/enforce-module-boundaries` makes it a lint error for any `platform:frontend` project to import `platform:backend` code. Server-side logic, configuration or adapters therefore cannot end up in the browser bundle. It is also a lint error for `type:domain` or `type:application` code to depend on infrastructure. `pnpm verify:boundaries` runs in CI and injects deliberate violations to prove the rule still fails the build (§2.1).
+- **Known gaps in what exists.** These are listed so that the practices above are not over-read:
+
+  | Gap | Detail |
+  | --- | --- |
+  | No HTTP security middleware on the API | No `helmet`, no CSP, no HSTS and no rate limiting in `apps/api`. TLS is terminated by Render's edge. |
+  | No CSP header on nginx responses | `X-Frame-Options`, `X-Content-Type-Options` and `X-XSS-Protection` are applied on every route via a shared [`security-headers.conf`](docker/frontend/security-headers.conf) include (`server` level and every location that also sets its own `add_header`), so a location no longer drops the inherited headers. No `Content-Security-Policy` header is set. |
+  | Containers run as root | Neither Dockerfile declares a non-root `USER`. The base images `node:22-alpine` and `nginx:alpine` are floating tags, not digests. |
+  | Reads are unscoped | `GET /api/incidents/:reference` has no authorization context, and references are sequential (`INC0000001`, `INC0000002`, …), so any caller can enumerate every Incident. NFR-SEC-03 is **not** met yet. This was a documented decision of the slice, not an oversight. |
+  | `description` has no explicit length limit | Its size is bounded only by the JSON body parser's default limit. |
+
+#### 2.5.10 Designed, not yet implemented
+
+These controls are specified in the PRD and in `ARCHITECTURE.md` §2.2/§9, but **no code for them exists** in the repository. The corresponding packages (`@nestjs/passport`, `passport-jwt`, `@nestjs/jwt`, `bcrypt`, `@nestjs/swagger`, `nestjs-pino`, `@nestjs/terminus`, `nestjs-i18n`) are not installed.
+
+| Control | Design | Requirement |
+| --- | --- | --- |
+| Authentication | Passport JWT strategy and guards in `apps/api`; `IdentityProviderPort` with a local-credential adapter (bcrypt) first and SSO later; no anonymous submission | NFR-SEC-01, FR-IAM-04, FR-OMN-04 |
+| Per-request authorization / RBAC | A real `Actor` built on every request, with permissions resolved on the server (never trusted from token claims). It replaces `FixedRequesterActorResolver` (`T-C10-39`), and each use case checks it as a domain predicate | NFR-SEC-02, FR-IAM-03 |
+| Requester-scoped visibility and internal work notes | Requesters see only their own tickets; work notes never reach requesters through any channel | NFR-SEC-03, NFR-SEC-04 |
+| Session protection | Inactivity timeout, bounded session lifetime, re-authentication before privileged admin actions, sign-out | FR-IAM-06, FR-IAM-08 |
+| Privileged operations and audit | Admin operations restricted to System Administrator; append-only `audit` context fed by domain events, whose port has no update or delete method at all | NFR-SEC-06, FR-AUD-01…06 |
+| Personal-data minimization and lawful erasure | Pseudonymization that keeps the audit trail intact | NFR-SEC-07, FR-IAM-09 |
+| License gating | `@LicenseFeature()` decorator + guard | — |
+| Client-side auth plumbing | `jwtInterceptor`, `authGuard` / `roleGuard` (for usability only, not the security boundary); `provideHttpClient(withInterceptors([]))` is still empty | — |
+| Operational hardening | Swagger at `/api/docs` in development only, structured `nestjs-pino` logs with correlation, `/health/live` and `/health/ready` probes | NFR-CFG-03 |
+
+> **Status:** the practices in §2.5.1–§2.5.9 are implemented and, where the text says so, covered by unit, integration or Cypress + Cucumber acceptance tests that run in the `verify` and `acceptance` CI jobs. The stage prototype is **deliberately unauthenticated** under ADR-015: a fixed Requester actor, volatile in-memory storage and a public URL. It must not hold real or personal data until at least the authentication and per-request authorization rows above are delivered. The `Unhandled error` log line in the exception filter goes through Nest's built-in `Logger`, not yet through `nestjs-pino`.
+
 ### **2.6. Tests**
 
 > Describe brevemente algunos de los tests realizados
+
+#### 2.6.1 Test pyramid and tooling
+
+The suite has four tiers, each exercising a different boundary, plus one architecture-level check that is a test in its own right. Commands are already listed in [§1.4.7 "Run the tests"](#147-run-the-tests) and [§2.3.6 "Useful commands"](#236-useful-commands) — this section does not repeat them, only the tests themselves.
+
+| Tier | Tool | What it proves | Real database? |
+|---|---|---|---|
+| **Unit** | Jest 29.7 + `ts-jest` / `jest-preset-angular`, co-located `*.spec.ts` per project | One class/function/component in isolation — ports and collaborators are hand-written fakes or mocks | No |
+| **Integration** | Jest, `*.integration-spec.ts`, only under `incident-infrastructure`'s `integration` Nx target | A repository against **real PostgreSQL 18** — that a guarantee actually lives in the schema (sequence, trigger, constraint), not in application code | Yes — ephemeral, `docker/docker-compose.e2e.yml`, host port 5499 |
+| **Acceptance / API-E2E** | Cypress 15.20 + `@badeball/cypress-cucumber-preprocessor`, `apps/api-e2e/src/features/*.feature` | A real HTTP request against the built API, no mocked repository or use case anywhere in the run | Yes — its own ephemeral instance, also port 5499 |
+| **Acceptance / E2E** | Cypress + Cucumber, `apps/web-e2e/src/features/*.feature` | The Angular shell in a real browser (Electron, headless); the API is stubbed with `cy.intercept` | No |
+| **Architecture** | `pnpm verify:boundaries` (`tools/boundary-probes/verify.mjs`) | That `@nx/enforce-module-boundaries` still rejects an illegal cross-layer/cross-context import — not only that legal code lints clean | No |
+
+Integration and both acceptance targets share the same ephemeral PostgreSQL container and host port, so they cannot run concurrently — documented in [§1.4.9 Troubleshooting](#149-troubleshooting). CI (`.github/workflows/deploy-stage.yml`) wires `lint`/`test`/`build` and `verify:boundaries` into the `verify` job and both Cypress suites into `acceptance`; the `integration` target is not yet part of either job, so today it is a developer-run check, not a CI gate — a gap reported here rather than fixed as a side effect of this section.
+
+#### 2.6.2 Unit tests — a representative selection
+
+**Domain** — [`libs/incident/domain/src/lib/incident-reference.policy.spec.ts`](libs/incident/domain/src/lib/incident-reference.policy.spec.ts) pins the shape of an Incident reference without touching the database that will eventually allocate one:
+
+```ts
+it('matches the documented shape exactly: three letters, seven digits, no separator', () => {
+  const reference = IncidentReferencePolicy.format(42);
+  expect(reference.value).toMatch(/^[A-Z]{3}[0-9]{7}$/);
+  expect(reference.value).toHaveLength(10);
+});
+```
+
+**Application** — [`libs/incident/application/src/lib/log-incident.use-case.spec.ts`](libs/incident/application/src/lib/log-incident.use-case.spec.ts) drives `LogIncidentUseCase` against fakes for every port (`IncidentRepositoryPort`, `EventPublisherPort`, `ClockPort`, a `StubActor`) and a `CallLog` helper that records call order, so the sequencing between "check authorization", "allocate identity/reference" and "publish the domain event" is asserted directly rather than inferred from the outcome.
+
+**Contracts** — [`libs/shared/contracts/src/lib/error-code.spec.ts`](libs/shared/contracts/src/lib/error-code.spec.ts) guards the shared error vocabulary both applications compile against:
+
+```
+ErrorCode
+  ✓ is seeded with exactly the four codes T-C10-11 names plus T-C1-08's INTERNAL_ERROR, no more
+  ✓ is a value, not only a type — every key maps to its own name
+```
+
+**API** — [`apps/api/src/app/incident/incident.controller.spec.ts`](apps/api/src/app/incident/incident.controller.spec.ts) is a thin-controller test in the literal sense: it asserts `IncidentController` does no business logic, only wiring — `hardcodes originChannel to "portal" regardless of the DTO`, `mints a correlationId when the header is absent, and echoes it on the response header`, `maps the use-case result to only the reference the requester may see (AC3) — no internal id`.
+
+**Web** — [`libs/incident/feature/src/lib/home-page/home-page.component.spec.ts`](libs/incident/feature/src/lib/home-page/home-page.component.spec.ts) renders `HomePageComponent` through Angular's `TestBed` and checks accessibility-relevant structure, not implementation detail:
+
+```ts
+it('renders a single page heading with the exact heading text', () => {
+  const h1s = headings();
+  expect(h1s.length).toBe(1);
+  expect(h1s[0].textContent?.trim()).toBe(INCIDENT_MESSAGES.home.heading);
+});
+```
+
+#### 2.6.3 Integration tests against real PostgreSQL
+
+[`libs/incident/infrastructure/src/lib/incident-reference-sequence.integration-spec.ts`](libs/incident/infrastructure/src/lib/incident-reference-sequence.integration-spec.ts) is the clearest example of what this tier is for: it proves a guarantee that has **no equivalent application code to test** — there is no uniqueness check to mock, because uniqueness is enforced entirely by `incident.incident_reference_seq`, `uq_incident_reference` and the `tg_incident_ticket_reference_immutable` trigger the migration creates. Its own header states the point directly:
+
+> "There is no application-level uniqueness check in this codebase to 'remove' — every test below already runs with nothing but the database standing between two concurrent allocations and a collision, so a passing suite here **is** the proof the guarantee is the database's, not the application's."
+
+Its `AC1 — concurrency` scenario fires 20 `save()` calls through `Promise.all` over separate pool connections and asserts no two Incidents ever received the same reference; `AC2` opens a raw SQL `UPDATE` against the `postgres` role and confirms the immutability trigger rejects it; `AC3` deletes a row and rolls back a transaction to confirm a once-allocated `nextval()` is never reissued. [`incident-typeorm.integration-spec.ts`](libs/incident/infrastructure/src/lib/incident-typeorm.integration-spec.ts) complements it with a plain round-trip: `AC1 — every field round-trips unchanged through save() then findById()`, and a check that `nextIdentity()` reads a real, never-repeating UUID v7 from PostgreSQL 18's core `uuidv7()` function rather than an application-side v4 generator.
+
+#### 2.6.4 Acceptance tests (Cypress + Cucumber)
+
+**API-E2E** — [`apps/api-e2e/src/features/incident-intake.feature`](apps/api-e2e/src/features/incident-intake.feature) drives the built API over real HTTP, against its own ephemeral, migrated PostgreSQL, with nothing mocked:
+
+```gherkin
+Feature: Requester intake of an Incident (T-C1-08, US-C1-01, FR-INC-01)
+
+  Scenario: A valid request creates the Incident and returns only its reference
+    Given a fresh Incident intake request body
+    When the requester posts the Incident intake request
+    Then the response is 201 with a reference shaped like "INC" plus 7 digits
+    And the response body carries no field the requester may not see
+```
+
+Its `Scenario Outline` for rejected fields (`impact`, `urgency`, `priority`, `competitionAffectsInProgress`) proves something subtler than a 400 response: because there is deliberately no read-by-reference route inside this ticket's scope at the time it was written, "no Incident was created" is proven by logging a baseline Incident, attempting the rejected request, then logging another valid one and asserting its reference is exactly the baseline's next value — the reference sequence only advances on a real `nextReference()` call, so a gap would mean something silently got through. [`incident-detail.feature`](apps/api-e2e/src/features/incident-detail.feature) covers the read side the same way: a malformed reference is rejected as `400`, a well-formed but unknown one as `404`, never conflated.
+
+**Web E2E** — [`apps/web-e2e/src/features/incident-intake.feature`](apps/web-e2e/src/features/incident-intake.feature) runs the Angular shell in a real (headless) browser on a 360px, keyboard-only viewport, with the API responses supplied by `cy.intercept`:
+
+```gherkin
+Scenario: A keyboard-only requester completes and submits the form, then sees the persisted report
+  Given the Incident intake API accepts the next submission and assigns reference "INC0000001"
+  And the Incident detail API returns a persisted report for reference "INC0000001"
+  When the requester fills in the form using only the keyboard and submits it by pressing Enter
+  Then the Incident intake request is sent with the completed data
+  And the browser lands on the detail page for reference "INC0000001"
+  And the detail page shows the persisted report, not the values just typed
+```
+
+Two of its scenarios guard regressions that have nothing to do with the happy path: one asserts a server validation failure is exposed as an accessible `alert` linked to the offending field, another that navigating in-app from one Incident's detail page directly to another's never flashes the first report — Angular's router reuses the component instance across a same-route-config navigation, so a naive implementation would leak stale state. [`home.feature`](apps/web-e2e/src/features/home.feature) covers the landing page the same slice targets: exactly one heading, exactly one link to the intake form, reachable and activatable by keyboard alone.
+
+#### 2.6.5 Architecture test
+
+`pnpm verify:boundaries` is a test, not a lint pass: it scaffolds ten throwaway Nx projects under `libs/__boundary-probe/`, each carrying exactly one dependency edge, and asserts the outcome `nx lint` gives each one against `ARCHITECTURE.md` §5.3 — three edges that must be legal (domain → shared kernel, the composition root crossing contexts, a feature using the shared design system) and seven that must be rejected (domain → infrastructure, frontend → backend, context → context, a project with the wrong tag count, infrastructure → the composition root, `type:e2e` reaching past contracts/util, `util` reaching past itself). A green `nx lint` over the real codebase only proves the current graph is legal; this is the only check in the repository that proves an illegal one is still caught.
+
+#### 2.6.6 Coverage as run today
+
+All counts below are from an actual local run (`pnpm nx run-many -t test`, `pnpm nx e2e api-e2e`, `pnpm nx e2e web-e2e`, `pnpm nx run incident-infrastructure:integration`, `pnpm verify:boundaries`) against Node 22.20.0 / Nx 21.6 / Docker, on 2026-09-29 — not carried over from an earlier section. Every suite passed.
+
+| Project / suite | Suites | Tests | Result |
+|---|---|---|---|
+| `shared-util` | 3 | 19 | ✅ pass |
+| `shared-domain` | 8 | 86 | ✅ pass |
+| `shared-contracts` | 1 | 2 | ✅ pass |
+| `incident-domain` | 6 | 71 | ✅ pass |
+| `incident-application` | 2 | 16 | ✅ pass |
+| `incident-infrastructure` (unit) | 5 | 47 | ✅ pass |
+| `incident-data-access` | 2 | 21 | ✅ pass |
+| `incident-feature` | 4 | 38 | ✅ pass |
+| `incident-ui` | 0 | 0 | ✅ pass (no tests yet — empty `type:ui` lib) |
+| `api` | 17 | 99 | ✅ pass |
+| `web` | 0 | 0 | ✅ pass (no tests yet — application shell only) |
+| **Unit total** | **48** | **399** | ✅ **all pass** |
+| `incident-infrastructure` (integration, real PostgreSQL) | 2 | 13 | ✅ pass |
+| `api-e2e` (Cypress + Cucumber, 4 features) | — | 19 scenarios | ✅ pass |
+| `web-e2e` (Cypress + Cucumber, 3 features) | — | 11 scenarios | ✅ pass |
+| `verify:boundaries` (10 probes) | — | 10 | ✅ pass |
+
+`incident-ui` and `web` pass through Jest's `passWithNoTests` / "No tests found" — a green result there proves the runner is wired correctly, nothing about coverage; both are still target structure ([§2.3.6](#236-useful-commands)). Every other row is a real, currently-passing suite.
 
 ---
 
@@ -1023,7 +1641,7 @@ The scope is the **phase-0 and phase-1 contexts that actually persist state** (P
 | **Configurable lifecycles** | `incident_ticket.state_id` points at `incident_workflow_state` (a lookup), because FR-WFL-01 requires a configurable lifecycle. A denormalized, non-configurable `state_category` enum (`open`, `pending`, `resolved`, `closed`, `cancelled`) sits beside it so queries and KPIs never depend on customer configuration. Configuration is **versioned, never edited in place**: a ticket keeps the matrix and workflow version it was created under (NFR-CFG-02). |
 | **Soft delete** | **None. No `deleted_at` on any table.** It would create two truths about existence and is incompatible with an append-only audit trail (K4). "Removal" is a lifecycle state: `publication_status = 'retired'`, `status = 'disabled'`, `revoked_at IS NOT NULL`, `active = false`. Retired reference data stays joinable by history forever. |
 | **Retention & erasure** | Retention (NFR-DAT-02) is archival; `audit_entry` is **range-partitioned monthly** so it is a `DETACH PARTITION`, not a mass `DELETE`. Lawful erasure (NFR-SEC-07, K9) is **pseudonymization**: PII columns of `iam_user` are overwritten and `pseudonymized_at` set. Everything else references the user by `uuid` only, so the audit trail stays structurally intact while the personal data is gone. |
-| **Schema evolution** | **Migrations only.** `synchronize` is `false` in every environment; the schema changes exclusively through reviewed TypeORM migrations against `apps/api/src/data-source.ts`, auto-run only in development. No business rule ever lives in a trigger or stored procedure; `CHECK` constraints encode only structural invariants that must hold regardless of application version. |
+| **Schema evolution** | **Migrations only.** `synchronize` is `false` in every environment; the schema changes exclusively through reviewed TypeORM migrations against `apps/api/src/data-source.ts`, never auto-run at startup in any environment. No business rule ever lives in a trigger or stored procedure; `CHECK` constraints encode only structural invariants that must hold regardless of application version. |
 
 #### 3.1.3 Hard foreign keys vs soft references — and how to read the diagrams
 
@@ -2215,7 +2833,7 @@ Indexes are chosen for stated non-functional requirements, not speculatively:
 
 **Phase 2 is deliberately not modelled.** `problem`, `change`, `release` and `asset-config` (PRD §14.4) have their behavior specified but their schema left to the phase-2 design, so it is shaped by real phase-1 experience rather than speculation. What phase 1 already guarantees for them: `incident_link` and `sr_link` already accept `problem`, `change`, `release` and `configuration_item` as target record types, holding opaque `uuid`s with no FK (FR-INC-10), and `apr_workflow.record_type` already accepts `change` and `release`. Adding those contexts is therefore **additive** — new schemas and new tables, with **no phase-1 table restructured**.
 
-> **Status:** as in §2.1, §2.2 and §2.3, this is the **target data model**. The Nx workspace has been bootstrapped but holds no project, so there is no `apps/api` and no `apps/api/src/data-source.ts`, **no TypeORM entity and no migration exists**, and no database has ever been created. None of the constraints, partial indexes, partitions or `GRANT`/`REVOKE` statements above has been executed or measured; NFR-PRF-02 and NFR-PRF-04 must be proven with `EXPLAIN (ANALYZE, BUFFERS)` against a seeded volume before either is claimed.
+> **Status:** as in §2.1, §2.2 and §2.3, this is the **target data model**. `apps/api/src/data-source.ts` exists (`T-C10-16`) and the migration chain holds a single bootstrap migration (`T-C10-17`) that creates only the `iam` schema and the `citext` and `pg_trgm` extensions; **no table and no TypeORM entity exists**. PostgreSQL runs only as the local development container and the ephemeral acceptance database. None of the tables, constraints, partial indexes, partitions or `GRANT`/`REVOKE` statements above has been executed or measured; NFR-PRF-02 and NFR-PRF-04 must be proven with `EXPLAIN (ANALYZE, BUFFERS)` against a seeded volume before either is claimed.
 
 ### **3.2. Descripción de entidades principales:**
 
@@ -2626,7 +3244,7 @@ These hold for every table above and are stated once rather than repeated per en
 | **Enums vs versioned lookup tables** | A native PG enum when the value set is closed and the domain branches on it (`priority`, `impact`, `origin_channel`, `sla_instance_state`, `actor_type`). A lookup table (`id`, `code` UK, `active`, `*_translation`) when an administrator may change it without a release (NFR-CFG-01) or it must be translatable without changing its identifier (NFR-I18N-05). Records store the lookup **id**, never the label, so a rename changes one row and zero historical facts. Configuration is **versioned, never edited in place**: a ticket keeps the matrix, workflow and policy version it was created under (NFR-CFG-02). |
 | **Hard FK only inside a context** | A real `FOREIGN KEY` exists only within one schema / one bounded context, with `ON DELETE CASCADE` only from an aggregate root to a part it exclusively owns and `RESTRICT` everywhere else. Every cross-context or polymorphic reference is an **indexed `uuid` with no constraint** (ADR-003) — the database expression of the module-boundary rule of §2.1. |
 
-> **Status:** as in §3.1, this is the **target entity model**, derived from the PRD. **No TypeORM entity class exists, no migration exists, and no database has ever been created.** None of the primary keys, unique constraints, `CHECK` constraints, partial indexes, partitions or `GRANT`/`REVOKE` statements described above has been executed, and no cardinality or constraint here has been validated against a live PostgreSQL instance. The first migration is the moment any of it becomes fact; until then the correct reading is "designed and reviewed", not "implemented".
+> **Status:** as in §3.1, this is the **target entity model**, derived from the PRD. **No TypeORM entity class exists**, and the only migration (`T-C10-17`) creates the `iam` schema and two extensions, not a single table. None of the primary keys, unique constraints, `CHECK` constraints, partial indexes, partitions or `GRANT`/`REVOKE` statements described above has been executed, and no cardinality or constraint here has been validated against a live PostgreSQL instance. The first table-creating migration is the moment any of it becomes fact; until then the correct reading is "designed and reviewed", not "implemented".
 
 ---
 
@@ -2634,17 +3252,382 @@ These hold for every table above and are stated once rather than repeated per en
 
 > Si tu backend se comunica a través de API, describe los endpoints principales (máximo 3) en formato OpenAPI. Opcionalmente puedes añadir un ejemplo de petición y de respuesta para mayor claridad
 
+This section documents only the routes that exist in the code today, checked against `apps/api` (`grep -r "@Controller"` over `apps/api/src` and every `libs/**` project returns exactly two files). It does not restate PRD-defined endpoints that are not implemented yet.
+
+#### 4.1 Implemented and working
+
+Two routes are reachable and usable by an end user against the running system, both served by [`IncidentController`](apps/api/src/app/incident/incident.controller.ts) under the global `/api` prefix ([`global-prefix.ts`](apps/api/src/app/global-prefix.ts)):
+
+- `POST /api/incidents` — requester intake of an Incident (`T-C1-08`, `US-C1-01`, `FR-INC-01`). Request: [`LogIncidentRequesterDto`](apps/api/src/app/incident/dto/log-incident-requester.dto.ts), which structurally implements the contract's [`LogIncidentRequesterRequest`](libs/shared/contracts/src/lib/incident-intake.contract.ts). Response: [`IncidentCreatedResponse`](libs/shared/contracts/src/lib/incident-intake.contract.ts).
+- `GET /api/incidents/{reference}` — read an Incident back by its reference (`T-C1-100`, `US-C1-01`, `FR-INC-01`). Route parameter: [`GetIncidentByReferenceParamsDto`](apps/api/src/app/incident/dto/get-incident-by-reference-params.dto.ts). Response: [`IncidentDetailResponse`](libs/shared/contracts/src/lib/incident-detail.contract.ts), built field-by-field by [`incident-detail-response.mapper.ts`](apps/api/src/app/incident/incident-detail-response.mapper.ts).
+
+`@nestjs/swagger` is not installed in this repository (listed under "not yet implemented" in [§2.5.10](#2510-designed-not-yet-implemented)), so the OpenAPI document below is hand-written directly from the controller, the two DTOs and `libs/shared/contracts` — nothing here is generated. Validation rules, the error envelope and the correlation-id header are already described in [§2.5.2](#252-input-validation-at-the-api-boundary) / [§2.5.3](#253-error-handling-that-does-not-leak-internals) and exercised by the acceptance suite in [§2.6.4](#264-acceptance-tests-cypress--cucumber); this section only restates the wire shape an OpenAPI document needs, not the reasoning behind it.
+
+```yaml
+openapi: 3.0.3
+info:
+  title: Sport ITSM API — Incident intake and read-back
+  description: >
+    Hand-written from the code (no @nestjs/swagger installed). Covers the two
+    Incident routes that exist and are reachable outside NODE_ENV=test.
+  version: "0.1.0"
+servers:
+  - url: /api
+paths:
+  /incidents:
+    post:
+      summary: Log an Incident as the requester (T-C1-08, FR-INC-01)
+      operationId: logIncidentAsRequester
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogIncidentRequesterRequest'
+      responses:
+        '201':
+          description: Incident created; only the reference the requester may see.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationIdResponse'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentCreatedResponse'
+        '400':
+          description: >
+            Validation failed — a required field is missing/blank, over
+            length, the wrong type, or the request carries a field the
+            requester may not set (priority, impact, urgency,
+            competitionAffectsInProgress), rejected by forbidNonWhitelisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /incidents/{reference}:
+    get:
+      summary: Read a single Incident by its reference (T-C1-100, FR-INC-01)
+      operationId: getIncidentByReference
+      parameters:
+        - name: reference
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}[0-9]{7}$'
+            example: INC0000001
+        - $ref: '#/components/parameters/CorrelationIdHeader'
+      responses:
+        '200':
+          description: The Incident's full persisted state, keyed on reference.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationIdResponse'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentDetailResponse'
+        '400':
+          description: The reference does not match ^[A-Z]{3}[0-9]{7}$.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: >
+            Well-formed reference, no matching Incident — including a
+            foreign, non-INC prefix (e.g. SRQ0000001).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    CorrelationIdHeader:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: >
+        Echoed back only if it is a well-formed UUID; otherwise the server
+        mints a fresh one (correlation-id.util.ts).
+      schema:
+        type: string
+        format: uuid
+  headers:
+    CorrelationIdResponse:
+      description: The correlation id this request was handled under; always set.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    InternalError:
+      description: >
+        Unexpected server-side failure; never carries `details`, never
+        reflects the underlying error or a stack trace back to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    LogIncidentRequesterRequest:
+      type: object
+      additionalProperties: false
+      required: [shortDescription, description]
+      description: >
+        No originChannel, reporterId, impact, urgency, priority or
+        competition-in-progress flag — a requester cannot set any of them
+        (FR-OMN-02); the global ValidationPipe's forbidNonWhitelisted rejects
+        the whole request if one is sent anyway.
+      properties:
+        shortDescription:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Must not be blank (whitespace-only is rejected, not just empty).
+        description:
+          type: string
+          minLength: 1
+          description: Must not be blank; no explicit maxLength today (known gap, §2.5.9).
+        affectedServiceId:
+          type: string
+          format: uuid
+          description: UUID of the affected Service (service-catalog); optional.
+    IncidentCreatedResponse:
+      type: object
+      required: [reference]
+      properties:
+        reference:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{7}$'
+          example: INC0000001
+    IncidentDetailResponse:
+      type: object
+      required:
+        - reference
+        - loggedAt
+        - originChannel
+        - shortDescription
+        - description
+        - affectedServiceId
+        - categoryId
+        - impact
+        - urgency
+        - priority
+        - competitionAffectsInProgress
+      properties:
+        reference:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{7}$'
+        loggedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 UTC, never epoch milliseconds (NFR-I18N-03).
+        originChannel:
+          type: string
+          enum: [portal, agent_logged, email, in_app]
+        shortDescription:
+          type: string
+        description:
+          type: string
+        affectedServiceId:
+          type: string
+          format: uuid
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null before US-C1-07's categorization gate runs.
+        impact:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        urgency:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        priority:
+          type: string
+          enum: [P1, P2, P3, P4]
+          nullable: true
+          description: Null until Priority is derived from Impact x Urgency (FR-INC-04).
+        competitionAffectsInProgress:
+          type: boolean
+          description: False until T-C1-14 derives it.
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHENTICATED
+                - FORBIDDEN
+                - VALIDATION_FAILED
+                - NOT_FOUND
+                - INTERNAL_ERROR
+            details:
+              type: array
+              description: Present only for VALIDATION_FAILED.
+              items:
+                type: object
+                required: [field, rule]
+                properties:
+                  field:
+                    type: string
+                  rule:
+                    type: string
+                    description: >
+                      Machine-readable constraint key, e.g. isDefined,
+                      isNotBlank, maxLength, isUuid, matches,
+                      whitelistValidation — never free text.
+```
+
+**`POST /api/incidents` — example.** Captured by actually running the API locally (`NODE_ENV=development PERSISTENCE_MODE=memory PORT=3300 pnpm nx serve api`, host Postgres port 5452 not needed in `memory` mode):
+
+```bash
+curl -i -X POST http://localhost:3300/api/incidents \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-Id: 8f14e45f-ceea-467e-b7c1-00000000000a" \
+  -d '{
+        "shortDescription": "Standings not updating after match result",
+        "description": "The League Stage standings table for the U19 Regional Cup still shows yesterday'\''s results after two matches were confirmed this morning."
+      }'
+```
+
+```http
+HTTP/1.1 201 Created
+X-Correlation-Id: 8f14e45f-ceea-467e-b7c1-00000000000a
+Content-Type: application/json; charset=utf-8
+
+{"reference":"INC0000001"}
+```
+
+The same run, with `shortDescription` omitted, returns `400`:
+
+```json
+{"error":{"code":"VALIDATION_FAILED","details":[{"field":"shortDescription","rule":"isDefined"}]}}
+```
+
+…and a request that tries to set `priority` (a field the requester may not declare) also returns `400`, creating nothing:
+
+```json
+{"error":{"code":"VALIDATION_FAILED","details":[{"field":"priority","rule":"whitelistValidation"}]}}
+```
+
+**`GET /api/incidents/{reference}` — example.** Same run, reading the Incident just created:
+
+```bash
+curl -i http://localhost:3300/api/incidents/INC0000001 \
+  -H "X-Correlation-Id: 8f14e45f-ceea-467e-b7c1-00000000000a"
+```
+
+```http
+HTTP/1.1 200 OK
+X-Correlation-Id: 8f14e45f-ceea-467e-b7c1-00000000000a
+Content-Type: application/json; charset=utf-8
+
+{"reference":"INC0000001","loggedAt":"2026-09-29T18:08:32.004Z","originChannel":"portal","shortDescription":"Standings not updating after match result","description":"The League Stage standings table for the U19 Regional Cup still shows yesterday's results after two matches were confirmed this morning.","affectedServiceId":null,"categoryId":null,"impact":null,"urgency":null,"priority":null,"competitionAffectsInProgress":false}
+```
+
+A well-formed but unknown reference returns `404`; a malformed one returns `400` — same run:
+
+```json
+// GET /api/incidents/INC9999999 → 404
+{"error":{"code":"NOT_FOUND"}}
+
+// GET /api/incidents/not-a-reference → 400
+{"error":{"code":"VALIDATION_FAILED","details":[{"field":"reference","rule":"matches"}]}}
+```
+
+#### 4.2 Implemented but not user-testable
+
+Besides the two routes above, exactly one more `@Controller` exists in the repository — [`TestEventDispatchController`](apps/api/src/testing/test-event-dispatch.controller.ts) — and it is never reachable by an end user against any environment a person actually runs the product in:
+
+| Route | Where | Why it is not user-testable |
+| --- | --- | --- |
+| `POST /api/test-harness/events/dispatch-with-failing-subscriber` | [`test-event-dispatch.controller.ts`](apps/api/src/testing/test-event-dispatch.controller.ts), wired only by [`TestEventDispatchModule`](apps/api/src/testing/test-event-dispatch.module.ts) | [`AppModule`](apps/api/src/app/app.module.ts) imports `TestEventDispatchModule` only when `NODE_ENV=test` ([§2.5.7](#257-authorization-seam-and-test-only-surfaces)). Verified live above: the same API process, run under `NODE_ENV=development`, answers `404 NOT_FOUND` for this path — indistinguishable from any unmapped route. It exists only so `apps/api-e2e`'s own acceptance suite can drive the real, DI-wired in-process event dispatcher end to end (`T-C10-73`); it carries no product behavior, no bounded context and no persistence. |
+
+`grep -r "@Controller" apps/api/src libs` finds no other controller, so this table is complete, not a sample. The API does not expose a `/health` route of its own: `/health/live` and `/health/ready` are reserved as exclusions from the `/api` prefix ([`global-prefix.ts`](apps/api/src/app/global-prefix.ts)) but no handler for either exists yet ([§2.5.10](#2510-designed-not-yet-implemented)). The `/health` nginx answers in front of the web client ([§2.4](#24-infraestructura-y-despliegue)) is a static reverse-proxy response, not a route of this API, so it is out of scope here.
+
 ---
 
 ## 5. Historias de Usuario
 
 > Documenta 3 de las historias de usuario principales utilizadas durante el desarrollo, teniendo en cuenta las buenas prácticas de producto al respecto.
 
+The three stories below are reproduced, unmodified, from [`docs/backlog/C1/user-stories.md`](docs/backlog/C1/user-stories.md) — the Business Analyst's artifact for epic **C1 · Incident Management**, itself derived from [`docs/product/PRD.md`](docs/product/PRD.md) §7.1 per the pipeline in `CLAUDE.md` §4.3 (epic map → user stories → tickets). They are the epic's own **Block B · Base record and intake** trio — `US-C1-05` is built before `US-C1-01` in that block precisely because a reference must exist in the same transaction as the record it names — and together they are the most central stories to *adding* (logging) an Incident: a requester submitting a report from the Self-Service Portal (`US-C1-01`), an agent logging one on a caller's behalf (`US-C1-02`), and every Incident receiving a unique, immutable reference number the instant it is created (`US-C1-05`). Each is written to **INVEST**: independently valuable and demoable, negotiable in its own acceptance criteria, sized to fit a handful of ≤3h tickets, and testable — every acceptance criterion is a **Given/When/Then** clause that seeds a Cypress/Cucumber `.feature` file directly. Each also carries explicit **traceability** to a stable PRD requirement ID (`FR-INC-01`, `FR-INC-02`) and persona, never inventing or renumbering one (`CLAUDE.md` §4.3). Two of the three (`US-C1-01`, `US-C1-05`) are shaped as **gap** stories rather than greenfield: at the time they were written, real domain-layer code already existed for part of the requirement, so each carries a **"Today"** note naming exactly what was already built, to stop an implementer from re-deriving working code. The *Implementation* line under each story is this readme's own addition, not part of the source file, and reports the code's current state as verified in this repository.
+
 **Historia de Usuario 1**
+
+## US-C1-01 · A requester logs an Incident from the portal
+
+- **Shape:** gap · **Traces to:** `FR-INC-01` · Player / Competitor · epic `C1`
+- **Phase:** disputed 0/1 — PRD §14.2 places `FR-INC-01/02/03` in Phase 0, §14.3 places `FR-INC-01→13` in the Phase 1 MVP; the cut is not stated (finding **F6**)
+- **Today (as written in the source):** `Incident.log()` in `libs/incident/domain` already enforced the record's creation invariants as pure, unit-tested domain logic — reporter, origin channel, short description (≤255 chars) and detailed description mandatory, each with its own typed error; the affected service already accepted as optional, matching decision D5. What was missing at that time: the `class-validator` DTOs and `ValidationPipe` wiring, the `IncidentController` route, the TypeORM repository adapter, the requester-facing UI, attachments and the structured competition subject.
+
+**As a** Player / Competitor **I want** to report a problem with SCMS in plain language **so that** I get help without needing to know how a service desk works.
+
+Acceptance criteria (condensed from the source's five Given/When/Then clauses):
+- **Given** an authenticated requester on the intake form, **when** they submit a report, **then** an Incident is created capturing reporter (from the session, never a typed field), origin channel, short description, detailed description and, if known, affected service.
+- **Given** a requester who does not know the affected service, **when** they submit without selecting one, **then** creation succeeds with it left unset (decision D5) — it becomes mandatory only when the Incident later tries to leave `New` (`US-C1-33`, `FR-INC-19`).
+- **Given** the requester-facing form, **when** it is rendered, **then** it exposes no priority-bearing field (Impact, Urgency, Priority, competition-in-progress flag), and the server rejects those fields server-side regardless of what the client sent (`NFR-SEC-02`).
+- **Given** the intake form, **when** used by a requester with no ITSM knowledge, **then** it uses plain language with no untranslated ITSM vocabulary (`NFR-USE-01`), works on mobile (`NFR-USE-04`), meets WCAG 2.1 AA, and every validation error states what happened and what to do next (`NFR-USE-05`).
+- **Given** a submission missing a mandatory field, **when** it is posted, **then** it is rejected by a `class-validator` DTO in `libs/shared/contracts`, with field-level messages resolved through i18n.
+
+**Implementation (verified in this repository, not part of the source file):** built. Domain: [`incident.aggregate.ts`](libs/incident/domain/src/lib/incident.aggregate.ts). Application: [`log-incident.use-case.ts`](libs/incident/application/src/lib/log-incident.use-case.ts). API: `POST /api/incidents` in [`incident.controller.ts`](apps/api/src/app/incident/incident.controller.ts), validated by [`log-incident-requester.dto.ts`](apps/api/src/app/incident/dto/log-incident-requester.dto.ts). Web: `/incidents/new` in [`incident-intake-form.component.ts`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.ts). Tickets: [`T-C1-05`](docs/backlog/C1/tickets/T-C1-05.md) (aggregate), [`T-C1-06`](docs/backlog/C1/tickets/T-C1-06.md) (persistence + migration), [`T-C1-07`](docs/backlog/C1/tickets/T-C1-07.md) (use case), [`T-C1-08`](docs/backlog/C1/tickets/T-C1-08.md) (contracts/DTO), [`T-C1-09`](docs/backlog/C1/tickets/T-C1-09.md)/[`T-C1-10`](docs/backlog/C1/tickets/T-C1-10.md) (web). Also see: §1.3.2–1.3.3 of this readme and §1.4.6's smoke test.
+
+---
 
 **Historia de Usuario 2**
 
+## US-C1-02 · An agent logs a phone- or chat-reported Incident in one flow
+
+- **Shape:** gap · **Traces to:** `FR-INC-01` · Service Desk Agent (L1) · epic `C1`
+- **Phase:** disputed 0/1 (**F6**)
+- **Today (as written in the source):** the domain distinction this story depends on already existed — `Incident.log()`'s `LogIncidentCommand` keeps `reporterId` (who the Incident is *about*) and `actor`/`loggedBy` (who performed the logging) as two separate identities, tested to stay distinct even when a caller passes the same value for both. There is no separate `phone` origin channel: decision D1 confirms `agent_logged` is correct for a phone or chat contact, and `OriginChannel`'s closed set already omitted `phone`. What was entirely missing: the agent-facing UI, reporter lookup/creation, the agent intake contract and controller, and the persistence adapter.
+
+**As a** Service Desk Agent (L1) **I want** to log an Incident on behalf of a caller in a single uninterrupted flow **so that** I can keep talking to a referee mid-match instead of navigating between screens.
+
+Acceptance criteria (condensed):
+- **Given** an agent logging on behalf of a caller reached by phone or chat, **when** they create the Incident, **then** the reporter is the caller (not the agent), the origin channel is `agent_logged`, and the acting agent is recorded separately (`loggedBy`).
+- **Given** the agent intake surface, **when** it is used, **then** reporter lookup, description, affected service, category, competition subject and the assessment fields are reachable in one continuous flow with no forced navigation and no loss of typed data (`NFR-USE-02`).
+- **Given** an agent filling the assessment fields, **when** they set Impact, Urgency and the competition-in-progress flag, **then** it succeeds — an agent, unlike a requester, holds the permission for priority-bearing fields.
+- **Given** a caller who is not yet a registered user, **when** the agent searches for the reporter, **then** the flow states a reporter must exist and offers the correct path, rather than silently creating an anonymous ticket (`NFR-SEC-01`).
+
+**Implementation (verified in this repository, not part of the source file):** not built. Only the domain-layer distinction the story's "Today" note describes exists — [`origin-channel.vo.ts`](libs/incident/domain/src/lib/origin-channel.vo.ts) and the `reporterId`/`actor` separation in [`incident.aggregate.ts`](libs/incident/domain/src/lib/incident.aggregate.ts). No agent controller route, no agent intake contract and no agent-facing UI exist in this codebase; the corresponding tickets ([`T-C1-11`](docs/backlog/C1/tickets/T-C1-11.md), [`T-C1-12`](docs/backlog/C1/tickets/T-C1-12.md), [`T-C1-13`](docs/backlog/C1/tickets/T-C1-13.md)) are outside the delivered "slice 1" (`docs/backlog/C1/tickets/README.md`, *Delivery slices*).
+
+---
+
 **Historia de Usuario 3**
+
+## US-C1-05 · A unique, human-readable reference number
+
+- **Shape:** gap · **Traces to:** `FR-INC-02` · Service Desk Agent (L1) · epic `C1`
+- **Phase:** disputed 0/1 (**F6**)
+- **Today (as written in the source):** `IncidentReferencePolicy` in `libs/incident/domain` already rendered and parsed the documented shape — `INC` + seven zero-padded digits, round-trip unit tested, no I/O — and `IncidentRepositoryPort.nextReference()` was already declared as the port `Incident.log()` expects a reference from. What was missing: the `incident.incident_reference_seq` sequence and its migration, the TypeORM adapter implementing `nextReference()`, the database-level uniqueness guarantee, and the same-transaction assignment `NFR-DAT-01` depends on.
+
+**As a** Service Desk Agent (L1) **I want** every Incident to carry a readable reference number from the moment it is created **so that** I can quote it to a caller on the phone and find it again later.
+
+Acceptance criteria (condensed):
+- **Given** a new Incident, **when** it is created, **then** it is assigned a reference number in the same transaction, so no Incident can ever exist without one.
+- **Given** two Incidents created concurrently, **when** both commit, **then** their reference numbers differ, guaranteed by a database constraint rather than an application-level check a race could defeat.
+- **Given** an existing reference number, **when** any operation attempts to change it, or the Incident is cancelled or deleted, **then** the number is never modified and never re-issued to another Incident (`NFR-DAT-01`).
+- **Given** a reference number, **when** it is displayed, **then** it is readable aloud without ambiguity and its format is stable across environments.
+
+**Implementation (verified in this repository, not part of the source file):** built. Domain: [`incident-reference.policy.ts`](libs/incident/domain/src/lib/incident-reference.policy.ts). Infrastructure: [`typeorm-incident.repository.ts`](libs/incident/infrastructure/src/lib/typeorm-incident.repository.ts) and the sequence/immutability-trigger migration [`1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts`](apps/api/src/migrations/1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts); the in-memory equivalent used by the deployed demo (`PERSISTENCE_MODE=memory`, ADR-015) is [`in-memory-incident.repository.ts`](libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts). API surface: `GET /api/incidents/:reference` in [`incident.controller.ts`](apps/api/src/app/incident/incident.controller.ts); web: `/incidents/:reference` in [`incident-detail.component.ts`](libs/incident/feature/src/lib/incident-detail/incident-detail.component.ts). Tickets: [`T-C1-03`](docs/backlog/C1/tickets/T-C1-03.md) (policy/port) and [`T-C1-04`](docs/backlog/C1/tickets/T-C1-04.md) (sequence, trigger, adapter, concurrency proof).
 
 ---
 
@@ -2652,11 +3635,103 @@ These hold for every table above and are stated once rather than repeated per en
 
 > Documenta 3 de los tickets de trabajo principales del desarrollo, uno de backend, uno de frontend, y uno de bases de datos. Da todo el detalle requerido para desarrollar la tarea de inicio a fin teniendo en cuenta las buenas prácticas al respecto.
 
-**Ticket 1**
+The three tickets below are reproduced, unmodified in substance, from [`docs/backlog/C1/tickets/`](docs/backlog/C1/tickets/) (the Architect / Tech Lead's artifact for epic **C1 · Incident Management**, derived from [`docs/backlog/C1/user-stories.md`](docs/backlog/C1/user-stories.md) per `CLAUDE.md` §4.3) and its companion [`docs/backlog/C1/test-plan.md`](docs/backlog/C1/test-plan.md). They are the same **Block B · Base record and intake** work that backs `US-C1-01` and `US-C1-05` in §5 above — one ticket per requested layer, exactly one backend, one frontend and one database task, all three from the intake ("adding/logging an Incident") flow: `T-C1-07` (the `LogIncidentUseCase`, backend/application), `T-C1-10` (the requester intake form, frontend/feature+ui) and `T-C1-04` (the reference sequence, immutability trigger and adapter, database/infrastructure). All three are **implemented** in this repository, verified below against the actual code and tests, not only planned.
 
-**Ticket 2**
+They follow the good practices `CLAUDE.md` and the `architect-tech-lead` skill require of every ticket in this backlog: sized to a **≤3h reviewable unit** (`T-C1-07` 3h, `T-C1-10` 2.5h, `T-C1-04` 2h); **single responsibility per DDD layer** (`T-C1-07` is the application use case only, with the HTTP adapter explicitly out of scope and left to `T-C1-08`; `T-C1-10` is the Angular feature/UI only, bound to contracts owned elsewhere; `T-C1-04` is the infrastructure migration/adapter only, with the aggregate and the `reference` column explicitly left to other tickets); **acceptance criteria written as Given/When/Then**, seeding the `.feature` files directly; a **named test plan** per scenario with an explicit test type and P0/P1/P2 priority and rationale; explicit **traceability** to a stable PRD requirement (`FR-INC-01`/`FR-INC-02`), a `US-C1-nn` story and, for `T-C1-04`, a `DATA-MODEL.md`/ADR decision (M18); and a stated **Definition of Done** covering code, tests, lint/boundaries and review — not just "it compiles."
 
-**Ticket 3**
+**Ticket 1 — Backend: `T-C1-07` · `LogIncidentUseCase` for a requester, reporter taken from the session**
+
+- **Epic/Story/Trace:** `C1` · `US-C1-01` · `FR-INC-01` · shape: gap · phase: disputed 0/1 (**F6**)
+- **Platform/Layer/Agent/Estimate:** backend · application · `backend-engineer` · **3h**
+- **Dependencies:** consumes the `Actor` resolved per request by `C10`'s composition root (`T-C10-39`/`T-C10-74` in this slice's no-auth cut); declares `SlaPolicyPort`, whose `apps/api` adapter is `T-C1-58` (not built in this slice — `incident` never imports `sla`); publishes through `EventPublisherPort` (dispatcher: `C10`'s `T-C10-73`).
+
+**Goal / Context.** `US-C1-01` requires the reporter to be taken from the authenticated session and **never** from a field the requester can type. `ARCHITECTURE.md` §9 places authorization in `type:application` use cases, expressed in domain terms and testable without HTTP. Two ADR-014 notes bound this slice: (1) the use case sets no lifecycle state — `Incident.log()` has no `workflow_id`/`state_id` slot yet, because the state model does not exist until `T-C1-49`/`T-C1-50`; (2) `SlaPolicyPort.attachFor()` receives an Incident with `priority: null` — Priority is not derived until `T-C1-30` — so its policy-resolution behavior for a not-yet-prioritized ticket is `C7`'s own open question, not answered here.
+
+**Scope — in.** `LogIncidentUseCase` in `libs/incident/application`: authorize the actor, allocate the reference, call `Incident.log()`, save in a single transaction, publish events **after commit**. Reporter resolved from the `Actor`; any reporter identifier present in the command is ignored rather than trusted. `SlaPolicyPort` declared in `libs/incident/domain` with `attachFor()`; the use case calls it and tolerates an unbound adapter in tests through a stub. Post-commit publication through `EventPublisherPort`, so a failing audit or notification subscriber cannot roll back a logged Incident (ADR-008, `NFR-AVL-03`).
+
+**Scope — out.** The HTTP adapter and DTOs (`T-C1-08`); the agent-on-behalf path (`T-C1-11`); the SLA adapter (`T-C1-58`); the scope-rule evaluation at intake (`T-C1-87`).
+
+**Acceptance criteria (BDD).**
+1. **Given** an authenticated requester and a valid command **When** the use case executes **Then** the Incident is persisted with its reference, the reporter equals the session actor, and `IncidentLogged` is published exactly once after the transaction commits.
+2. **Given** a command carrying a reporter identifier different from the session actor **When** the use case executes **Then** the persisted reporter is the session actor and the supplied value is discarded.
+3. **Given** a subscriber that throws when handling `IncidentLogged` **When** the use case executes **Then** the Incident remains persisted and the failure is isolated to the subscriber.
+4. **Given** the use case **When** it is unit-tested **Then** it runs against stubbed ports with no HTTP and no database.
+
+**Test plan** (from `docs/backlog/C1/test-plan.md`):
+
+| Scenario | Priority | Type | Impl owner | Summary |
+|---|---|---|---|---|
+| `AT-C1-01` | P0 | API-E2E (`apps/api-e2e`) | `testing-implementer` | Requester posts a report carrying a `reporter` field naming a different user → `201`, persisted reporter is the session actor, supplied value discarded, reference and contact channel present. |
+| `AT-C1-02` | P0 | API-E2E (`apps/api-e2e`) | `testing-implementer` | Impact/Urgency/Priority/competition-flag are each rejected at requester intake, no Incident created, no field silently stripped (`NFR-SEC-02`). |
+| AC4 (unit) | P0 | Unit (`*.spec.ts`) | `backend-engineer` | The use case runs fully against stubbed ports — no HTTP, no DB. |
+
+**Definition of Done.** All four acceptance criteria pass; `log-incident.use-case.spec.ts` green under `pnpm nx test incident-application`; `AT-C1-01`/`AT-C1-02` green under `pnpm nx e2e api-e2e`; `pnpm nx lint incident-application` passes (module boundaries: no framework/HTTP/ORM import into `application`); reporter/actor separation and post-commit event publication code-reviewed against `ARCHITECTURE.md` §8–§9; no `console.log`, ports injected via DI tokens.
+
+**Implementation (verified in this repository):** [`log-incident.use-case.ts`](libs/incident/application/src/lib/log-incident.use-case.ts) · unit tests: [`log-incident.use-case.spec.ts`](libs/incident/application/src/lib/log-incident.use-case.spec.ts) · wired at `POST /api/incidents` in [`incident.controller.ts`](apps/api/src/app/incident/incident.controller.ts) (`T-C1-08`) · API-E2E: [`incident-intake.feature`](apps/api-e2e/src/features/incident-intake.feature) / [`incident-intake.steps.ts`](apps/api-e2e/src/step-definitions/incident-intake.steps.ts).
+
+---
+
+**Ticket 2 — Frontend: `T-C1-10` · Requester intake form — plain language, mobile, WCAG 2.1 AA**
+
+- **Epic/Story/Trace:** `C1` · `US-C1-01` · `FR-INC-01` · shape: greenfield · phase: disputed 0/1 (**F6**) · `blocked_by: F29`
+- **Platform/Layer/Agent/Estimate:** frontend · feature + ui · `frontend-engineer` · **2.5h**
+- **Dependencies:** Reactive Form bound to the requester DTO of `T-C1-08`; routed on top of `incident/data-access` (`T-C1-09`); one component-level `aria-live` criterion is left pending on `libs/shared/ui`'s overlay/announcer primitive (`T-C10-12`–`14`, not part of this slice).
+
+**Goal / Context.** `US-C1-01` requires the requester-facing intake form to use plain language with no untranslated ITSM vocabulary (`NFR-USE-01`), to be operable on a mobile device (`NFR-USE-04`), to meet WCAG 2.1 AA, and to state for every validation error what happened and what to do next (`NFR-USE-05`). **Blocked by finding F29** (not resolved by this ticket): `FR-INC-01` is ambiguous about whether a requester may set the *structured* competition subject; this backlog reads it as *requesters supply free text, agents set the structured reference*, so the form ships with a free-text competition description and no structured subject picker — if the Product Owner confirms the opposite reading, this form and `T-C1-14`/`T-C1-16`'s permissions change. Three explicitly accepted deviations for delivery slice 1: (1) the design system is deferred (−0.5h) but accessibility is not — hand-written semantic HTML (`<label for>`, `<fieldset>`/`<legend>`, `aria-describedby`, `role="alert"`) meets the same WCAG 2.1 AA bar a design-system component would; (2) i18n is deferred to one exported constants file per feature, never inline and never through Transloco yet (accepted debt against `CLAUDE.md` §3); (3) "see it" is a **redirect** to the detail route at the returned reference, not an echo of what was typed.
+
+**Scope — in.** Routed intake page in `libs/incident/feature`; hand-built semantic HTML and component-scoped SCSS, no third-party component library. Reactive Form bound to the requester DTO; `OnPush`; built-in control flow (`@if`/`@for`). Every user-facing string sourced from the one exported constants file. Free-text field for competition context; **no** Impact, Urgency, Priority or competition-flag control anywhere in the form. Error summary and per-field messages stating the remedy, `role="alert"` + `aria-describedby`. On success, navigate to the detail route at the returned reference — no reference display on the form itself.
+
+**Scope — out.** Knowledge suggestions (`T-C1-90`); the scope-rule redirect surface (`T-C1-88`); the structured subject picker (`T-C1-16`); any `libs/shared/ui`/`libs/incident/ui` primitive.
+
+**Acceptance criteria (BDD).**
+1. **Given** a requester on the intake form **When** it is rendered **Then** it presents no Impact, Urgency, Priority or competition-in-progress control, at any breakpoint.
+2. **Given** a keyboard-only user on a 360px viewport **When** they complete and submit the form **Then** every control is reachable and operable without a pointer, no horizontal scrolling is required, and focus is managed across the submission.
+3. **Given** a submission that fails validation **When** the response returns **Then** each message states what happened and what to do next in the active language, exposed via `role="alert"` — and announced through the `aria-live` region from `T-C10-14`, **left pending on purpose** until `T-C10-12`–`14` land (not silently unmet).
+4. **Given** a successful submission **When** it returns **Then** the shell navigates to the detail route at the returned reference (`T-C1-101`) — the form itself never displays the reference or the persisted state.
+
+**Test plan** (from `docs/backlog/C1/test-plan.md`):
+
+| Scenario | Priority | Type | Impl owner | Summary |
+|---|---|---|---|---|
+| `AT-C1-03` | P1 | E2E (`apps/web-e2e`) | `testing-implementer` | On a 360px keyboard-only viewport, no priority-bearing control exists anywhere in the page, no horizontal scroll, every control reachable without a pointer, validation failure states what happened / what to do next in the active language. |
+| Component spec | P1 | Unit (`*.spec.ts`) | `frontend-engineer` | Form validity, string sourcing from the constants file, navigation on success — ticket-level, not repeated in the epic acceptance scenarios. |
+
+**Definition of Done.** All four acceptance criteria pass (AC3's live-region assertion tracked as explicitly pending, not silently skipped); `incident-intake-form.component.spec.ts` green under `pnpm nx test incident-feature`; `AT-C1-03` green under `pnpm nx e2e web-e2e`; `pnpm nx lint incident-feature` passes (no `NgModule`, `OnPush` present, no class-based interceptors); manual WCAG 2.1 AA pass (keyboard-only traversal, screen-reader label/error announcement where implemented); no hardcoded string outside the constants file.
+
+**Implementation (verified in this repository):** [`incident-intake-form.component.ts`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.ts) / [`.html`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.html) / [`.scss`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.scss) · validation: [`incident-intake-form-validation.ts`](libs/incident/feature/src/lib/intake-form/incident-intake-form-validation.ts) · routed at `/incidents/new` via [`incident-routes.ts`](libs/incident/feature/src/lib/incident-routes.ts) · unit tests: [`incident-intake-form.component.spec.ts`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.spec.ts) · E2E: [`incident-intake.feature`](apps/web-e2e/src/features/incident-intake.feature) / [`incident-intake.steps.ts`](apps/web-e2e/src/step-definitions/incident-intake.steps.ts).
+
+---
+
+**Ticket 3 — Database: `T-C1-04` · Reference-number sequence, immutability trigger, adapter and concurrency proof**
+
+- **Epic/Story/Trace:** `C1` · `US-C1-05` · `FR-INC-02` · shape: greenfield · phase: disputed 0/1 (**F6**)
+- **Platform/Layer/Agent/Estimate:** backend · infrastructure · `backend-engineer` · **2h**
+- **Dependencies:** runs after `T-C1-06`'s table-creating migration (which owns `reference varchar(20) NOT NULL` and `uq_incident_reference`); inside the `incident` schema namespace from `T-C1-02`; must precede the first production-reachable write path, `T-C1-07`'s `LogIncidentUseCase` (build order `03 → 05 → 06 → 04 → 07`, finding H2).
+
+**Goal / Context.** `US-C1-05` requires that two Incidents created concurrently never share a reference, guaranteed **by a database constraint, not by an application-level check a race can defeat**, and that a reference is never modified and never re-issued, including when an Incident is cancelled or deleted (`NFR-DAT-01`). The immutability mechanism is a decided architecture call (`DATA-MODEL.md` §3.2/§3.7, decision **M18**): a **column-immutability guard trigger**, not a `REVOKE UPDATE (reference)` — rejected because every current environment (`docker-compose.dev.yml`, `docker-compose.e2e.yml`) connects as `postgres`, which no column-level `REVOKE` binds while the role still holds table-level `UPDATE`.
+
+**Scope — in.** A migration, run after `T-C1-06`, adding inside the `incident` schema: `incident.incident_reference_seq`, declared `NO CYCLE` explicitly (never reused); `incident.fn_reject_reference_update()`, a `plpgsql` function raising on any attempted change; `tg_incident_ticket_reference_immutable`, a `BEFORE UPDATE OF reference ON incident.incident_ticket … WHEN (OLD.reference IS DISTINCT FROM NEW.reference)` trigger calling that function — fires for every role, the owner and a superuser included. Adapter implementation of `nextReference()` allocating from that sequence within the caller transaction. A reversible `down` migration dropping the trigger, then the function, then the sequence — no residual object survives a revert.
+
+**Scope — out.** The aggregate (`T-C1-05`); the `reference` column itself and `uq_incident_reference` (both `T-C1-06`); the mapper's `update: false` defence-in-depth mapping for `reference` (also `T-C1-06`).
+
+**Acceptance criteria (BDD).**
+1. **Given** two Incidents created concurrently in separate transactions **When** both commit **Then** their references differ, and the guarantee still holds with the application-level check removed, proving the constraint and not the code enforces it.
+2. **Given** an existing, persisted Incident **When** a direct SQL `UPDATE` changes its `reference`, run **as the `postgres` role** **Then** the write is rejected by the trigger, not by an application-level guard.
+3. **Given** an Incident that is cancelled and one that is deleted **When** the next reference is allocated **Then** it is a new value; neither released number is ever re-issued.
+4. **Given** the migration **When** it is run, reverted and run again **Then** the outcome is identical each time and no residual object remains after the revert.
+
+**Test plan** (from `docs/backlog/C1/test-plan.md`):
+
+| Scenario | Priority | Type | Impl owner | Summary |
+|---|---|---|---|---|
+| `AT-C1-12` | P0 | Integration (real PostgreSQL) | `backend-engineer` | Two concurrent creations never collide, with and without the application-level check — proves the constraint, not the code. |
+| `AT-C1-13` | P0 | Integration (real PostgreSQL) | `backend-engineer` | A reference is never modified and never re-issued after cancellation/deletion (`NFR-DAT-01`). |
+| `AT-C1-92` | P0 | Integration (real PostgreSQL) | `backend-engineer` | A direct `UPDATE` connected **as `postgres`** is rejected by `tg_incident_ticket_reference_immutable`, even though `postgres` is table owner and superuser. |
+| `AT-C1-14` | P0 | API-E2E (`apps/api-e2e`) | `testing-implementer` | Every Incident created through either intake route carries a reference in the documented, unambiguous-when-spoken format. |
+
+**Definition of Done.** All four acceptance criteria pass; `incident-reference-sequence.integration-spec.ts` green under `pnpm nx test incident-infrastructure --configuration=integration` against real PostgreSQL; `AT-C1-92` (rejection as `postgres`) and `AT-C1-12`/`13` verified against a live DB, not mocked; `pnpm typeorm migration:run` then `migration:revert` then `migration:run` again leaves an identical, residue-free schema; migration reviewed against `DATA-MODEL.md` §3.2/§3.7 (M18) and ADR guidance on trigger usage; no business rule encoded in the trigger itself (it only compares old/new `reference`).
+
+**Implementation (verified in this repository):** [`1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts`](apps/api/src/migrations/1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts) · adapter: `nextReference()` in [`typeorm-incident.repository.ts`](libs/incident/infrastructure/src/lib/typeorm-incident.repository.ts) · integration test: [`incident-reference-sequence.integration-spec.ts`](libs/incident/infrastructure/src/lib/incident-reference-sequence.integration-spec.ts) · policy consumed: [`incident-reference.policy.ts`](libs/incident/domain/src/lib/incident-reference.policy.ts) · in-memory equivalent used by the deployed demo (`PERSISTENCE_MODE=memory`, ADR-015): [`in-memory-incident.repository.ts`](libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts).
 
 ---
 
@@ -2664,8 +3739,30 @@ These hold for every table above and are stated once rather than repeated per en
 
 > Documenta 3 de las Pull Requests realizadas durante la ejecución del proyecto
 
-**Pull Request 1**
+**Pull Request 1 — [#266 `feature-entrega1-IGR`](https://github.com/LIDR-academy/AI4Devs-finalproject/pull/266)**
 
-**Pull Request 2**
+- **Source → target:** `igomez-ai4devs-projects:main` → `LIDR-academy:main` (course submission for delivery 1; the branch `feature-entrega1-IGR` was merged into the fork's `main` in `1274597`). **State:** open.
+- Product discovery with AI: `service-desk-expert` skill, product purpose and the core ITSM capabilities of Sport ITSM.
+- `sport-itsm-product-owner` agent and the first product docs: `PRD.md`, `ARCHITECTURE.md`, `DATA-MODEL.md`, `COMPONENTS.md`, `PROJECT-STRUCTURE.md`.
+- `CLAUDE.md` with the pinned technology stack, conventions and folder structure.
+- Engineering skills: `sport-itsm-architecture` (+ architect agent), `sport-itsm-backend`, `sport-itsm-frontend`, `sport-itsm-engineering-principles`, `feature-docs`, plus the external `nestjs-best-practices` / `angular-developer` references.
+- `readme.md` §0–§3 filled in and `prompts.md` updated (112 files, documentation and AI tooling only — no application code yet).
 
-**Pull Request 3**
+**Pull Request 2 — [#1 "Merge branch 'feature-entrega2-IGR'"](https://github.com/igomez-ai4devs-projects/AI4Devs-finalproject/pull/1)** (also submitted upstream as [#313](https://github.com/LIDR-academy/AI4Devs-finalproject/pull/313))
+
+- **Source → target:** `feature-entrega2-IGR` → `main` of the fork. **State:** merged (2026-09-07, merge commit `a51cf94`). Upstream #313 (`feature-entrega2-IGR` → `LIDR-academy:main`) is open.
+- Backlog pipeline: `business-analyst` agent and Mode 2 of the Product Owner; epic map, user stories and tickets for **C1 · Incident Management** and **C10 · Identity & Access Management** (plus Audit Trail stories).
+- UI decision: Angular Material replaced by an in-house SCSS component layer.
+- Monorepo scaffolding: Nx workspace with pnpm (`T-C10-01`), ESLint 9 flat config + Prettier 3 (`T-C10-02`), module-boundary type/scope matrix (`T-C10-03`).
+- Application shells: `apps/api` on NestJS 11 (`T-C10-04`), `apps/web` Angular 20 standalone shell (`T-C10-05`), `apps/api-e2e` / `apps/web-e2e` with Cypress + Cucumber (`T-C10-06`).
+- DevOps: Dockerfiles, `docker-compose`, GitHub Actions pipeline, PostgreSQL 18; API on port 3300; new `testing-implementer` and `ci-cd-expert` agents.
+
+**Pull Request 3 — `finalproject-IGR` → `main`**
+
+- **Source → target:** `finalproject-IGR` → `main` (compare range `main..finalproject-IGR`, 65 commits on top of `a51cf94`). **State:** no pull request found on GitHub yet — PR link: _to be added_.
+- Shared foundations: `libs/shared/util` (`T-C10-07`), `libs/shared/domain` kernel primitives + `EventPublisherPort` (`T-C10-08`, `T-C10-09`), `libs/shared/contracts` (`T-C10-11`).
+- Persistence: TypeORM data source (`T-C10-16`), base migration chain (`T-C10-17`), post-commit event dispatcher (`T-C10-73`), `PERSISTENCE_MODE` switch with an in-memory repository and `PersistenceModule.forMode()` (`T-C10-75` … `T-C10-78`).
+- MVP vertical slice "log an Incident and see it": six `incident` libraries (`T-C1-01`), `Incident` aggregate and `TicketReference` policy (`T-C1-03`, `T-C1-05`), TypeORM adapter and reference sequence with immutability trigger (`T-C1-04`, `T-C1-06`).
+- Use cases and API: `LogIncidentUseCase` (`T-C1-07`), intake contracts rejecting requester-set priority (`T-C1-08`), `GetIncidentByReference` + `GET /incidents/{reference}` (`T-C1-99`, `T-C1-100`).
+- Frontend: Incident data-access (`T-C1-09`), plain-language intake form (`T-C1-10`), Incident detail (`T-C1-101`), home page (`T-C1-103`), Spanish translation (`T-C1-104`); nginx reverse proxy for `/api/` (`T-C10-79`).
+- Backlog/docs: C10 stories and tickets regenerated against the decided PRD, MVP re-cut, and `readme.md` §1.3–§6 completed.

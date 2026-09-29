@@ -6,14 +6,14 @@
 | Supported service | **Sports Competition Management System (SCMS)** |
 | Document type | Software Architecture Document — structural, technology-bearing |
 | Owner | Software Architect, Sport ITSM |
-| Status | **Target architecture — design intent, not as-built** |
-| Authoritative inputs | `CLAUDE.md` (stack, layout, tags), `docs/PRD.md` (behavior, phasing), `readme.md` §0.3/§1.1/§1.2 (ubiquitous language) |
+| Status | **Target architecture — design intent; the as-built subset (the Incident intake slice) is stated in §12.3** |
+| Authoritative inputs | `CLAUDE.md` (stack, layout, tags), `docs/product/PRD.md` (behavior, phasing), `readme.md` §0.3/§1.1/§1.2 (ubiquitous language) |
 | Governing standards | `sport-itsm-architecture` (structure), `sport-itsm-backend`, `sport-itsm-frontend`, `sport-itsm-engineering-principles` |
 | Language standard | Technical English, standard DDD / ITSM terminology |
 
 > ## Reading notice — this document describes a target, not an implementation
 >
-> **This document is still ahead of the code.** The Nx workspace exists and `apps/api` + `apps/web` are scaffolded (`T-C10-01` … `T-C10-05`), but there is no `libs/` directory yet: no shared kernel, no bounded-context library, no domain model, no adapter. Every context, port, adapter and dependency edge below is therefore **prescriptive design intent** that scaffolding must still produce, not documentation of code that has been written — the two applications are composition roots wired to nothing. See §12.3 for the check-by-check status. Statements are written in the present tense for readability; read them as "shall be" wherever §12.3 does not say otherwise.
+> **This document is still ahead of the code.** The Nx workspace, the four applications and the shared kernel exist — except the design system: there is no `libs/shared/ui` — and the first bounded context, `incident`, carries **one vertical slice, Incident intake**: a requester logs an Incident (`POST /api/incidents`) and reads it back by reference (`GET /api/incidents/:reference`) through the Angular intake form and detail page, across all six `incident-*` libraries (`incident-ui` is still empty), with TypeORM or in-memory persistence selected by `PERSISTENCE_MODE` (ADR-015). Not built: every other context, authentication and authorization (a fixed requester actor stands in), the real SLA adapter (a no-op is bound), every event subscriber, the health probes, OpenAPI, structured logging, i18n on either platform and every external integration — and `@nestjs/swagger`, `nestjs-pino`, `@nestjs/terminus`, `nestjs-i18n`, Passport JWT / `bcrypt` and Transloco are **not installed**. Every context, port, adapter and dependency edge below is therefore **prescriptive design intent** unless §12.3 says it exists. See §12.3 for the check-by-check status. Statements are written in the present tense for readability; read them as "shall be" wherever §12.3 does not say otherwise.
 >
 > **Behavioral authority is the PRD.** Where `readme.md` §1.2 still mentions *live windows*, *event-aware SLA policies*, *deployment freeze windows*, *change calendars around competition windows* or a *public/spectator surface*, those concepts are **superseded and out of scope** (PRD §3.3, §11 K5, FR-CHG-07 retired). This architecture therefore contains **no competition-calendar model, no time-based SLA modulation, no freeze-window engine and no anonymous surface**. Competition impact is a single agent-set boolean with mandatory justification that raises assessed Impact inside the configurable **Impact x Urgency** matrix (FR-INC-05, FR-SLA-04).
 >
@@ -174,10 +174,48 @@ flowchart TB
 |---|---|
 | Transport | HTTPS, JSON, REST. Route prefix `/api`; health endpoints **not** prefixed. |
 | Typing | Request and response shapes are declared once in `libs/shared/contracts` and imported by both platforms — the only permitted FE/BE coupling. |
-| AuthN | `Authorization: Bearer <JWT>` issued after Passport JWT verification; `bcrypt` for local credentials until SSO federation lands (FR-IAM-04 is **Should**, phase 2+). |
+| AuthN | `Authorization: Bearer <JWT>` issued after Passport JWT verification; `bcrypt` for local credentials until SSO federation lands (FR-IAM-04 is **Should**, phase 2+). The token is the whole of the MVP's session state: **no server-side session record exists**, a scope decision owned by DATA-MODEL §6.4 / M11 that `FR-IAM-06` may reverse. This row has been cited as the authority for "stateless JWT"; it is not — it fixes the credential format only. "Stateless" elsewhere in this document (ADR-004) means horizontally scalable API *instances*, which says nothing about where session state may live. |
 | i18n | Client sets `Accept-Language`; `nestjs-i18n` localizes API error messages and email templates (NFR-I18N-01/02/04). |
 | Errors | Domain errors are mapped by a NestJS exception filter to a stable, contract-declared error-code envelope; the client maps codes to Transloco keys. Error codes are part of the contract, error **text** is not. |
 | Time | All instants persisted and computed in UTC; the client renders in the user's locale and time zone (NFR-I18N-03). |
+
+### 3.3 Stage prototype topology (ADR-015 — temporary)
+
+The container view above is the target. While ADR-015 is in force, **stage** runs a reduced shape: two Render services, no database, and the web container reverse-proxying the API so the browser only ever talks to one origin.
+
+```mermaid
+flowchart LR
+    BROWSER["Browser<br/>demo user, no authentication"]
+
+    subgraph render["Render - stage only (ADR-013, amended by ADR-015)"]
+        subgraph websvc["Service sport-itsm-web - image ghcr.io/.../sport-itsm-web"]
+            NGINX["nginx<br/>static Angular bundle<br/>/health answered locally<br/>location /api/ proxied to API_UPSTREAM_URL"]
+        end
+        subgraph apisvc["Service sport-itsm-api - image ghcr.io/.../sport-itsm-api<br/>one instance, autoscaling off"]
+            API["NestJS API<br/>PERSISTENCE_MODE=memory<br/>no DataSource, no migrations"]
+            MEM[("InMemoryIncidentRepository<br/>process memory - lost on restart")]
+        end
+    end
+
+    GHA["GitHub Actions deploy-stage<br/>push to main only"]
+    GHCR["ghcr.io<br/>private images"]
+
+    BROWSER -->|"HTTPS - same origin<br/>/ and /api/*"| NGINX
+    NGINX -->|"HTTPS proxy_pass<br/>path /api/... unchanged, no CORS"| API
+    API --> MEM
+    GHA -->|"build and push, tag = commit SHA"| GHCR
+    GHA -->|"deploy hooks with imgURL"| render
+    GHCR -.->|"pulled with read:packages credential"| render
+
+    classDef c fill:#1f6feb,stroke:#0b3d91,color:#ffffff
+    classDef store fill:#b54708,stroke:#7a2e0e,color:#ffffff
+    classDef extn fill:#e8e8e8,stroke:#8b8b8b,color:#111111
+    class NGINX,API c
+    class MEM store
+    class BROWSER,GHA,GHCR extn
+```
+
+Everything outside stage — development, the integration target, `api-e2e` — keeps the full container view above with `PERSISTENCE_MODE=postgres`.
 
 ---
 
@@ -191,7 +229,7 @@ Ten baseline capability contexts from the architecture standard, plus a shared k
 |---|---|---|---|---|
 | `incident` | Core | C1, C13 | `Incident` (root), `MajorIncident` declaration on the Incident root | 1 |
 | `service-request` | Core | C2 | `ServiceRequest` (root) with `FulfillmentTask` entities | 1 |
-| `sla` | Core | C7 | `SlaPolicy`, `SlaInstance` (timer state) | 1 |
+| `sla` | Core | C7 | `SlaPolicy`, `SlaInstance` (timer state), `SupportSchedule` (owns its wall-clock `OpeningWindow` and `HolidayDate` values, DATA-MODEL §20.5) | 1 |
 | `service-catalog` | Supporting | C8 | `Service`, `ServiceOffering` | 1 |
 | `knowledge` | Supporting | C9 | `KnowledgeArticle` | 1 |
 | `identity-access` | Generic | C10, C14 | `User`, `Role`, `ResolverGroup` | 0 / 1 |
@@ -215,7 +253,7 @@ Two PRD cross-cutting capabilities deliberately get **no context of their own**:
 ```mermaid
 flowchart TB
     subgraph kernel["Shared kernel - scope:shared"]
-        SK["shared/domain<br/>Identity, TicketReference, ImpactLevel,<br/>UrgencyLevel, Priority, DomainEvent,<br/>StateModel, DateTimeRange"]
+        SK["shared/domain<br/>Identity, TicketReference, ImpactLevel,<br/>UrgencyLevel, Priority, DomainEvent,<br/>StateModel, DateTimeRange (UTC instants)"]
         CT["shared/contracts<br/>DTOs, enums, error codes<br/>published language, FE and BE"]
         UT["shared/util<br/>pure helpers"]
         SUI["shared/ui<br/>in-house design system: primitives,<br/>design tokens, a11y directives<br/>platform:frontend"]
@@ -296,6 +334,8 @@ flowchart TB
 
 **Legend.** Solid arrows are **synchronous** collaborations expressed as an outbound port owned by the upstream consumer. Dashed arrows are **asynchronous** collaborations carried by **domain events** published in-process. In both cases the arrow is a *conceptual* dependency: at the Nx level neither context imports the other (see §5.4).
 
+**Shared-kernel temporal primitives.** `DateTimeRange` is a **half-open interval of UTC instants** — `[startsAt, endsAt)`, lower bound mandatory, upper bound **optional** (absent means open-ended), empty ranges rejected. It earns its place in the kernel because three contexts repeat the same temporal-validity shape — each with a **strict** `to > from` check in the schema: `identity-access` (competition-scope grants), `approval` (approver delegation) and `sla` (policy-version effective range). Those three clear the "used by three or more contexts" bar of the §12.2 checklist (item 6) on their own. Instant pairs whose schema check is deliberately **non-strict** — `iam_user_role` (`granted_at` / `revoked_at`) and `sla_pause_period` (`paused_at` / `resumed_at`), where `FixedClock` can legitimately place both instants on the same tick — are **not** `DateTimeRange`: they stay as two columns on their own aggregate rather than force the kernel to admit the empty range (DATA-MODEL §2). It is **not** a wall-clock type. A naive local time or date interpreted in some *other* calendar and zone — the `sla` support-schedule opening windows and holidays (DATA-MODEL §3.3, §20.5) — is not a `DateTimeRange`, cannot be expressed as one without inventing a date, and is never promoted into `shared/domain`: it is vocabulary of the support-schedule aggregate and stays in `sla`. The kernel holds UTC instants only, and `ClockPort` (ADR-009) remains the only source of "now".
+
 ### 4.3 Integration patterns applied
 
 | Relationship | Pattern | Rationale |
@@ -306,8 +346,10 @@ flowchart TB
 | Everything → `audit` | **Published Language over domain events** | Audit consumes a normalized `AuditEntry` shape (actor, timestamp, record reference, action, previous value, new value — FR-AUD-02). Contexts never call audit; they publish events and audit subscribes. This is what makes FR-AUD-03 immutability structurally true: **no context is given a handle to mutate audit.** |
 | Everything → `notification` | **Published Language over domain events** | Guarantees NFR-AVL-03: a failing notification adapter cannot fail a ticket transaction, because dispatch happens after commit. |
 | Everything → `reporting` | **Open Host / read models** | Reporting reads its own denormalized projections; it never joins into another context's tables at will. Guarantees reproducibility (FR-RPT-07). |
-| Sport ITSM → SCMS reference data | **Anticorruption Layer** | A `CompetitionSubjectLookupPort` in `shared/domain` with an SCMS gateway adapter and a free-text fallback adapter (R10). SCMS vocabulary never leaks into the ticket model. |
+| Sport ITSM → SCMS reference data | **Anticorruption Layer** | Each consuming context declares its **own** `CompetitionSubjectLookupPort` in its own domain — `incident`, `service-request` and `identity-access` each do — and a single SCMS gateway adapter plus a free-text fallback adapter (R10) implements them, wired at the composition root (ADR-003), exactly as `SlaPolicyPort` is (§6.2). The port is **not** in `shared/domain` and `CompetitionSubject` is **not** a kernel primitive; see the note below. SCMS vocabulary never leaks into the ticket model. |
 | Sport ITSM → SSO | **Anticorruption Layer** | An `IdentityProviderPort` in `identity-access` isolates the platform from the SCMS identity model (A2, FR-IAM-04). |
+
+**Why `CompetitionSubject` is not a shared-kernel primitive.** The `(subject type, opaque external id, free-text label)` shape recurs in three contexts — the affected subject of a ticket in `incident` and `service-request`, the target of a visibility grant in `identity-access` — so by headcount alone it appears to clear the "three or more contexts" bar of §12.2 (item 6). It does not, because **a shared shape is not a shared meaning**: these are different concepts that happen to look alike, and the data model already refuses to unify them. Each schema declares its *own* `competition_subject_enum` with its own value set — `iam`'s three values (`tournament`, `league`, `group_division`) are narrower than `incident`'s twelve **by design**, and `reporting` mirrors the values rather than importing them precisely so that a projection takes no type dependency on another context (DATA-MODEL §20.1, §20.3, §20.10). A kernel `CompetitionSubject` would have to carry the union of those sets and hand every context a vocabulary it deliberately does not speak: coupling by coincidence, and the god-kernel the shared-library guardrails exist to prevent. Promoting the *port* has the same defect applied to an **external** system's vocabulary — which is the one thing an anticorruption layer exists to keep per-consumer. `CompetitionSubject` therefore stays a value object of each consuming context's own domain, as §6.2 already draws it for `incident`; what the contexts share is the *pattern*, not the type.
 
 ---
 
@@ -470,46 +512,130 @@ flowchart TB
 
 **How cross-context collaboration stays legal.** `scope:incident` must not import `scope:sla` — yet an Incident needs an SLA policy attached at creation (FR-SLA-02). The resolution is strict Dependency Inversion at the module level:
 
-1. `libs/incident/domain` declares the **outbound port** it needs, in its own ubiquitous language, e.g. `SlaPolicyPort` with `attachPolicyFor(ticketSnapshot): SlaCommitment`.
+1. `libs/incident/domain` declares the **outbound port** it needs, in its own ubiquitous language, e.g. `SlaPolicyPort` with `attachFor(ticketSnapshot): SlaCommitment`.
 2. `libs/incident/application` depends on that port only.
 3. `apps/api` — the composition root, tagged `scope:shared`, `type:app` — provides an **adapter class** implementing `SlaPolicyPort` by delegating to `libs/sla/application`. Only the app sees both contexts.
 4. The Nx graph therefore shows `apps/api → incident/*` and `apps/api → sla/*`, and **never** `incident → sla`.
 
-The same technique carries `approval`, `notification`, `audit` and the SCMS anti-corruption layer. This is the single most important structural rule in this document.
+The same technique carries `approval` and the SCMS anti-corruption layer. It does **not** carry `notification` and `audit`: those are asynchronous subscribers, so the publishing context holds **no port for them at all** — see *Where a port is declared* below. This is the single most important structural rule in this document.
+
+#### Where a port is declared
+
+The rule above says *which* context owns a cross-context port. It does not, on its own, say where **every** port goes — `ClockPort` lives in `shared/domain` (ADR-009) while `SlaPolicyPort` lives in `incident/domain`, and the difference has to be stated or the next port is placed by eye.
+
+**First, does a port belong here at all?** The three tests below decide *where* a port lives; they presuppose one is warranted, and that prior question is separate. ADR-003's second clause and ADR-008 answer it: **a collaboration is a port when the calling use case needs a result back, or must not proceed unless the other side has acted; it is a domain event when the caller must be able to succeed whether or not the other side ever runs.** Applied honestly this test *removes* ports more often than it places them — see the note on `audit` and `notification` below. A port that fails it is not misplaced, it is unwarranted, and no library is the right home for it.
+
+**Then, where does it go?** **A port is declared in the domain of the context that needs it — unless it cannot be phrased in any context's ubiquitous language, in which case it belongs in `shared/domain`.** Applied as three tests, in order:
+
+1. **Does the signature name a type owned by a bounded context?** → that context's domain. `IncidentRepositoryPort` names `Incident`; `SlaPolicyPort` names `SlaCommitment`.
+2. **Is the counterparty another bounded context, or an external system with its own vocabulary?** → the **consuming** context's domain, per ADR-003 and the anticorruption rule of §4.3. Identical signatures across contexts do **not** merge here: each consumer owns its own translation, which is why `CompetitionSubjectLookupPort` is declared three times rather than once.
+3. **Otherwise** — the counterparty is the runtime or the process itself, and every type in the signature is a shared-kernel type → **`shared/domain`**. `ClockPort` (`now()`) and `EventPublisherPort` (`publish(DomainEvent[])`) are the only two, and the list is meant to stay short.
+
+**Test 2 dominates test 3:** sameness of shape never promotes a port whose counterparty is a context or an external system.
+
+**Why `approval` has a port and `audit` and `notification` do not.** The first worked application of the tests above, on a pair that predates them. All three are cross-context, so tests 1–3 would happily place a port for each in the consuming context — which is precisely why the prior question exists and comes first.
+
+- **`approval` → port.** A Service Request cannot proceed to fulfilment until an approval decision exists (FR-SRQ-04, FR-APR-03). The use case needs a result back, so the collaboration is synchronous and `ApprovalPort` is declared by each consuming context in its own language (§4.3, Customer-Supplier via Open Host Service).
+- **`audit` → no port.** §4.3 is explicit — *"Contexts never call audit; they publish events and audit subscribes"* — and that is what makes FR-AUD-03 immutability structural: **no context is given a handle to mutate audit.** A `AuditPort` in `incident/domain` would hand it exactly that handle, in the one context the guarantee is aimed at. **State the cost plainly:** with no port, the audit write is not in the ticket transaction (ADR-008), so audit completeness rests on the in-process dispatcher, its retry, and the acceptance assertions — not on a database transaction. That trade is deliberate and already recorded; the compensation is that a failing audit write cannot block ticket intake (NFR-AVL-03).
+- **`notification` → no port.** Checked against the PRD rather than assumed: **NFR-AVL-03 names notifications as an optional subsystem whose unavailability must not prevent anyone logging an Incident**, and FR-NOT-01 → 04 are all "notify X when Y happened" — event-shaped by construction, with FR-NOT-08 recording dispatch as after-the-fact evidence. **No requirement anywhere asks a user to be notified before a response returns.** The creation acknowledgment of FR-NOT-01 carries the reference number, but the reference reaches the requester in the API response as part of the created resource, not through the notification context; the in-app channel (FR-NOT-06) is a bell reading dispatched records. The nearest candidates for synchronous user-facing warnings are domain rules of their own context, not notifications: the overlapping-release warning (FR-REL-04) is `release` logic, the assignment-entitlement warning (FR-QUE-04) is ticket-context validation, and the intake intervention of PRD §6 is a `knowledge` suggestion (FR-INC-16). **If a genuinely synchronous notification requirement is ever added to the PRD, the exception belongs in ADR-008 and §4.3 — not in a diagram that contradicts them in silence.**
+
+**Why test 3 does not leak coupling.** A kernel port adds no dependency that its own signature has not already added. `EventPublisherPort` mentions nothing but `DomainEvent`, which is a kernel type every context already imports — so the port cannot couple anything the type has not coupled first. The converse is the real guard: a port that *could* be phrased in a context's language **must** be, because that phrasing is the translation boundary ADR-003 exists to preserve. `publish(events): void` has no such phrasing to preserve; ADR-003 itself separates the two mechanisms in one sentence — outbound ports in the consumer's language for synchronous collaboration, and *"asynchronous collaborations use domain events dispatched in-process"*. The publisher names no counterparty, which is exactly the decoupling ADR-008 buys.
 
 ### 5.5 Scaffolding commands
 
-Structure is materialized only with Nx generators, always with explicit tags.
+Structure is materialized only with Nx generators, always with explicit tags. Every invocation below is **executable as written**: copy it whole, do not trim it to the tags. Run it once with `--dry-run --no-interactive` first — the dry run lists every file it would create *and* every workspace file it would update, which is the cheapest way to catch a wrong name or an unintended `nx.json` edit.
+
+Three properties of the Nx 21.6 generators make any shorter form unsafe, and all three were paid for once already:
+
+1. **The project name is a flag, never a positional.** In `@nx/js:lib` the first positional argument is bound to `directory`, not to `name`. Passing the project name positionally *and* `--directory=` makes the generator drop the positional **silently** and name the project after the last directory segment — `libs/shared/util` yields a project called `util`, so `pnpm nx test shared-util` then fails against a project that does not exist, and `jest.config.ts` carries `displayName: 'util'`. `@nx/angular:lib` is stricter and fails outright with `Schema does not support positional arguments`, so the Angular commands do not run at all. Always pass `--name=`.
+2. **The generator defaults are not this architecture's defaults.** `@nx/js:lib` defaults to `--bundler=tsc`, which gives the library its own `package.json` — activating the `banTransitiveDependencies` rule that is latent today only because the root manifest is the only one — and a `build` target that CI then executes in `pnpm nx run-many -t lint test build`. A library that publishes nothing must be generated with `--bundler=none`. `@nx/angular:lib` defaults to `--style=css` and `--changeDetection=Default`, both of which contradict §3 of `CLAUDE.md` (SCSS design tokens; `OnPush` on every component).
+3. **The defaults are themselves mutable.** On first use `@nx/angular:lib` writes **two** generator-default blocks into **`nx.json`**: `"@nx/angular:library": { "linter": "eslint", "unitTestRunner": "jest" }` and `"@nx/angular:component": { "style": "scss" }` — the values of the invocation that happened to run first. It adds a `strict` key only when the invocation ran with `--strict=false`; with the default strict mode, as here, there is none. A later invocation that omits a flag inherits whatever the first one chose. Pinning every flag that matters keeps each command reproducible in isolation and turns that `nx.json` diff into a no-op to review rather than a decision to reconstruct.
+
+**Fixed flag set — TypeScript libraries** (`type:domain`, `type:application`, `type:infrastructure`, `type:contracts`, `type:util`):
+
+| Flag | Value | Why it is not optional |
+|---|---|---|
+| `--name` | the Nx project name | See (1) above. |
+| `--directory` | `libs/<context>/<layer>` | Folder structure *is* the architecture (§5.1). |
+| `--tags` | the three axes | §5.2; a project without all three is rejected by the matrix (probe `p4`). |
+| `--importPath` | `@sport-itsm/<project>` | The single alias convention every barrel import uses. |
+| `--bundler` | `none` | No own `package.json`, no `build` target. See (2). |
+| `--unitTestRunner` | `jest` | Jest 29 is the pinned runner (`CLAUDE.md` §2). |
+| `--linter` | `eslint` | Boundary enforcement runs inside `nx lint`. |
+| `--testEnvironment` | `node` | These libraries never touch a DOM. |
+| `--useProjectJson` | `true` | Every existing project is configured through `project.json`; mixing in `package.json`-based configuration makes "where are this project's tags?" ambiguous. |
+
+**Fixed flag set — Angular libraries** (`type:feature`, `type:ui`, `type:data-access`): `--name`, `--directory`, `--tags`, `--importPath`, `--unitTestRunner=jest` and `--linter=eslint` carry the same meaning, plus `--style=scss` (design tokens, never CSS), `--changeDetection=OnPush`, `--standalone --skipModule` (no `NgModule` ever) and `--prefix=` — the selector prefix, which `apps/web/eslint.config.mjs` requires each library to declare for itself. The convention is `ui` for the design system and the **context slug** for a context's own libraries. `@nx/angular:lib` has no `--bundler`/`--useProjectJson`: it is non-buildable and `project.json`-configured by default. Unlike `@nx/js:lib`, it does **not** rely on the inference plugins: it writes explicit `test` and `lint` targets into `project.json` (post-generation step 3 below).
 
 ```bash
 # Shared kernel
-pnpm nx g @nx/js:lib shared-contracts --directory=libs/shared/contracts \
-  --tags=platform:shared,scope:shared,type:contracts
-pnpm nx g @nx/js:lib shared-domain --directory=libs/shared/domain \
-  --tags=platform:shared,scope:shared,type:domain
-pnpm nx g @nx/js:lib shared-util --directory=libs/shared/util \
-  --tags=platform:shared,scope:shared,type:util
+pnpm nx g @nx/js:lib --name=shared-contracts --directory=libs/shared/contracts \
+  --tags=platform:shared,scope:shared,type:contracts \
+  --importPath=@sport-itsm/shared-contracts \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
+pnpm nx g @nx/js:lib --name=shared-domain --directory=libs/shared/domain \
+  --tags=platform:shared,scope:shared,type:domain \
+  --importPath=@sport-itsm/shared-domain \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
+pnpm nx g @nx/js:lib --name=shared-util --directory=libs/shared/util \
+  --tags=platform:shared,scope:shared,type:util \
+  --importPath=@sport-itsm/shared-util \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
 
 # Shared UI - the in-house design system; Angular code, therefore platform:frontend
-pnpm nx g @nx/angular:lib shared-ui --directory=libs/shared/ui \
-  --tags=platform:frontend,scope:shared,type:ui
+pnpm nx g @nx/angular:lib --name=shared-ui --directory=libs/shared/ui \
+  --tags=platform:frontend,scope:shared,type:ui \
+  --importPath=@sport-itsm/shared-ui --prefix=ui \
+  --style=scss --changeDetection=OnPush --standalone --skipModule \
+  --unitTestRunner=jest --linter=eslint
 
 # Backend hexagon for one context
-pnpm nx g @nx/js:lib incident-domain --directory=libs/incident/domain \
-  --tags=platform:backend,scope:incident,type:domain
-pnpm nx g @nx/js:lib incident-application --directory=libs/incident/application \
-  --tags=platform:backend,scope:incident,type:application
-pnpm nx g @nx/js:lib incident-infrastructure --directory=libs/incident/infrastructure \
-  --tags=platform:backend,scope:incident,type:infrastructure
+pnpm nx g @nx/js:lib --name=incident-domain --directory=libs/incident/domain \
+  --tags=platform:backend,scope:incident,type:domain \
+  --importPath=@sport-itsm/incident-domain \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
+pnpm nx g @nx/js:lib --name=incident-application --directory=libs/incident/application \
+  --tags=platform:backend,scope:incident,type:application \
+  --importPath=@sport-itsm/incident-application \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
+pnpm nx g @nx/js:lib --name=incident-infrastructure --directory=libs/incident/infrastructure \
+  --tags=platform:backend,scope:incident,type:infrastructure \
+  --importPath=@sport-itsm/incident-infrastructure \
+  --bundler=none --unitTestRunner=jest --linter=eslint \
+  --testEnvironment=node --useProjectJson=true
 
 # Frontend slice for the same context
-pnpm nx g @nx/angular:lib incident-feature --directory=libs/incident/feature \
-  --tags=platform:frontend,scope:incident,type:feature
-pnpm nx g @nx/angular:lib incident-ui --directory=libs/incident/ui \
-  --tags=platform:frontend,scope:incident,type:ui
-pnpm nx g @nx/angular:lib incident-data-access --directory=libs/incident/data-access \
-  --tags=platform:frontend,scope:incident,type:data-access
+pnpm nx g @nx/angular:lib --name=incident-feature --directory=libs/incident/feature \
+  --tags=platform:frontend,scope:incident,type:feature \
+  --importPath=@sport-itsm/incident-feature --prefix=incident \
+  --style=scss --changeDetection=OnPush --standalone --skipModule \
+  --unitTestRunner=jest --linter=eslint
+pnpm nx g @nx/angular:lib --name=incident-ui --directory=libs/incident/ui \
+  --tags=platform:frontend,scope:incident,type:ui \
+  --importPath=@sport-itsm/incident-ui --prefix=incident \
+  --style=scss --changeDetection=OnPush --standalone --skipModule \
+  --unitTestRunner=jest --linter=eslint
+pnpm nx g @nx/angular:lib --name=incident-data-access --directory=libs/incident/data-access \
+  --tags=platform:frontend,scope:incident,type:data-access \
+  --importPath=@sport-itsm/incident-data-access --prefix=incident \
+  --style=scss --changeDetection=OnPush --standalone --skipModule \
+  --unitTestRunner=jest --linter=eslint
 ```
+
+**Steps the generators do not do, required before the library is considered scaffolded.** Every existing library — the three `libs/shared/*` and the six `libs/incident/*` (`T-C1-01`) — has been through all of them, which is what gives the nine the same shape regardless of generator.
+
+1. **Purity is also a compiler setting.** In every `type:domain`, `type:application`, `type:contracts` and `type:util` library, change the `"types": ["node"]` that `@nx/js:lib` generates in `tsconfig.lib.json` to `"types": []`. The dependency rule (§3) forbids I/O in those layers, but `@types/node` makes `process`, `Buffer`, `fs` and `setTimeout` *compile* there, so without this the ban rests on code review alone; emptying `types` hands it to `tsc`. `type:infrastructure` libraries and the two applications keep `["node"]` — they are the layers whose job is I/O — and `tsconfig.spec.json` is untouched, so specs keep their Jest and Node types. Angular libraries need no edit, for a different reason: `@nx/angular:lib` itself generates `"types": []` in `tsconfig.lib.json`, so `feature`, `ui` and `data-access` are born with the setting. Be honest about its current reach: with `--bundler=none` a library has no `build` target, the Angular libraries are non-buildable, and Jest compiles specs through `tsconfig.spec.json`, so **no workspace target reads `tsconfig.lib.json` today** — the setting bites in the editor and in review, and becomes a CI gate only once the workspace grows a `typecheck` target (§12.3). Apply it anyway: retrofitting purity across a dozen libraries is far more expensive than setting it at generation time.
+2. **Remove the sample unit.** The generator writes a placeholder (`src/lib/<name>.ts` + `.spec.ts` for `@nx/js:lib`, a sample standalone component for `@nx/angular:lib`) and exports it from the barrel. Delete it and export the library's real public API from `src/index.ts`; the barrel is a library's only legal import surface, so whatever is not exported there does not exist to the rest of the workspace. A library scaffolded ahead of its first code keeps a documented empty barrel (`export {};`).
+3. **Remove the explicit `test` and `lint` targets written by `@nx/angular:lib`.** The Angular generator runs its Jest and ESLint sub-generators with plugin registration off, so it writes both targets into `project.json`. Every other project gets them by inference — `@nx/jest/plugin` and `@nx/eslint/plugin` in `nx.json` — so delete them and leave `"targets": {}`. The inferred targets run the same `jest.config.ts` and `eslint.config.mjs`; what the deletion buys is one project shape across both generators, with target configuration owned in one place (`nx.json`) rather than copied per project. Confirm with `pnpm nx show project <name>` that `test` and `lint` are still listed.
+4. **Delete the generated `README.md`.** Both generators write one into the library root. No library in this workspace carries one: the barrel's header comment states the library's purpose, and this document and `PROJECT-STRUCTURE.md` state its place.
+5. **A library scaffolded empty declares `passWithNoTests: true` in its `jest.config.ts`, with a comment naming the ticket that removes it.** Jest exits with code 1 when it finds no spec, which would fail `pnpm nx run-many -t test` — and therefore CI — for a library that is empty by design. For a library the flag lives in `jest.config.ts` — not in a `project.json` target option as in `apps/api` and `apps/web`, because step 3 leaves a library no explicit target to carry it — and carries its own expiry, e.g. `// Scaffolded empty (T-C1-01); remove once the first spec lands (T-C1-03).` The ticket that adds the library's first spec deletes the flag and the comment, after which an accidentally empty suite fails again. While the flag is present, a green `test` proves only that the runner starts.
+
+Then verify: `pnpm nx show project <name>` for the three tags and the inferred targets, and `pnpm nx lint <name>` — which is what runs the boundary matrix. For several projects at once use `pnpm nx run-many -t lint --projects=<a>,<b>`; `pnpm nx lint <a> <b>` does **not** lint both — Nx forwards the second name to ESLint as a file pattern.
 
 ---
 
@@ -535,21 +661,18 @@ flowchart LR
             VO["Value objects<br/>TicketReference, Impact, Urgency,<br/>Priority, Category, OriginChannel,<br/>CompetitionSubject"]
             DS["Domain services<br/>PriorityCalculator over the<br/>configurable Impact x Urgency matrix"]
             DE["Domain events<br/>IncidentLogged, PriorityChanged,<br/>MajorIncidentDeclared, IncidentResolved"]
-            OP["Outbound ports - interfaces<br/>IncidentRepositoryPort, SlaPolicyPort,<br/>NotificationPort, AuditPort,<br/>EventPublisherPort, ClockPort"]
+            OP["Outbound ports - interfaces<br/>owned by incident: IncidentRepositoryPort,<br/>SlaPolicyPort<br/>consumed from shared/domain:<br/>ClockPort, EventPublisherPort<br/>no audit or notification port - they subscribe"]
         end
     end
 
     subgraph driven["Driven side - outbound adapters"]
         REPO["TypeORM repositories<br/>type:infrastructure"]
         SLAAD["SlaPolicyAdapter - apps/api<br/>delegates to sla/application"]
-        NOTAD["NotificationAdapter - apps/api<br/>delegates to notification/application"]
-        AUDAD["AuditAdapter - apps/api<br/>append only"]
         SCMSAD["ScmsCompetitionGateway<br/>ACL with free-text fallback"]
         CLOCK["SystemClock"]
     end
 
     DBX[("PostgreSQL 18")]
-    MAILX["Email Gateway"]
     SCMSX["SCMS reference data"]
 
     HTTP --> IP
@@ -565,14 +688,10 @@ flowchart LR
 
     REPO -.->|"implements"| OP
     SLAAD -.->|"implements"| OP
-    NOTAD -.->|"implements"| OP
-    AUDAD -.->|"implements"| OP
     SCMSAD -.->|"implements"| OP
     CLOCK -.->|"implements"| OP
 
     REPO --> DBX
-    AUDAD --> DBX
-    NOTAD --> MAILX
     SCMSAD --> SCMSX
 
     classDef dom fill:#c9a227,stroke:#7a6115,color:#111111
@@ -581,8 +700,8 @@ flowchart LR
     classDef ext fill:#e8e8e8,stroke:#8b8b8b,color:#111111
     class AGG,VO,DS,DE,OP dom
     class UC,IP app
-    class HTTP,SCHED,EVTIN,REPO,SLAAD,NOTAD,AUDAD,SCMSAD,CLOCK adp
-    class DBX,MAILX,SCMSX ext
+    class HTTP,SCHED,EVTIN,REPO,SLAAD,SCMSAD,CLOCK adp
+    class DBX,SCMSX ext
 ```
 
 **The dependency rule, stated operationally.** Arrows into the hexagon are calls; the dotted arrows from adapters to ports are `implements`. No arrow ever leaves the domain toward an adapter. Concretely:
@@ -639,7 +758,8 @@ classDiagram
     class CompetitionSubject {
         <<ValueObject>>
         +SubjectType type
-        +string instanceIdOrLabel
+        +string externalId
+        +string label
     }
     class WorkNote {
         <<Entity>>
@@ -662,10 +782,6 @@ classDiagram
         +reevaluate(snapshot) SlaCommitment
         +pause(ticketId) void
         +resume(ticketId) void
-    }
-    class EventPublisherPort {
-        <<Port>>
-        +publish(events) void
     }
 
     Incident *-- TicketReference
@@ -696,7 +812,8 @@ classDiagram
 - The context's NestJS module provides `{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }` and equivalents.
 - **Cross-context adapters live here**, not in either context's infrastructure lib (§5.4).
 - Global providers: `ValidationPipe` with `whitelist`, `forbidNonWhitelisted` and `transform`; `nestjs-pino` logger; `nestjs-i18n`; exception filter mapping domain errors to contract error codes; `@nestjs/terminus` health at `/health/live` and `/health/ready` without the `/api` prefix; Swagger at `/api/docs` in development only.
-- Persistence: TypeORM `synchronize: false` in every environment; migrations auto-run only when `NODE_ENV=development`, and through a controlled deploy step elsewhere.
+- Persistence: TypeORM `synchronize: false` in every environment; migrations **never** auto-run on boot, in any environment (`migrationsRun: false`, `DATA-MODEL.md` §3.7) — they are an explicit step: `pnpm migration:run` locally and in the acceptance suite, Render's pre-deploy command on stage once stage has a database (ADR-013; the command is empty while ADR-015 is in force). *(Corrected: this bullet previously said "auto-run only when `NODE_ENV=development`", which contradicted `DATA-MODEL.md` §3.7 and the built `buildDatabaseConnectionOptions()`.)*
+- **Persistence mode (ADR-015).** Which repository adapter backs each port is chosen **once**, by `PersistenceModule.forMode(PERSISTENCE_MODE)` in `AppModule`, from total per-context maps (`Record<PersistenceMode, Provider[]>`, e.g. `apps/api/src/app/incident/incident-persistence.bindings.ts`). `postgres` imports `DatabaseModule` and binds the TypeORM adapters; `memory` binds the in-memory adapters and constructs no `DataSource`. No other file reads the mode.
 
 ---
 
@@ -793,7 +910,7 @@ sequenceDiagram
     participant REPO as incident/infrastructure<br/>TypeOrmIncidentRepository
     participant SLAA as apps/api<br/>SlaPolicyAdapter
     participant SLAU as sla/application
-    participant BUS as apps/api<br/>InProcessEventPublisher
+    participant BUS as apps/api<br/>InProcessEventDispatcher
     participant AUD as audit/application
     participant NOT as notification/application
     actor AG as Agent L1 - browser
@@ -850,6 +967,8 @@ sequenceDiagram
 2. **`incident` never imports `sla`.** The `SlaPolicyAdapter` in `apps/api` is the only object that knows both.
 3. **Audit and notification happen after commit, off the event bus.** A failing email gateway cannot roll back a logged Incident (NFR-AVL-03), and no context is ever handed a mutable reference to audit data (FR-AUD-03).
 
+**As built (Incident intake slice).** Only the logging half exists — no triage path, no Bearer JWT and no `Accept-Language` (the interceptor chain is empty), and the actor authorized by the use case is a fixed requester. `LogIncidentUseCase` runs `nextIdentity()` + `nextReference()` → `Incident.log()` (no Priority is derived: a logged Incident is unassessed, ADR-014) → `save()` → `publish(events)` → `SlaPolicyPort.attachFor(incident)`, which is bound to a provisional no-op adapter; SLA attachment follows the save so that a not-yet-real SLA adapter can never prevent an Incident from being persisted (rationale in `libs/incident/domain/src/lib/sla-policy.port.ts`). No subscriber receives `IncidentLogged` yet.
+
 ---
 
 ## 9. Cross-Cutting Architecture
@@ -860,11 +979,12 @@ sequenceDiagram
 | **Authorization** | Enforced in `type:application` use cases, expressed in domain terms (`actor may triage`, `requester may view own ticket`), not as controller decorators alone. Ownership and competition-scoped visibility rules (FR-IAM-03, FR-KNW-09) are domain predicates, testable without HTTP. |
 | **Audit trail** | Append-only `audit` context fed exclusively by domain events. No update or delete method exists on `AuditRepositoryPort` — immutability by absence of capability, not by convention (FR-AUD-03). |
 | **Configuration as data** | Taxonomy, Impact x Urgency matrix, SLA policies, state models, approval chains and notification templates are persisted aggregates owned by their contexts and edited through the Admin Console. In-flight records keep the configuration version they were created under (NFR-CFG-02). |
-| **Domain events** | `DomainEvent` base type in `shared/domain`; `EventPublisherPort` in each context's domain; a single in-process dispatcher in `apps/api`. No broker in the MVP; the port makes an out-of-process broker a later adapter swap, not a redesign. |
+| **Domain events** | `DomainEvent` base type **and `EventPublisherPort`** in `shared/domain` — the port's whole signature is `publish(DomainEvent[]): void`, which names no context's vocabulary and therefore fails the phrasing test of §5.4; a single in-process dispatcher in `apps/api` implements it. No broker in the MVP; the port makes an out-of-process broker a later adapter swap, not a redesign. |
 | **Time** | `ClockPort` in `shared/domain`. Domain and application layers never call `new Date()`. This is what makes SLA pause/resume and business-hours schedules unit-testable and NFR-AVL-05 provable. |
 | **i18n** | Transloco (client) + `nestjs-i18n` (API) joined by the `Accept-Language` header. Reference data carries stable identifiers with translatable labels (NFR-I18N-05). |
 | **Observability** | `nestjs-pino` structured logs with request correlation; `@nestjs/terminus` liveness and readiness probes (NFR-CFG-03). |
-| **Testing** | Domain and application: Jest unit tests with no infrastructure at all — the purity rule is what makes this possible. Infrastructure: integration tests against PostgreSQL. Acceptance: Cypress 15 + Cucumber in `apps/api-e2e` and `apps/web-e2e`, with Gherkin scenarios traced to PRD acceptance criteria. Coverage floor 80% on changed libs. |
+| **Persistence mode** | `PERSISTENCE_MODE=postgres\|memory`, validated at boot and resolved once at the composition root (§6.3, ADR-015). `memory` is a stage-prototype configuration only: volatile, single-instance, forbidden with `NODE_ENV=production`, never used with real data. Parity between the two adapters of a port is not mechanically proven while ADR-015 is in force (accepted risk, ADR-015 consequence 7); the shared port contract suite that closes it is deferred to the ADR's reversal. |
+| **Testing** | Domain and application: Jest unit tests with no infrastructure at all — the purity rule is what makes this possible. Infrastructure: integration tests against PostgreSQL; the stage-prototype in-memory adapter is covered by its own unit specs. A shared port contract suite run against every adapter of a port is **deferred** by the Product Owner until ADR-015 is reversed (consequence 7). Acceptance: Cypress 15 + Cucumber in `apps/api-e2e` and `apps/web-e2e`, with Gherkin scenarios traced to PRD acceptance criteria. Coverage floor 80% on changed libs. |
 
 ---
 
@@ -986,6 +1106,119 @@ The decisive platform fact, and the reason the deploy hook is written into the d
 6. **Secrets never enter the repository.** The `ghcr.io` pull credential lives in Render; the push credential and the deploy hook URLs live in GitHub Actions secrets. A deploy hook URL is itself a secret — anyone holding it can trigger a deploy.
 7. **This decision closes `readme.md` §2.4 and the "no platform chosen" note in `docker/docker-compose.stage.yml` and in the `ci-cd` skill.** Those notes are now stale and are `ci-cd-expert`'s to retire; they are reported, not edited, here.
 
+> **Amended for the stage prototype by ADR-015.** While ADR-015 is in force, the *Database* and *Migrations* rows above do not apply to stage: there is no Render PostgreSQL, the API runs with `PERSISTENCE_MODE=memory`, its pre-deploy command is empty, and the web service reverse-proxies `/api/` to the API. Every other row — platform, stage-only, prebuilt `ghcr.io` images, deploy hooks with `imgURL`, no `render.yaml` — stands unchanged, and the amendment lapses on any of ADR-015's reversal triggers.
+
+---
+
+### ADR-014 — A logged Incident is persisted unassessed; the schema grows with the behavior that writes it
+
+**Context.** `DATA-MODEL.md` §20.3 declared `incident_ticket`'s assessment columns (`base_impact`, `assessed_impact`, `urgency`, `priority`), its configuration versions (`priority_matrix_id`, `workflow_id`) and its lifecycle position (`state_id`, `state_category`) all `NOT NULL`. That is the shape of a **triaged** Incident, not of a **logged** one. In ITSM practice, and in the PRD, an Incident is born unassessed: Impact and Urgency are an agent's triage judgment (FR-INC-04/05), Priority is derived from them and never chosen by the requester (FR-INC-04, R8), and a category is required only on exit from `New` (FR-INC-03). US-C1-08 goes further and forbids defaulting an unassessed Incident to a middle Priority. The `Incident` aggregate (§6.2) is built accordingly: `log()` produces an Incident with no category, no Impact, no Urgency, no Priority and the flag unset; and, because the configurable state model does not exist yet, with no lifecycle state. Delivery is cut in vertical slices, and the first ("log an Incident and see it") ships before the workflow tables, the priority matrix or any triage behavior. As declared, the schema could not persist a single Incident at the moment it is logged, and would have hit the same wall again when the assessment columns arrived, since every row already written is legitimately unassessed.
+
+**Decision.**
+
+1. **Absence of an assessment is `NULL`, never a sentinel.** The assessment columns and `priority_matrix_id` are nullable in the target schema; `priority IS NULL` is the persisted form of "not yet derived". The explicit not-yet-derived value the API contract exposes is produced from it by the mapper and the contract, never stored. Four structural checks keep the nullable columns coherent (Priority exists exactly when both inputs do; it always names the matrix version that produced it; the uplifted Impact exists exactly when the base one does; only a derived Priority can be overridden). The nullable window is bounded by the triage gate the Product Owner added in **FR-INC-19** (PRD §14.10): Impact and Urgency — and therefore Priority — together with the category and the affected Service are required to leave `New`, and Impact and Urgency are required before any assignment. `DATA-MODEL.md` §8.1 expresses both gates as structural checks (`ck_incident_triaged_beyond_new`, `ck_incident_assessed_before_assignment`) behind the domain guards that own them; *this ADR originally stated that no check required an assessment at any lifecycle state, because the PRD then stated no such gate — that clause is superseded by FR-INC-19, and the rest of this decision stands unchanged.*
+2. **A configuration version is pinned when it first governs the record.** The lifecycle governs an Incident from birth, so `workflow_id` is pinned at creation and stays `NOT NULL`. The matrix governs it only from its first derivation — `priority_matrix_id` is part of the `Priority` value object — so it is pinned then and never changed afterwards. Both satisfy NFR-CFG-02: no record already governed by a version is ever re-governed by another.
+3. **A column arrives with the first behavior that writes it.** `DATA-MODEL.md` §20.3 states the target shape; `§8.5` states the order in which column groups are introduced. A column whose target is `NOT NULL` but which arrives after rows exist must ship, **in the same migration**, with a backfill that is provably exact; if no exact backfill can be stated, the column is nullable in the target instead. The lifecycle columns pass the test: before the state model exists no transition exists, so every earlier Incident is provably in `New`, and the lifecycle migration backfills each one to the seeded version's initial state with a creation transition row.
+4. **Persistence never invents domain state.** No seed row, placeholder state, placeholder matrix or default level is written ahead of the domain behavior that owns it. Until an aggregate slot has a column, the mapper reads it as empty and refuses, with a typed mapping error, to save an aggregate in which it is not empty.
+
+**Alternatives rejected.** *Sentinel values* (a default `P3`, a default Impact of `3`, or an `unassessed` enum member): the first two are indistinguishable from a real assessment and are exactly what US-C1-08 forbids; the third leaks a non-level into the matrix cell domain, SLA policy matching and every KPI grouping. *Moving the assessment into a separate table*: Priority is an inlined value object of the aggregate root (§6.2, `DATA-MODEL.md` §2) with no identity or lifecycle of its own, so a table for it would be the modelling lie `DATA-MODEL.md` §2 refuses, and would cost a join on every work-list query that sorts by Priority. *Seeding a minimal workflow and matrix in the first slice*: it builds another slice's configuration model ahead of its domain, and makes persistence write a lifecycle state the aggregate does not hold (ADR-005). *Lifecycle columns nullable forever*: it would make "an Incident with no state" a permanently representable condition, which the PRD never describes.
+
+**Consequences.** An Incident can be logged, persisted and read back before triage exists, and the vertical slices ship independently without placeholder data that later has to be told apart from real data. Every Priority-based read must handle "not yet derived" explicitly: work lists and filters need a visible *not prioritized* bucket, the reporting fact table's `priority` becomes nullable, and SLA policy resolution must define its behavior for a ticket with no Priority yet — that last point belongs to `sla`, is recorded as open point 4 of PRD §14.10, and is not decided here. The lifecycle migration carries a data backfill and must be proven reversible like any other. The introduction rule binds every later migration on `incident_ticket`, and applies equally to `sr_request`. Full schema detail: `DATA-MODEL.md` §8.5 and decisions M14–M17.
+
+---
+
+### ADR-015 — Stage prototype on Render: two services, no database, a configuration-selected in-memory persistence adapter
+
+> **Status: accepted as a prototype / demo decision, temporary by construction.** It amends ADR-013 for the stage environment only and is reversed by the triggers listed at the end. Nothing in it changes product behavior (PRD), the target schema (`DATA-MODEL.md`) or any boundary rule (§5).
+
+**Context.** The Product Owner wants a deployed prototype that shows one thing end to end: a person opens the web client, logs an Incident and sees it (the first vertical slice — `POST /api/incidents`, `GET /api/incidents/{reference}`, the Requester intake form and the Incident detail view — is built). The constraints are explicit: the repository deploys to **Render** with **exactly two services** (web and API), **no database on Render**, Incidents **kept in memory** (the demo only has to prove they can be entered and viewed), and **no authentication** on stage (the fixed actor of `T-C10-74` stays). Three facts of the as-built system collide with those constraints:
+
+1. **The API cannot boot without PostgreSQL configuration.** `apps/api/src/config/env.validation.ts` makes every `POSTGRES_*` key mandatory; `DatabaseModule` constructs a `DataSource` at boot (lazily connected, but constructed); `IncidentModule` binds `INCIDENT_REPOSITORY` → `TypeOrmIncidentRepository` unconditionally, whose `nextIdentity()` runs `SELECT uuidv7()` and whose `nextReference()` runs `nextval('incident.incident_reference_seq')` — both need a live PostgreSQL 18.
+2. **ADR-013 assumes a managed PostgreSQL and a migration pre-deploy command**, which would fail on every deploy without a database.
+3. **The deployed web client cannot reach the API.** `libs/incident/data-access` calls the relative base URL `INCIDENT_API_BASE_URL = '/api'`; in development `apps/web/proxy.conf.json` forwards it, but `docker/frontend/nginx.conf` has no `location /api`, so on stage the SPA fallback (`try_files … /index.html`) answers every API call with `index.html` and `200`. The API does not enable CORS.
+
+**Decision.**
+
+**1. Persistence is selected by configuration: `PERSISTENCE_MODE=postgres|memory`.**
+
+| Aspect | Decision |
+|---|---|
+| Variable | `PERSISTENCE_MODE`, validated in `env.validation.ts` as an enum `postgres` \| `memory`. **Mandatory, no default** — the file's own doctrine (every key mandatory, a missing key fails the boot). Choosing a non-durable store must be an explicit act of whoever configures the environment, never an inference. |
+| `POSTGRES_*` | Required **only when** `PERSISTENCE_MODE=postgres` (conditional validation, `@ValidateIf`). In `memory` they are not required and, if present, ignored. |
+| Safety rail | `PERSISTENCE_MODE=memory` together with `NODE_ENV=production` **fails validation** at boot. There is no production environment (ADR-013), so the rail costs nothing and turns "never run a non-durable store for real users" into a mechanical rule instead of a convention. |
+| Migration CLI | `apps/api/src/data-source.ts` (the CLI entry point) refuses to load unless `PERSISTENCE_MODE=postgres`, with a message naming the variable. Running migrations "in memory mode" is meaningless and must fail loudly rather than try `localhost:5432`. |
+| `postgres` | Unchanged behavior: development, integration tests, `api-e2e`, and stage again once a database exists. |
+| `memory` | No `DataSource` is constructed, no connection is attempted, no migration runs, `pg` is never loaded. The API logs one boot-time warning stating that data is volatile. |
+
+**2. The in-memory adapter implements the same two ports, and lives in `libs/incident/infrastructure`.**
+
+*Placement.* It is an outbound adapter whose signatures name `Incident` — test 1 of *Where a port is declared* (§5.4) makes it an `incident` artifact, and §3/§6.1 put every outbound adapter of a context in that context's `type:infrastructure` library. `apps/api` hosts only **cross-context** adapters (ADR-003); a same-context repository adapter there would be misplaced. Concretely: `libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts` (`InMemoryIncidentRepository implements IncidentRepositoryPort, IncidentReadRepositoryPort`), exported from the library barrel beside `TypeOrmIncidentRepository`. It needs no `DataSource` and opens no connection; it reuses `IncidentEntity` and `IncidentMapper` from the same library (below), so `typeorm` is loaded only as the decorator library `IncidentEntity` is declared with, never connected. **No new library, no new tag, no boundary change.** It is a production adapter of the prototype, not a test double, and is held to the same review standard.
+
+*Behavior, method by method.*
+
+| Port method | `InMemoryIncidentRepository` |
+|---|---|
+| `nextIdentity()` | A UUID v7 generated in process per RFC 9562 §5.7, **with no new dependency**: 48-bit big-endian Unix-epoch milliseconds (`Date.now()`), version nibble `0111`, 12 bits of `rand_a` and 62 bits of `rand_b` from `node:crypto` `randomBytes`, variant bits `10`, rendered in canonical lowercase 8-4-4-4-12 form. The result must satisfy `Identity.fromString()` (which accepts v7 only). The generator is a private module of the `in-memory/` folder, not exported and not placed in `shared/util` (randomness and wall-clock time are not pure). `Date.now()` is legitimate here: this is `type:infrastructure`, and the embedded instant is a surrogate-identifier timestamp with no business meaning (ADR-012 — the same argument that makes PostgreSQL's `uuidv7()` compatible with ADR-009). If a second context ever needs it, its promotion target is decided then, by ADR — not pre-built now (YAGNI). |
+| `nextReference()` | An in-process counter, starting at `1`, incremented **before** the value is returned and never decremented — a value handed out is consumed even if the subsequent `save()` fails, exactly the "gaps are acceptable, reuse is not" semantic of the PostgreSQL sequence (`DATA-MODEL.md` §3.2). Rendered through `IncidentReferencePolicy.format()`, which owns the `INC` + seven-digit shape and throws `IncidentReferenceSequenceOutOfRangeError` past `9 999 999`. Node's single-threaded event loop makes the increment atomic; no lock is needed. |
+| `save(incident)` | Maps the aggregate through the existing `IncidentMapper.toEntity()` and stores the resulting **persistence snapshot** (`IncidentEntity`, a plain object here — never attached to any `DataSource`), keyed by id, plus a `reference → id` index. Reusing the mapper is deliberate: ADR-014 decision 4 ("persistence never invents domain state", the typed refusal to save unmapped state) then holds **identically** in both modes, and the stored snapshot is a fresh object the caller cannot mutate afterwards. Two structural rules the database enforces are re-implemented here as typed infrastructure errors: **uniqueness** (a different id saved under an already-indexed reference is rejected) and **reference immutability** (a save for a known id whose reference differs from the stored one is rejected). A **capacity ceiling** of 10 000 Incidents is enforced on insert, because the prototype is an unauthenticated public URL and an unbounded map is a memory-exhaustion vector; exceeding it is a typed error too. None of these errors is a `DomainError`: like a PostgreSQL constraint violation today, each surfaces through `GlobalExceptionFilter` as the generic internal-error envelope — no new contract error code. |
+| `findById(id)` / `findByReference(ref)` | Look up the snapshot and return a **new** aggregate through `IncidentMapper.toDomain()`; `null` on absence, never a thrown "not found" — the same contract the TypeORM adapter honors. |
+
+*Lifetime.* One instance per process: provided in the default (singleton) Nest scope, **never** request- or transient-scoped, and `INCIDENT_READ_REPOSITORY` keeps its `useExisting: INCIDENT_REPOSITORY` alias in both modes. A second instance behind the read token would be a second, empty store — the read side would never see a logged Incident. `incident.module.spec.ts` already asserts the alias by identity; the assertion must hold in both modes.
+
+**3. Selection happens once, at the composition root, as data — not as scattered conditionals.**
+
+- `apps/api/src/persistence/` holds `PersistenceModule.forMode(mode)`, a `@Global()` dynamic module. `AppModule` calls it with `loadEnvironment().PERSISTENCE_MODE` — the same sanctioned, pre-DI read `AppModule` already performs for `TestEventDispatchModule`. **That is the only place in the codebase where the mode is read.**
+- Each context contributes its bindings as a **total map** in its own composition slice: `apps/api/src/app/incident/incident-persistence.bindings.ts` exports `incidentPersistenceBindings: Record<PersistenceMode, Provider[]>` — `postgres` binds `INCIDENT_REPOSITORY` → `TypeOrmIncidentRepository`, `memory` binds it → `InMemoryIncidentRepository` (constructed with `useFactory`, no constructor injection needed), and both bind `INCIDENT_READ_REPOSITORY` with `useExisting`. `Record<PersistenceMode, …>` makes a context that forgets a mode a **compile error**, which is the exhaustiveness guarantee an `if` chain cannot give. `PersistenceModule.forMode()` concatenates the maps it is given and imports `DatabaseModule` **only** for `postgres`; `IncidentModule` stops binding the two repository tokens itself and keeps everything else (use cases, `CLOCK`, `SLA_POLICY`, actor resolver, controller).
+- No `if (PERSISTENCE_MODE …)` exists in any controller, use case, adapter, library or spec helper. Domain and application layers are untouched: they depend on the ports and never learn which adapter is behind them — the hexagon doing exactly the job it was built for.
+
+**4. Web → API: nginx reverse-proxies `/api/` to the API service (same origin). No CORS.**
+
+The web image's nginx configuration becomes a **template rendered at container start** by the official `nginx` image's built-in `envsubst` step (`/etc/nginx/templates/*.template`, with `NGINX_ENVSUBST_OUTPUT_DIR` pointed at the file the image actually loads). It adds `location /api/ { proxy_pass <API_UPSTREAM_URL>; }` — no URI part, so the request path `/api/incidents/…` reaches the API unchanged, matching its global prefix. `API_UPSTREAM_URL` is the API service's public Render URL (`https://<api-service>.onrender.com`), set on the web service at deploy time; in `docker-compose.stage.yml` it is `http://api:3300`. Implementation constraints `ci-cd-expert` must honor: resolve the upstream at request time (`resolver` + a variable in `proxy_pass`) so nginx neither refuses to start nor caches a stale address when the API's IP changes; `proxy_ssl_server_name on` and `Host` set to the upstream host, because Render routes by SNI/Host; `proxy_connect_timeout`/`proxy_read_timeout` of at least 60 s, so the first request after the API is spun down waits instead of failing with `504`; `X-Forwarded-*` headers; the container **fails to start** when `API_UPSTREAM_URL` is unset (an explicit check in `/docker-entrypoint.d/`, not a silently broken literal). `INCIDENT_API_BASE_URL` stays `'/api'`; **no frontend change is required**. The API still enables **no** CORS.
+
+Reasons for the proxy over option (b), an absolute API URL baked into the web build plus a CORS allow-list:
+
+- **Same origin by construction.** No preflight, no `Access-Control-*` policy to keep in sync with two moving URLs, no CORS surface to review — the API keeps the posture it has in every other environment.
+- **The web image stays environment-agnostic.** The API location is runtime configuration of the container, not a build input; the image the pipeline pushes is the image that runs (ADR-013's `imgURL` pinning keeps its meaning), and development (`proxy.conf.json`), `docker-compose.stage.yml` and Render share one topology.
+- **Authentication arrives cleanly later.** When `T-C10-39` introduces real credentials, a same-origin API allows `SameSite=Strict`/`HttpOnly` cookies or a Bearer header without cross-site cookie rules. Option (b) would force that decision now.
+- **Cost accepted:** one extra hop through nginx and a slightly larger nginx configuration. The API also remains directly reachable at its own Render URL — acceptable for an unauthenticated demo that holds no real data, and irrelevant to the proxy decision.
+
+Render's private network was considered as the upstream and **not** chosen: on Render's free instance type a service cannot receive private-network traffic, and the public URL works on every plan. Switching the upstream to the private hostname later is a one-variable change.
+
+**5. Render topology and deployment for the prototype (amends ADR-013 for stage).**
+
+| ADR-013 aspect | Prototype value |
+|---|---|
+| Services | **Two** image-backed web services: `sport-itsm-api` and `sport-itsm-web`. **No Render PostgreSQL.** |
+| API environment (dashboard) | `NODE_ENV=staging`, `PORT=3300`, `PERSISTENCE_MODE=memory`. No `POSTGRES_*`. |
+| Web environment (dashboard) | `API_UPSTREAM_URL=https://<api-service>.onrender.com`; `PORT=80` so Render routes to nginx's listening port. |
+| Pre-deploy command | **Empty on the API service.** `typeorm migration:run -d data-source.js` would fail without a database — and must, by the data-source guard of §1. |
+| Health checks | Web: `/health` (served by nginx itself). API: **no path** until `/health/live` exists — it is reserved in `GLOBAL_PREFIX_EXCLUSIONS` but not implemented, and a check against a non-existent route would fail every deploy; Render then falls back to port detection. Adopt `/health/live` as soon as it lands. |
+| Scaling | API: **exactly one instance, autoscaling off.** Two in-memory instances would be two disjoint stores and two reference counters issuing the same `INC` numbers. |
+| Pipeline | `deploy-stage.yml` needs **no change** for the memory mode itself: images, `ghcr.io` push and deploy hooks with `imgURL` are as ADR-013 decided. The `acceptance` job keeps running `api-e2e` against its own ephemeral PostgreSQL. |
+| Branch | `deploy-stage` runs **only** on a push to `main`. Day-to-day work happens on `finalproject-IGR`, so nothing on that branch deploys today. Choosing the branch flow (merge to `main`, widen the trigger, or a manual dispatch) is the user's call and is **not** decided here. |
+
+**Consequences.**
+
+1. **Stage data is volatile.** Every Incident is lost on each redeploy, restart, crash or instance replacement — and on Render's free instance type an idle service is spun down after a period without traffic, which also empties the store. This is the accepted behavior of the demo, not a defect.
+2. **References restart at `INC0000001` after every restart.** "Never reused" (FR-INC-02, NFR-DAT-01) holds **within one process lifetime only**: across restarts the same reference names a different Incident, so a link bookmarked before a restart can open someone else's Incident afterwards. Stage in memory mode therefore **does not demonstrate** FR-INC-02's durability; the requirement stays proven where it lives, against PostgreSQL (below).
+3. **Single instance only.** Horizontal scaling, which ADR-004 relies on in the target architecture, is unavailable in memory mode; during Render's zero-downtime deploy overlap, anything logged on the outgoing instance is lost.
+4. **Never with real data.** Memory mode is for demonstration content only. It is never used with real Requesters, real Incidents or any personal data, and the production rail of §1 makes the worst case mechanically impossible.
+5. **Database guarantees that do not apply in memory mode, and their substitutes** — detailed in `DATA-MODEL.md` §3.8: the `uuidv7()` default (replaced by the in-process v7 generator), the `NO CYCLE` sequence (in-process counter, per-process only), `uq_incident_reference` (adapter-level uniqueness check), the M18 immutability trigger (adapter-level immutability check), `NOT NULL` and the ADR-014 `CHECK` constraints (the domain invariants plus the shared mapper; no database-level backstop), migrations (not run) and durability (none).
+6. **Stage is unauthenticated.** Every stage route answers anonymously with the `T-C10-74` fixed actor. This is a temporary deployment condition, not the product surface §11.3 rules out: no anonymous surface is designed, and the day authentication exists this ADR's reversal is mandatory.
+7. **What is tested where — and the shared port contract suite is deferred.** The Product Owner approved the *reduced* prototype: **no shared port contract suite and no automated post-deploy check are built under this ADR.** Each adapter is verified on its own terms. `InMemoryIncidentRepository` is covered by its **own unit specs** in the ordinary `test` target (and therefore in the pipeline's `verify` job): v7 identities, distinct on repeated calls; `INC` + seven digits; strictly increasing and never repeated references within one instance, starting at `1`; save/`findById`/`findByReference` round trip of every mapped field; `null` on absence; the uniqueness and reference-immutability rejections with the stored Incident left intact; the capacity ceiling and its typed error. `TypeOrmIncidentRepository` keeps its existing `integration` specs against PostgreSQL, and the guarantees that belong to the **database** — sequence behavior under concurrent connections and rollback, the M18 trigger against raw SQL, `uq_incident_reference` against a forced `INSERT` — stay in `incident-reference-sequence.integration-spec.ts`, PostgreSQL only. The production rail and "no `DataSource` constructed in memory mode" get unit specs in `apps/api`. `api-e2e` stays PostgreSQL only: acceptance evidence is produced against the system of record, and nothing is asserted automatically against the deployed stage. **Accepted risk: adapter parity.** Nothing proves mechanically that the two adapters honor the same observable port behavior; two independently written spec files can drift, and a behavior the use cases rely on could then differ between `postgres` and `memory` without any test failing. The risk is accepted for the lifetime of the prototype because memory mode holds demonstration content only (consequence 4) and every acceptance and database guarantee is still proven in `postgres` mode. It is **closed by the shared port contract suite** — one parameterized, test-only spec run against both adapters (`test` for the in-memory one, `integration` for the TypeORM one) — which is built when this ADR is reversed (see *After reversal*), not before.
+8. **Documentation cost.** `.env.example`, every in-repository environment block that boots the API or the CLI (`api-e2e` and `incident-infrastructure` targets, compose files, the workflow, specs that boot `AppModule`) gains `PERSISTENCE_MODE=postgres`; that is the price of the mandatory key and is paid once.
+
+**Alternatives rejected.** *A Render PostgreSQL after all*: excluded by the Product Owner's constraint. *SQLite or PGlite (embedded PostgreSQL) inside the API container*: a new runtime dependency, a second SQL dialect or a heavyweight WASM engine, and the migrations (native enums, `uuidv7()`, the plpgsql trigger) are PostgreSQL 18-specific — more work than the adapter and still volatile on Render's ephemeral filesystem. *An in-memory adapter in `apps/api`*: misplaced per §5.4/§6.3, and it would hide a same-context adapter among the cross-context ones. *Adapter selection by `NODE_ENV`*: couples two independent questions (which environment, which store); stage with a database must remain expressible. *Optional `PERSISTENCE_MODE` defaulting to `postgres`*: fails safe, but breaks the "every key mandatory" doctrine of `env.validation.ts` and hides the choice. *CORS with an absolute API URL*: see §4.
+
+**Reversal triggers — this ADR is revisited, and stage returns to `PERSISTENCE_MODE=postgres` with ADR-013 unamended, when any of the following happens:**
+
+1. A PostgreSQL database is provisioned for stage (set the `POSTGRES_*` variables, restore the pre-deploy command, switch the mode).
+2. Authentication lands (`T-C10-39` replaces the fixed actor): real identities make stage data personal data, which memory mode never holds.
+3. Stage must hold data worth keeping, run more than one API instance, or demonstrate FR-INC-02 / NFR-DAT-01 durability.
+4. Any production environment is proposed.
+
+After reversal the in-memory adapter **stays** in the codebase as a legitimate adapter (useful for local demos and for fast API-level tests); only its use on stage ends. Removing it is a separate decision. **Keeping it obliges closing the parity risk of consequence 7:** the reversal work includes the shared port contract suite (`libs/incident/infrastructure/src/testing/incident-repository.port-contract.ts`, test-only, never exported from the barrel, excluded from `tsconfig.lib.json`), run against both adapters, replacing the duplicated observable-behavior cases of the in-memory unit specs. If the adapter is removed instead, the suite is not needed.
+
 ---
 ## 11. Out of Scope for the MVP
 
@@ -1005,7 +1238,8 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 | CQRS with a separate read store | Premature for MVP volumes | `reporting` reads projections from the same database behind its own ports |
 | Event sourcing | Not required; the audit trail already satisfies reconstructability (NFR-AUD-01) | State-stored aggregates plus an append-only audit log |
 | Competition calendar service, live-window engine, freeze-window engine | Out of scope (ADR-006, PRD §3.3) | Agent-set competition-impact flag only |
-| Public / anonymous surface, spectator persona, public Knowledge Base | Out of scope (FR-IAM-01, FR-KNW-03, PRD §3.3) | Every route is behind authentication; article visibility is an entitlement filter applied server-side |
+| Public / anonymous surface, spectator persona, public Knowledge Base | Out of scope (FR-IAM-01, FR-KNW-03, PRD §3.3) | Every route is behind authentication; article visibility is an entitlement filter applied server-side. *The stage prototype answers anonymously through the `T-C10-74` fixed actor until authentication lands (ADR-015, consequence 6) — a temporary deployment condition, not a designed surface.* |
+| Durable persistence on stage | Stage prototype only (ADR-015): the Product Owner excluded a database from the Render deployment | `PERSISTENCE_MODE=memory` behind the unchanged repository ports; reversed by switching the variable back to `postgres` once a database exists — no code change |
 | Multi-tenancy | Single-tenant MVP (K7) | No tenant discriminator in the MVP schema; introducing one later is a migration plus a repository-level filter, confined to `type:infrastructure` |
 | NgRx or any external state library | Signals suffice (frontend standard) | Injectable signal stores in `type:data-access` |
 | Server-side rendering | Authenticated internal application; no SEO driver | Client-side Angular with lazy routes |
@@ -1019,10 +1253,13 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 | Check | Command | Enforces |
 |---|---|---|
 | Module boundaries and lint | `pnpm nx lint <project>` | §5.3 type matrix, scope rule, platform rule |
+| Boundaries actually bite | `pnpm verify:boundaries` | That the matrix rejects a violation, not merely that legal code passes (10 probes, `tools/boundary-probes/`) |
+| Layer purity at compile time | editor `tsc` today; a `typecheck` target when one exists (see §12.3) | `"types": []` in the `tsconfig.lib.json` of every `type:domain`, `type:application`, `type:contracts` and `type:util` library — `process`, `Buffer` and `fs` must not even typecheck there (§5.5) |
 | Dependency graph inspection | `pnpm nx graph` | Absence of context-to-context edges; §5.4 |
 | Changed-only gate | `pnpm nx affected -t lint test build` | CI enforcement on every change |
 | Unit tests without infrastructure | `pnpm nx test <context>-domain` | Domain purity — a domain test that needs a database proves a violation |
 | Acceptance | `pnpm nx e2e api-e2e` / `pnpm nx e2e web-e2e` | PRD acceptance criteria as Gherkin |
+| Adapter parity per port | *Deferred — not a check today.* Target once ADR-015 is reversed: `pnpm nx test incident-infrastructure` (in-memory adapter) and `pnpm nx run incident-infrastructure:integration` (TypeORM adapter), running the same shared port contract suite | Every adapter behind a repository port honors the same observable contract, so switching `PERSISTENCE_MODE` cannot change behavior the use cases rely on. Until then parity is an **accepted risk** of the prototype (ADR-015 consequence 7); each adapter is verified only by its own specs. |
 
 ### 12.2 Architectural review checklist for any new library
 
@@ -1034,19 +1271,27 @@ Per PRD §14.3, out of the MVP: Problem, Change, Release and CMDB management; em
 6. Does it grow `shared/domain` beyond primitives genuinely used by three or more contexts? If yes, push it down into the owning context.
 7. Is it a presentational component library? Domain-agnostic primitives belong in `libs/shared/ui` (`platform:frontend`, `scope:shared`, `type:ui`, ADR-010); anything that names an ITSM concept belongs in its context's own `type:ui` lib.
 8. Does it warrant an ADR — new context, tag-scheme change, new cross-context integration, new external dependency?
+9. Does it declare a **port**? Place it with the three tests of §5.4 (*Where a port is declared*) before writing the interface — a port in the wrong library is a boundary violation that compiles.
+10. Does it add a **repository adapter**? It lives in its context's `type:infrastructure` library, carries its own specs (unit for an in-memory adapter, `integration` for a TypeORM one; the shared port contract suite is deferred until ADR-015 is reversed), and — if the context's persistence is mode-selected — both entries of the context's `Record<PersistenceMode, Provider[]>` map are filled (ADR-015).
 
 ### 12.3 Current verification status
 
-The Nx workspace, the pinned toolchain, the lint/format layer and the enforced boundary matrix exist (`T-C10-01` … `T-C10-03`), and **all four applications are scaffolded**: `apps/api` (NestJS 11, `T-C10-04`), `apps/web` (Angular 20 standalone shell, `T-C10-05`) and both acceptance harnesses, `apps/api-e2e` and `apps/web-e2e` (Cypress 15 + Cucumber, driven directly per ADR-011, `T-C10-06`). `pnpm nx show projects` reports exactly `api`, `api-e2e`, `web` and `web-e2e`.
+The Nx workspace, the pinned toolchain, the lint/format layer and the enforced boundary matrix exist (`T-C10-01` … `T-C10-03`), and **all four applications are scaffolded** — `apps/api` (NestJS 11, `T-C10-04`), `apps/web` (Angular 20 standalone shell, `T-C10-05`) and both acceptance harnesses, `apps/api-e2e` and `apps/web-e2e` (Cypress 15 + Cucumber, driven directly per ADR-011, `T-C10-06`).
 
-What does **not** exist yet: no `libs/` directory — no shared kernel, no bounded-context library, no domain model. The two composition roots are wired to nothing: no use case, no TypeORM entity, no migration, no endpoint beyond bootstrap. The acceptance harnesses exist and run, but carry only their smoke scenarios: the epic's acceptance scenarios belong to the tickets that own the behavior.
+**Libraries.** The shared kernel exists except for the design system: `libs/shared/util` (`T-C10-07`), `libs/shared/domain` (`T-C10-08`, `T-C10-09` — identity, ticket-reference, priority and assessment-level primitives, `DateTimeRange`, `DomainError`, `DomainEvent`, `ClockPort` + `FixedClock` and `EventPublisherPort` with its `EVENT_PUBLISHER` token; `StateModel` is still target) and `libs/shared/contracts` (`T-C10-11` and the C1 tickets — error codes, error envelope, pagination, correlation id and the Incident intake and detail contracts). The first bounded context, `incident`, has all six libraries (`T-C1-01`), and five of them now carry the **Incident intake slice**: `incident-domain` (the `Incident` aggregate with `log()` raising `IncidentLogged`, the `OriginChannel` value object, `IncidentReferencePolicy`, and the ports `IncidentRepositoryPort`, `IncidentReadRepositoryPort` and `SlaPolicyPort`), `incident-application` (`LogIncidentUseCase`, `GetIncidentByReferenceUseCase`), `incident-infrastructure` (`IncidentEntity`, `IncidentMapper`, `TypeOrmIncidentRepository`, `InMemoryIncidentRepository`), `incident-data-access` (`IncidentApiService`, `IncidentStore`) and `incident-feature` (home page, intake form, detail page). `incident-ui` is still an empty barrel. `pnpm nx show projects` reports exactly **13** projects.
+
+**Composition root.** `apps/api` owns the TypeORM data source (`apps/api/src/data-source.ts`, `synchronize: false`, `T-C10-16`), a migration chain of **four** migrations (the bootstrap `iam` schema with the `citext` and `pg_trgm` extensions, the `incident` schema, `incident_ticket`, and the reference sequence plus the immutability guard trigger), the in-process post-commit `InProcessEventDispatcher` (`apps/api/src/event-dispatch/`, `T-C10-73`) bound through `EVENT_PUBLISHER`, `PersistenceModule.forMode()` (ADR-015), and `IncidentModule` with the thin `IncidentController` (`POST /api/incidents`, `GET /api/incidents/:reference`) behind the global `ValidationPipe`, the `GlobalExceptionFilter` and `X-Correlation-Id`. Two bindings are deliberately provisional: `INCIDENT_ACTOR_RESOLVER` supplies a fixed requester actor (no authentication exists), and `SLA_POLICY` is bound to `ProvisionalNoopSlaPolicyAdapter`. As built, `SlaPolicyPort` declares only `attachFor(incident): Promise<void>` — narrower than §6.2 — and `apps/api/src/testing/` still holds the `NODE_ENV=test`-only dispatcher harness. `apps/web` lazily loads `incident-feature` and registers an empty interceptor chain.
+
+What does **not** exist yet: `libs/shared/ui`, every bounded context other than `incident`, the rest of the `incident` model (triage, `PriorityCalculator`, the competition-impact flag, work notes, lifecycle), every event subscriber (audit, notification, reporting), every cross-context adapter, scheduled jobs, authentication and authorization, license gating, the health probes (`/health/live` and `/health/ready` are only reserved in `GLOBAL_PREFIX_EXCLUSIONS`), OpenAPI, structured logging, i18n on either platform, and every external integration. `@nestjs/swagger`, `nestjs-pino`, `@nestjs/terminus`, `nestjs-i18n`, Passport JWT / `bcrypt` and Transloco are not installed. Stage runs the API with `PERSISTENCE_MODE=memory` and no database, behind the web container's nginx, which reverse-proxies `/api/` (ADR-015, `T-C10-79`).
 
 What that means for each check:
 
-- **Module boundaries.** Configured and *proven to bite*. Because a green lint over legal code would not demonstrate that an illegal import is caught, the rule is verified by `pnpm verify:boundaries` (`tools/boundary-probes/`), which scaffolds throwaway projects carrying one deliberate violation each — type matrix, scope rule, platform rule, the two-tag case, the ban on depending on a `type:app`, and the `type:e2e` restriction — asserts every one is rejected, checks that three legal control edges are *not* rejected, and removes the scaffolding. Re-run it after any change to the tag vocabulary, the type matrix or `depConstraints`.
-- **Dependency graph inspection.** Operational, and no longer empty: `pnpm nx graph` reports four projects. It remains **uninformative**, because they are two `type:app` composition roots and two `type:e2e` suites, none with a library to depend on — the graph has four nodes and zero edges. Each suite reaches its application through an Nx *task* dependency (`dependsOn`), deliberately not through an implicit dependency, so no `e2e → app` edge is asserted that the type matrix would forbid. It becomes a real check with the first `libs/` ticket.
-- **Changed-only gate and lint over real code.** Live. `pnpm nx run-many -t lint test build` now runs real tasks for all four applications and passes, and `pnpm nx affected` has projects to select. The Angular rule set is confirmed active on `apps/web/**` and absent on `apps/api/**` (`pnpm eslint --print-config`).
-- **Unit tests.** Configured (Jest 29 on both projects) but **empty**: both `test` targets run with `passWithNoTests`, so a green result proves the runner works, not that anything is tested. The first real suite arrives with the first domain library.
-- **Acceptance.** Executable: `pnpm nx e2e api-e2e` and `pnpm nx e2e web-e2e` run Cypress 15 with `.feature` files as the spec entry point, each target starting the application under test itself — the API from its own build with `NODE_ENV`/`PORT` supplied by the target (never from a gitignored `.env`), the shell from `web:serve` as a continuous task. Both suites hold **one smoke scenario**, which proves the chain runs end to end and nothing about product behavior.
+- **Module boundaries.** Configured and *proven to bite*. Because a green lint over legal code would not demonstrate that an illegal import is caught, the rule is verified by `pnpm verify:boundaries` (`tools/boundary-probes/`), which scaffolds throwaway projects carrying one deliberate violation each — type matrix (`domain → infrastructure`), scope rule, platform rule, the two-tag case, the ban on depending on a `type:app`, the `type:e2e` restriction, and the most restrictive row of all, `type:util → type:contracts` — asserts every one is rejected, checks that three legal control edges are *not* rejected, and removes the scaffolding. **10 probes, exit 0.** Re-run it after any change to the tag vocabulary, the type matrix or `depConstraints`. Remember that the plugin reports only the **first** violated constraint per import, in `depConstraints` order (type matrix first), so a probe must be built so that the rule it names is the first one it breaks (`eslint.config.mjs`).
+- **Dependency graph inspection.** Operational and **informative under load**: 13 nodes and **20 code edges**, every one legal under §5.3 and §5.4 — the backend chain (`incident-infrastructure → incident-domain`, `incident-application → incident-domain`, and those plus `incident-domain` onto `shared-domain` / `shared-util`), the frontend chain (`web ⇢ incident-feature`, a lazy dynamic import, `→ incident-data-access → shared-contracts`, plus `incident-feature → shared-contracts` and `→ shared-util`), `api` onto `incident-{domain,application,infrastructure}` and the three shared libraries as composition root, `shared-domain → shared-util`, and `web-e2e → shared-contracts`. No context-to-context and no frontend-to-backend edge exists — true by design, though with a single context it is not yet tested across contexts. Each E2E suite reaches its application through an Nx *task* dependency (`dependsOn`), deliberately not through an implicit dependency, so no `e2e → app` edge is asserted that the type matrix would forbid.
+- **Changed-only gate and lint over real code.** Live. `pnpm nx run-many -t lint test build` passes: `lint` on all 13 projects, `test` on the 11 that have a Jest configuration (not the two E2E suites), `build` on the only two buildable projects, `api` and `web`. The Angular rule set is scoped by path to `apps/web/**`, `apps/web-e2e/**` and the `feature`/`ui`/`data-access` libraries, and is absent on `apps/api/**` and the backend libraries.
+- **Layer purity at compile time.** Configured, **not yet gated**. Every `type:domain`, `type:application`, `type:contracts` and `type:util` library carries `"types": []` in `tsconfig.lib.json` as §5.5 requires, the three Angular `incident-*` libraries carry it by generation, and `incident-infrastructure` keeps `["node"]`. But no library has a `build` or `typecheck` target and Jest compiles through `tsconfig.spec.json`, so no target in the workspace typechecks a library's `tsconfig.lib.json`. The setting holds in the editor and in review, not in CI; adding a `typecheck` target for library projects remains a known follow-up, now overdue since the `incident` hexagon holds real code.
+- **Unit tests.** Real for the shared kernel, the `incident` slice and `apps/api`: 48 suites / 399 tests on the last recorded run (per project in `readme.md` §2.6.6). `incident-ui` (`passWithNoTests: true` in its `jest.config.ts`, §5.5 step 5) and `apps/web` (the same option on its `project.json` target) still have no spec, so a green `test` there proves only that the runner starts; `apps/api` also keeps `passWithNoTests` on its target although it now has specs. The in-memory adapter is covered by its own unit specs; the shared port contract suite is deferred (ADR-015 consequence 7).
+- **Integration tests.** `pnpm nx run incident-infrastructure:integration` runs the TypeORM adapter and the reference-sequence / immutability-trigger guarantees against an ephemeral PostgreSQL 18 (2 suites / 13 tests on the last recorded run); it needs Docker and is not part of the `test` target.
+- **Acceptance.** Executable and **asserting product behavior**: `pnpm nx e2e api-e2e` (4 features — harness smoke, the `T-C10-73` dispatcher scenario, Incident intake and Incident detail — against the API with `PERSISTENCE_MODE=postgres` and an ephemeral PostgreSQL) and `pnpm nx e2e web-e2e` (3 features — harness smoke, home page, Incident intake). Each target starts the application under test itself, never from a gitignored `.env`. Nothing is asserted automatically against the deployed stage (ADR-015 consequence 7).
 
-The next scaffolding tasks create `libs/shared/*` and then the `incident` hexagon per §5.5.
+The next scaffolding work continues the `incident` hexagon (`docs/backlog/C1/tickets/`), and completes the shared kernel with `libs/shared/ui` when the first presentational component needs it — in every case with the exact commands and post-generation steps of §5.5.

@@ -1,0 +1,61 @@
+// Local custom properties standing in for `libs/shared/ui`'s design tokens —
+// the same deviation `incident-intake-form.component.scss`/
+// `incident-detail.component.scss` already accept (`T-C1-10`/`T-C1-101`
+// Context). Every `--home-page-*` value below is a placeholder to replace
+// with the equivalent shared token once the design system lands, never a
+// permanent design decision.
+:host {
+  --home-page-spacing-sm: 0.5rem;
+  --home-page-spacing-md: 1rem;
+  --home-page-spacing-lg: 1.5rem;
+  --home-page-color-text: #1a1a1a;
+  --home-page-color-muted: #4a4a4a;
+  --home-page-color-accent: #0b4ea2;
+  --home-page-radius: 4px;
+  --home-page-font-size-base: 1rem;
+
+  display: block;
+  box-sizing: border-box;
+  max-width: 40rem;
+  margin-inline: auto;
+  padding: var(--home-page-spacing-lg) var(--home-page-spacing-md);
+  color: var(--home-page-color-text);
+  font-size: var(--home-page-font-size-base);
+}
+
+:host * {
+  box-sizing: inherit;
+}
+
+.home-page__heading {
+  margin: 0 0 var(--home-page-spacing-md);
+}
+
+.home-page__intro {
+  color: var(--home-page-color-muted);
+  margin: 0 0 var(--home-page-spacing-lg);
+}
+
+.home-page__link {
+  display: inline-block;
+  padding: var(--home-page-spacing-sm) var(--home-page-spacing-lg);
+  border-radius: var(--home-page-radius);
+  background-color: var(--home-page-color-accent);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.home-page__link:focus-visible {
+  outline: 3px solid var(--home-page-color-accent);
+  outline-offset: 2px;
+}
+
+// 360px is the narrowest viewport the sibling intake form is held to
+// (`T-C1-10` AC2); this page is the first thing a visitor sees before it, so
+// it is held to the same bar.
+@media (max-width: 22.5rem) {
+  :host {
+    padding-inline: var(--home-page-spacing-sm);
+  }
+}

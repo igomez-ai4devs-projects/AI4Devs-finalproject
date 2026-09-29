@@ -42,9 +42,9 @@ here*. Does not touch backend, frontend or test code.
   Dockerfiles) and `.github/workflows/deploy-stage.yml`. **The deployment platform is decided** —
   ADR-013 (`docs/product/ARCHITECTURE.md` §10, answered in `readme.md` §2.4): Render, stage only, no
   production, prebuilt `ghcr.io` images, deploy hooks called explicitly by the pipeline, no
-  `render.yaml`. What still does not exist — `apps/api/src/data-source.ts` / any migration
-  (`T-C10-16`/`T-C10-17`), `apps/api-e2e` / `apps/web-e2e` (`T-C10-06`) — stays out of the workflow
-  until those tickets land. The references describe targets and decisions, never invented facts.
+  `render.yaml`. The data source (`apps/api/src/data-source.ts`, `T-C10-16`), the bootstrap migration
+  (`T-C10-17`), the compiled migration runtime (`api:build-migrations`, `T-C10-69`) and both
+  acceptance projects (`T-C10-06`) exist and are wired into the workflow. The references describe targets and decisions, never invented facts.
   Re-verify before relying on any "what exists" statement.
 - Infrastructure and pipeline only; business logic → `backend-engineer` / `frontend-engineer`; test
   code → `testing-implementer`; structural decisions and ADRs → `sport-itsm-architect`.

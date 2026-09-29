@@ -1,0 +1,109 @@
+// Local custom properties standing in for `libs/shared/ui`'s design tokens —
+// the same deviation `incident-intake-form.component.scss` already accepts
+// (`T-C1-10` deviation 1, `T-C1-101` Context). Every `--incident-detail-*`
+// value below is a placeholder to replace with the equivalent shared token
+// once the design system lands, never a permanent design decision; declared
+// as component-scoped custom properties so that swap is a one-line edit per
+// property, not a search across this file.
+:host {
+  --incident-detail-spacing-xs: 0.25rem;
+  --incident-detail-spacing-sm: 0.5rem;
+  --incident-detail-spacing-md: 1rem;
+  --incident-detail-spacing-lg: 1.5rem;
+  --incident-detail-color-text: #1a1a1a;
+  --incident-detail-color-muted: #4a4a4a;
+  --incident-detail-color-border: #767676;
+  --incident-detail-color-error: #8a1f16;
+  --incident-detail-color-error-bg: #fdecea;
+  --incident-detail-radius: 4px;
+  --incident-detail-font-size-base: 1rem;
+  --incident-detail-font-size-sm: 0.875rem;
+
+  display: block;
+  box-sizing: border-box;
+  max-width: 40rem;
+  margin-inline: auto;
+  padding: var(--incident-detail-spacing-lg) var(--incident-detail-spacing-md);
+  color: var(--incident-detail-color-text);
+  font-size: var(--incident-detail-font-size-base);
+}
+
+:host * {
+  box-sizing: inherit;
+}
+
+.incident-detail__heading {
+  margin: 0 0 var(--incident-detail-spacing-lg);
+}
+
+// Focusable via `tabindex="-1"` (programmatic focus only, never in the Tab
+// order) so a requester arriving here is told which report they are looking
+// at without an outline implying it is keyboard-interactive.
+.incident-detail__heading:focus {
+  outline: none;
+}
+
+.incident-detail__heading:focus-visible {
+  outline: 3px solid var(--incident-detail-color-border);
+  outline-offset: 2px;
+}
+
+.incident-detail__status {
+  color: var(--incident-detail-color-muted);
+}
+
+.incident-detail__outcome {
+  h2 {
+    margin: 0 0 var(--incident-detail-spacing-sm);
+    font-size: var(--incident-detail-font-size-base);
+  }
+
+  p {
+    margin: 0 0 var(--incident-detail-spacing-sm);
+  }
+}
+
+.incident-detail__outcome--error {
+  border: 2px solid var(--incident-detail-color-error);
+  background-color: var(--incident-detail-color-error-bg);
+  color: var(--incident-detail-color-error);
+  border-radius: var(--incident-detail-radius);
+  padding: var(--incident-detail-spacing-md);
+}
+
+.incident-detail__support-code {
+  font-size: var(--incident-detail-font-size-sm);
+  margin: 0;
+}
+
+.incident-detail__fields-heading {
+  font-size: var(--incident-detail-font-size-base);
+  margin: 0 0 var(--incident-detail-spacing-md);
+}
+
+.incident-detail__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+}
+
+.incident-detail__fields dt {
+  font-weight: 600;
+  margin-top: var(--incident-detail-spacing-md);
+}
+
+.incident-detail__fields dd {
+  margin: var(--incident-detail-spacing-xs) 0 0;
+  color: var(--incident-detail-color-text);
+  white-space: pre-line;
+}
+
+// 360px is the narrowest viewport `T-C1-10` AC2 requires the sibling intake
+// form to fit without horizontal scrolling; this screen is reached straight
+// from that form, so it is held to the same bar.
+@media (max-width: 22.5rem) {
+  :host {
+    padding-inline: var(--incident-detail-spacing-sm);
+  }
+}

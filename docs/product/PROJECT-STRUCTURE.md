@@ -19,6 +19,7 @@ AI4Devs-finalproject/
 ├─ tsconfig.base.json               # TypeScript 5.9 strict + path aliases (@sport-itsm/<lib>) for every library
 ├─ eslint.config.mjs                # ESLint 9 flat config - hosts @nx/enforce-module-boundaries (the boundary matrix)
 ├─ .prettierrc                      # Prettier 3 - single quotes, semicolons; formatting is never hand-made
+├─ .gitattributes                   # every text file checked out as LF (eol=lf), on every platform
 ├─ jest.preset.js                   # shared Jest 29 preset
 ├─ .gitignore
 │
@@ -26,11 +27,19 @@ AI4Devs-finalproject/
 │  ├─ api/                          # platform:backend  scope:shared  type:app
 │  │  ├─ src/
 │  │  │  ├─ main.ts                 # bootstrap: global prefix /api, ValidationPipe, pino, i18n, Swagger (dev only)
-│  │  │  ├─ data-source.ts          # TypeORM DataSource used by the migration CLI (synchronize: false)
+│  │  │  ├─ data-source.ts          # TypeORM DataSource used by the migration CLI (synchronize: false)  (EXISTS - T-C10-16)
+│  │  │  ├─ event-dispatch/         # (EXISTS - T-C10-73) single post-commit domain-event dispatcher
+│  │  │  │  ├─ event-dispatch.module.ts          # binds EVENT_PUBLISHER (from @sport-itsm/shared-domain) to the dispatcher
+│  │  │  │  ├─ event-dispatch.tokens.ts
+│  │  │  │  ├─ event-subscriber.ts
+│  │  │  │  ├─ event-subscription-registry.ts
+│  │  │  │  └─ in-process-event-dispatcher.ts   # implements EventPublisherPort (+ .spec.ts beside it)
+│  │  │  ├─ testing/                # (EXISTS - T-C10-73) test-only HTTP harness, in the module graph only when NODE_ENV=test
 │  │  │  ├─ app/
 │  │  │  │  ├─ app.module.ts        # root module: imports every context composition module
 │  │  │  │  ├─ incident/            # composition root slice for the incident context
-│  │  │  │  │  ├─ incident.module.ts            # binds ports to adapters: { provide: INCIDENT_REPOSITORY, useClass: … }
+│  │  │  │  │  ├─ incident.module.ts            # binds ports to adapters: use cases, CLOCK, SLA_POLICY, actor resolver
+│  │  │  │  │  ├─ incident-persistence.bindings.ts   # target (ADR-015): Record<PersistenceMode, Provider[]> for the two repository tokens
 │  │  │  │  │  ├─ incident.controller.ts        # thin inbound HTTP adapter - no business logic
 │  │  │  │  │  ├─ dto/
 │  │  │  │  │  │  ├─ log-incident.dto.ts        # class-validator DTO implementing the contract type
@@ -43,9 +52,7 @@ AI4Devs-finalproject/
 │  │  │  │  │  ├─ sla.module.ts
 │  │  │  │  │  └─ jobs/sla-sweep.job.ts         # second inbound adapter: warning/breach sweep, auto-close
 │  │  │  │  ├─ service-request/  knowledge/  service-catalog/  identity-access/
-│  │  │  │  ├─ approval/  notification/  audit/  reporting/
-│  │  │  │  └─ events/
-│  │  │  │     └─ in-process-event-publisher.ts # single post-commit domain-event dispatcher
+│  │  │  │  └─ approval/  notification/  audit/  reporting/
 │  │  │  ├─ common/
 │  │  │  │  ├─ filters/domain-error.filter.ts   # domain error -> contract error-code envelope
 │  │  │  │  ├─ guards/jwt-auth.guard.ts
@@ -54,24 +61,31 @@ AI4Devs-finalproject/
 │  │  │  │  └─ auth/jwt.strategy.ts             # Passport JWT
 │  │  │  ├─ config/
 │  │  │  │  ├─ configuration.ts                 # @nestjs/config factory - no raw process.env in feature code
-│  │  │  │  └─ env.validation.ts                # validated environment schema
+│  │  │  │  └─ env.validation.ts                # validated environment schema (+ PERSISTENCE_MODE, ADR-015 - target)
+│  │  │  ├─ database/                            # (EXISTS - T-C1-06) DatabaseModule: the one DataSource, postgres mode only
+│  │  │  ├─ persistence/                         # target (ADR-015): PersistenceModule.forMode(mode) - the ONLY reader of
+│  │  │  │                                       #   PERSISTENCE_MODE; imports DatabaseModule for postgres only
 │  │  │  ├─ health/
 │  │  │  │  ├─ health.controller.ts             # /health/live and /health/ready - NOT under /api
 │  │  │  │  └─ health.module.ts
 │  │  │  ├─ i18n/
 │  │  │  │  ├─ en/{errors,notifications}.json
 │  │  │  │  └─ es/{errors,notifications}.json
-│  │  │  └─ migrations/
-│  │  │     ├─ 1712345678901-CreateIdentityAccessTables.ts
-│  │  │     └─ 1712345679002-CreateIncidentTables.ts
+│  │  │  └─ migrations/             # (EXISTS - T-C10-17) the migration chain
+│  │  │     ├─ README.md                        # naming and registration conventions
+│  │  │     ├─ 1790349248155-CreateIamSchemaAndExtensions.ts   # bootstrap: iam schema, citext, pg_trgm
+│  │  │     └─ <timestamp>-CreateIncidentTables.ts             # target: one migration per context schema
 │  │  ├─ jest.config.ts
 │  │  ├─ project.json                           # Nx targets + the three tags
 │  │  └─ tsconfig.{json,app.json,spec.json}
 │  │
 │  ├─ api-e2e/                       # platform:backend  scope:shared  type:e2e
 │  │  ├─ src/
-│  │  │  ├─ features/log-incident.feature       # Gherkin, traced to PRD acceptance criteria
-│  │  │  ├─ step-definitions/log-incident.steps.ts
+│  │  │  ├─ features/                           # Gherkin, traced to PRD acceptance criteria
+│  │  │  │  ├─ harness-smoke.feature            # EXISTS (T-C10-06): the API under test answers HTTP
+│  │  │  │  ├─ event-dispatch-harness.feature   # EXISTS (T-C10-73): post-commit dispatch via the NODE_ENV=test harness
+│  │  │  │  └─ log-incident.feature             # target: first product scenario (C1)
+│  │  │  ├─ step-definitions/                   # one *.steps.ts per feature (harness-smoke, event-dispatch-harness exist)
 │  │  │  └─ support/
 │  │  ├─ cypress.config.ts
 │  │  └─ project.json
@@ -98,20 +112,24 @@ AI4Devs-finalproject/
 │
 ├─ libs/
 │  ├─ shared/
-│  │  ├─ contracts/                  # platform:shared scope:shared type:contracts - types only (ADR-007)
+│  │  ├─ contracts/                  # platform:shared scope:shared type:contracts - types only (ADR-007)  (EXISTS - T-C10-11)
 │  │  │  └─ src/
 │  │  │     ├─ index.ts                          # public barrel
 │  │  │     └─ lib/
-│  │  │        ├─ incident/{log-incident.request.ts,incident-detail.response.ts,incident.enums.ts}
-│  │  │        ├─ sla/…  service-request/…  knowledge/…
-│  │  │        └─ errors/error-code.ts           # stable error codes shared FE+BE
-│  │  ├─ domain/                     # platform:shared scope:shared type:domain - shared kernel primitives
-│  │  │  └─ src/lib/{identity.ts,ticket-reference.vo.ts,priority.vo.ts,domain-event.ts,state-model.ts,clock.port.ts}
-│  │  ├─ ui/                         # platform:frontend scope:shared type:ui - in-house design system (ADR-010)
+│  │  │        ├─ error-code.ts  error-envelope.ts  pagination.ts  correlation-id.ts   # EXISTS: the cross-cutting baseline
+│  │  │        └─ incident/…  sla/…  service-request/…  knowledge/…              # target: one folder per context's API shapes
+│  │  ├─ domain/                     # platform:shared scope:shared type:domain - shared kernel primitives  (EXISTS - T-C10-08, T-C10-09)
+│  │  │  └─ src/lib/{identity.ts,ticket-reference.vo.ts,priority.vo.ts,impact-level.vo.ts,urgency-level.vo.ts,
+│  │  │              assessment-scale.ts,date-time-range.vo.ts,domain-error.ts,domain-event.ts,
+│  │  │              clock.port.ts,fixed-clock.ts,event-publisher.port.ts}   # EXISTS, specs beside the code
+│  │  │                                                                     # target: state-model.ts (C12 primitive, not built yet)
+│  │  ├─ ui/                         # platform:frontend scope:shared type:ui - in-house design system (ADR-010)  (NOT YET SCAFFOLDED)
 │  │  │  └─ src/lib/{button/,form-field/,dialog/,menu/,table/,tabs/,toast/,badge/,chip/,a11y/{focus-trap.directive.ts,live-announcer.service.ts},styles/_tokens.scss}
-│  │  └─ util/                       # platform:shared scope:shared type:util - pure helpers
+│  │  └─ util/                       # platform:shared scope:shared type:util - pure helpers  (EXISTS - T-C10-07)
+│  │     └─ src/{index.ts,lib/{result.ts,non-empty-string.ts,assert-never.ts}}
 │  │
-│  ├─ incident/                      # one folder per bounded context
+│  ├─ incident/                      # one folder per bounded context  (all six libs EXIST, scaffolded EMPTY - T-C1-01:
+│  │  │                              #  barrel `export {};`, "targets": {}, passWithNoTests; everything under src/lib/ below is target)
 │  │  ├─ domain/                     # platform:backend scope:incident type:domain   (PURE TypeScript)
 │  │  │  └─ src/
 │  │  │     ├─ index.ts
@@ -139,12 +157,17 @@ AI4Devs-finalproject/
 │  │  │     ├─ authorization/incident.policies.ts        # authorization expressed in domain terms
 │  │  │     └─ mappers/incident-response.mapper.ts       # aggregate -> contract response
 │  │  ├─ infrastructure/             # platform:backend scope:incident type:infrastructure
-│  │  │  └─ src/lib/
-│  │  │     ├─ persistence/
-│  │  │     │  ├─ entities/{incident.entity.ts,work-note.entity.ts}   # TypeORM persistence entities
-│  │  │     │  ├─ mappers/incident.mapper.ts                          # entity <-> aggregate (ADR-005)
-│  │  │     │  └─ typeorm-incident.repository.ts                      # implements IncidentRepositoryPort
-│  │  │     └─ gateways/scms-competition.gateway.ts                   # anticorruption layer + free-text fallback
+│  │  │  ├─ src/lib/
+│  │  │  │  ├─ persistence/
+│  │  │  │  │  ├─ entities/{incident.entity.ts,work-note.entity.ts}   # TypeORM persistence entities
+│  │  │  │  │  ├─ mappers/incident.mapper.ts                          # entity <-> aggregate (ADR-005)
+│  │  │  │  │  └─ typeorm-incident.repository.ts                      # implements IncidentRepositoryPort
+│  │  │  │  ├─ in-memory/                                             # target (ADR-015) - stage prototype adapter
+│  │  │  │  │  ├─ in-memory-incident.repository.ts                    # implements both repository ports, no DataSource
+│  │  │  │  │  └─ uuid-v7.ts                                          # private RFC 9562 v7 generator (node:crypto), not exported
+│  │  │  │  └─ gateways/scms-competition.gateway.ts                   # anticorruption layer + free-text fallback
+│  │  │  └─ src/testing/incident-repository.port-contract.ts          # target, DEFERRED (ADR-015 consequence 7): shared port contract
+│  │  │                                                               #   suite, built only when ADR-015 is reversed - not created now
 │  │  ├─ feature/                    # platform:frontend scope:incident type:feature
 │  │  │  └─ src/lib/
 │  │  │     ├─ incident.routes.ts                # lazy route definitions consumed by apps/web
@@ -170,17 +193,29 @@ AI4Devs-finalproject/
 │  ├─ approval/  notification/  audit/  reporting/    # generic supporting contexts (ADR-001)
 │  └─ problem/  change/  release/  asset-config/      # PHASE 2 - deliberately not scaffolded yet
 │
-├─ docs/product/
-│  ├─ PRD.md                         # product requirements (behavioral authority for the MVP)
-│  ├─ ARCHITECTURE.md                # target architecture: C4, context map, hexagon, ADR-001..010
-│  ├─ COMPONENTS.md                  # main components (companion to readme §2.2)
-│  ├─ PROJECT-STRUCTURE.md           # this document (companion to readme §2.3)
-│  └─ adr/                           # ADRs promoted to individual files when scaffolding starts
+├─ docs/
+│  ├─ product/
+│  │  ├─ PRD.md                      # product requirements (behavioral authority for the MVP)
+│  │  ├─ ARCHITECTURE.md             # target architecture: C4, context map, hexagon, ADR-001..015 (§10)
+│  │  ├─ DATA-MODEL.md               # prescriptive relational schema, per context schema
+│  │  ├─ COMPONENTS.md               # main components (companion to readme §2.2)
+│  │  └─ PROJECT-STRUCTURE.md        # this document (companion to readme §2.3)
+│  ├─ backlog/                       # derived from the PRD: epic-map.md, <key>/user-stories.md, <key>/tickets/
+│  └─ adr/                           # target, not created yet: ADRs still live in ARCHITECTURE.md §10
+│
+├─ docker/                          # container definitions (ADR-013)
+│  ├─ backend/{Dockerfile,docker-entrypoint.sh}      # API runtime image; entrypoint stays migration-free
+│  ├─ frontend/Dockerfile                            # nginx serving dist/apps/web/browser
+│  ├─ frontend/nginx.conf(.template)                 # target (ADR-015): template rendered at start, proxies /api/ to API_UPSTREAM_URL
+│  └─ docker-compose.{dev,e2e,stage}.yml             # dev DB (5452), ephemeral acceptance DB (5499), stage image build definition
+│
+├─ .github/workflows/deploy-stage.yml  # verify -> acceptance -> deploy-stage (push to main only; ghcr.io + Render deploy hooks)
 │
 ├─ .claude/
-│  ├─ agents/{sport-itsm-architect.md,sport-itsm-product-owner.md}
+│  ├─ agents/{sport-itsm-product-owner,sport-itsm-architect,business-analyst,architect-tech-lead,
+│  │         backend-engineer,frontend-engineer,testing-implementer,ci-cd-expert}.md
 │  └─ skills/{sport-itsm-architecture,sport-itsm-backend,sport-itsm-frontend,
-│             sport-itsm-engineering-principles,service-desk-expert,feature-docs,…}/
+│             sport-itsm-engineering-principles,sport-itsm-workflow,service-desk-expert,feature-docs,…}/
 │
 ├─ CLAUDE.md                         # operational context for AI agents working in this repo
 ├─ readme.md                         # the delivery document
@@ -206,8 +241,8 @@ AI4Devs-finalproject/
 | `libs/shared/domain` | Shared kernel primitives genuinely used by three or more contexts (`Identity`, `TicketReference`, `Priority`, `DomainEvent`, `StateModel`, `ClockPort`). Deliberately kept small. |
 | `libs/shared/ui` | The in-house **design system**: domain-agnostic presentational components reusable by any context (button, form field, dialog/overlay, menu, table, tabs, toast, badge, chip), the SCSS design-token layer and the hand-written accessibility primitives (focus-trap/restore directive, `aria-live` announcer). Angular code with a shared scope, therefore tagged `platform:frontend scope:shared type:ui`, not `platform:shared` (ADR-010). It injects no service and performs no I/O. |
 | `libs/shared/util` | Pure, dependency-free helpers. |
-| `docs/` | Engineering documentation: PRD, architecture, components, this structure document, and `docs/adr/` for Architecture Decision Records. |
-| `.claude/` | The AI operating model: **agents** (Product Owner, Software Architect) and **skills** (architecture, backend, frontend, engineering principles, ITSM domain, documentation standard). |
+| `docs/` | `docs/product/`: PRD, architecture, data model, components and this structure document. `docs/backlog/`: the backlog derived from the PRD (epic map, user stories, tickets). `docs/adr/` is the intended home of individual Architecture Decision Records; it does not exist yet — the ADRs still live in `ARCHITECTURE.md` §10. |
+| `.claude/` | The AI operating model: **agents** (Product Owner, Software Architect, Business Analyst, Architect / Tech Lead, backend engineer, frontend engineer, testing implementer, CI/CD expert) and **skills** (architecture, backend, frontend, engineering principles, workflow, CI/CD, ITSM domain, backlog roles, documentation standard). |
 
 ## 4. Naming and file conventions
 
@@ -240,8 +275,8 @@ The consequence worth stating plainly: **in this repository the folder structure
 ## 6. Documentation, specification and agent folders
 
 - **`docs/product/PRD.md`** is the single canonical source of **product behavior**, for the life of the project. There is no `openspec/` directory and no spec-delta workflow: a behavior change is made in the PRD by the Product Owner, and the derived backlog under `docs/backlog/` is regenerated from it.
-- **`docs/`** also holds the engineering counterpart: the architecture document, the component reference, this structure document, and `docs/adr/` where the structural decisions currently embedded in `ARCHITECTURE.md` §10 are promoted to individual ADR files once scaffolding starts.
-- **`.claude/`** holds the AI operating model: **agents** (`sport-itsm-product-owner`, `sport-itsm-architect`) are roles, and **skills** are the layered, reusable guardrails they consume — business (`service-desk-expert`), system (`sport-itsm-architecture`), craft (`sport-itsm-engineering-principles`), stack (`sport-itsm-backend`, `sport-itsm-frontend`) and documentation (`feature-docs`). `CLAUDE.md` at the root is the entry point that ties them together.
+- **`docs/`** also holds the engineering counterpart: the architecture document, the component reference, this structure document, and `docs/adr/`, the intended home of the structural decisions currently embedded in `ARCHITECTURE.md` §10 once they are promoted to individual ADR files. That promotion has not happened: `docs/adr/` does not exist today, and `ARCHITECTURE.md` §10 remains the only ADR record.
+- **`.claude/`** holds the AI operating model: **agents** (`sport-itsm-product-owner`, `sport-itsm-architect`, `business-analyst`, `architect-tech-lead`, `backend-engineer`, `frontend-engineer`, `testing-implementer`, `ci-cd-expert`) are roles, and **skills** are the layered, reusable guardrails they consume — business (`service-desk-expert`), system (`sport-itsm-architecture`), craft (`sport-itsm-engineering-principles`), stack (`sport-itsm-backend`, `sport-itsm-frontend`) and documentation (`feature-docs`). `CLAUDE.md` at the root is the entry point that ties them together.
 
 ## 7. Governance commands
 
@@ -256,4 +291,13 @@ The consequence worth stating plainly: **in this repository the folder structure
 | Inspect the dependency graph    | `pnpm nx graph`                                                               |
 | Schema evolution                | `pnpm typeorm migration:generate\|run\|revert -d apps/api/src/data-source.ts` |
 
-> **Status:** as in readme §2.1 and §2.2, this is the **target structure**, now partly materialized. The Nx workspace, the toolchain and the enforced boundary matrix exist (`T-C10-01` … `T-C10-03`), and all four applications are scaffolded — `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and both acceptance suites, `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`) — so `pnpm nx show projects` reports exactly `api`, `api-e2e`, `web` and `web-e2e`, and `pnpm nx lint` passes for all four. The `apps/*-e2e` trees above are therefore real: `src/features/*.feature` with `src/step-definitions/*.steps.ts` beside them, one smoke scenario each, plus the `cypress.config.ts` and `project.json` each suite owns (ADR-011 — no `@nx/cypress`). There is still **no `libs/` directory**, so every path under `libs/` above remains prescriptive design intent. The boundary rules themselves are verified by `pnpm verify:boundaries` (9/9), not by the four applications, which import no library yet.
+> **Status:** as in readme §2.1 and §2.2, this is the **target structure**, now partly materialized. The Nx workspace, the toolchain and the enforced boundary matrix exist (`T-C10-01` … `T-C10-03`), and all four applications are scaffolded — `apps/api` (`T-C10-04`), `apps/web` (`T-C10-05`) and both acceptance suites, `apps/api-e2e` and `apps/web-e2e` (`T-C10-06`). `pnpm nx show projects` reports exactly **13** projects: those four applications, `shared-contracts`, `shared-domain`, `shared-util`, and the six `incident-*` libraries; `pnpm nx run-many -t lint` passes for all 13.
+>
+> What is real on disk (the tree above marks the `libs/` and `apps/api` entries `EXISTS`):
+>
+> - **The shared kernel, except the design system.** `libs/shared/util` (`T-C10-07`), `libs/shared/domain` (`T-C10-08`, `T-C10-09`, including `EventPublisherPort` and its `EVENT_PUBLISHER` token) and `libs/shared/contracts` (`T-C10-11`). All three materialize this document's rules exactly as written: barrel at `src/index.ts`, alias `@sport-itsm/shared-<name>`, `project.json` carrying the three tags, no `package.json` of their own. **`libs/shared/ui` does not exist yet.**
+> - **The first bounded context, scaffolded empty.** `libs/incident/{domain,application,infrastructure,feature,ui,data-access}` exist (`T-C1-01`) with their three tags, `"targets": {}` (lint and test are inferred), an empty barrel (`export {};`) and `passWithNoTests: true` in each `jest.config.ts` until its first spec lands (`ARCHITECTURE.md` §5.5). Every file shown under their `src/lib/` is still target.
+> - **The persistence and event plumbing of the composition root.** `apps/api/src/data-source.ts` (`T-C10-16`), `apps/api/src/migrations/` with its conventions README and the bootstrap migration (`T-C10-17`), `apps/api/src/event-dispatch/` — the in-process post-commit dispatcher bound to `EVENT_PUBLISHER` (`T-C10-73`) — and `apps/api/src/testing/`, its `NODE_ENV=test`-only acceptance harness. `apps/api/src/config/` exists as well.
+> - **The acceptance suites.** `src/features/*.feature` with `src/step-definitions/*.steps.ts` beside them, plus the `cypress.config.ts` and `project.json` each suite owns (ADR-011 — no `@nx/cypress`): one smoke scenario each, plus the dispatcher scenario in `api-e2e`.
+>
+> **Every other path above remains prescriptive design intent** — no design system, no bounded context other than the empty `incident` libraries, no context composition module under `apps/api/src/app/`, no `common/`, `health/` or `i18n/` in `apps/api`, no interceptors or guards in `apps/web`. The graph has 13 nodes and **exactly two edges**: `api → shared-domain` (the dispatcher wiring) and `shared-domain → shared-util`; nothing imports `shared-contracts` or any `incident-*` library yet. The boundary rules themselves are verified by `pnpm verify:boundaries` (10/10), not by those two legal edges.

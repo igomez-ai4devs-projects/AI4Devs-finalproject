@@ -1,0 +1,9 @@
+{
+  "name": "incident-ui",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/incident/ui/src",
+  "prefix": "incident",
+  "projectType": "library",
+  "tags": ["platform:frontend", "scope:incident", "type:ui"],
+  "targets": {}
+}

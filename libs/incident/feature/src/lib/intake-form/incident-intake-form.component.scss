@@ -1,0 +1,150 @@
+// Local custom properties standing in for `libs/shared/ui`'s design tokens.
+// That library is not part of this delivery slice (`T-C1-10` deviation 1,
+// Trap 5) — every `--incident-intake-*` value below is a placeholder to
+// replace with the equivalent shared token once it exists, never a
+// permanent design decision. Declared as component-scoped custom properties
+// (not raw literals sprinkled through the rules below) precisely so that
+// swap is a one-line edit per property, not a search across this file.
+:host {
+  --incident-intake-spacing-xs: 0.25rem;
+  --incident-intake-spacing-sm: 0.5rem;
+  --incident-intake-spacing-md: 1rem;
+  --incident-intake-spacing-lg: 1.5rem;
+  --incident-intake-color-text: #1a1a1a;
+  --incident-intake-color-muted: #4a4a4a;
+  --incident-intake-color-border: #767676;
+  --incident-intake-color-error: #8a1f16;
+  --incident-intake-color-error-bg: #fdecea;
+  --incident-intake-color-accent: #0b4ea2;
+  --incident-intake-radius: 4px;
+  --incident-intake-font-size-base: 1rem;
+  --incident-intake-font-size-sm: 0.875rem;
+
+  display: block;
+  box-sizing: border-box;
+  max-width: 40rem;
+  margin-inline: auto;
+  padding: var(--incident-intake-spacing-lg) var(--incident-intake-spacing-md);
+  color: var(--incident-intake-color-text);
+  font-size: var(--incident-intake-font-size-base);
+}
+
+:host * {
+  box-sizing: inherit;
+}
+
+.incident-intake__intro {
+  color: var(--incident-intake-color-muted);
+  margin: 0 0 var(--incident-intake-spacing-lg);
+}
+
+.incident-intake__error-summary {
+  border: 2px solid var(--incident-intake-color-error);
+  background-color: var(--incident-intake-color-error-bg);
+  color: var(--incident-intake-color-error);
+  border-radius: var(--incident-intake-radius);
+  padding: var(--incident-intake-spacing-md);
+  margin-bottom: var(--incident-intake-spacing-lg);
+
+  h2 {
+    margin: 0 0 var(--incident-intake-spacing-sm);
+    font-size: var(--incident-intake-font-size-base);
+  }
+
+  ul {
+    margin: var(--incident-intake-spacing-sm) 0 0;
+    padding-inline-start: var(--incident-intake-spacing-lg);
+  }
+
+  a {
+    color: inherit;
+  }
+}
+
+.incident-intake__support-code {
+  font-size: var(--incident-intake-font-size-sm);
+  margin: var(--incident-intake-spacing-sm) 0 0;
+}
+
+.incident-intake__fieldset {
+  border: none;
+  padding: 0;
+  margin: 0 0 var(--incident-intake-spacing-lg);
+  min-width: 0;
+}
+
+.incident-intake__fieldset legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: var(--incident-intake-spacing-md);
+}
+
+.incident-intake__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--incident-intake-spacing-xs);
+  margin-bottom: var(--incident-intake-spacing-md);
+}
+
+.incident-intake__field label {
+  font-weight: 600;
+}
+
+.incident-intake__hint {
+  color: var(--incident-intake-color-muted);
+  font-size: var(--incident-intake-font-size-sm);
+  margin: 0;
+}
+
+.incident-intake__field input,
+.incident-intake__field textarea {
+  width: 100%;
+  padding: var(--incident-intake-spacing-sm);
+  border: 1px solid var(--incident-intake-color-border);
+  border-radius: var(--incident-intake-radius);
+  font: inherit;
+  color: inherit;
+  background-color: transparent;
+}
+
+.incident-intake__field input[aria-invalid='true'],
+.incident-intake__field textarea[aria-invalid='true'] {
+  border-color: var(--incident-intake-color-error);
+  border-width: 2px;
+}
+
+.incident-intake__field-error {
+  color: var(--incident-intake-color-error);
+  font-size: var(--incident-intake-font-size-sm);
+  margin: 0;
+}
+
+.incident-intake__submit {
+  padding: var(--incident-intake-spacing-sm) var(--incident-intake-spacing-lg);
+  border: none;
+  border-radius: var(--incident-intake-radius);
+  background-color: var(--incident-intake-color-accent);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.incident-intake__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+:host :focus-visible {
+  outline: 3px solid var(--incident-intake-color-accent);
+  outline-offset: 2px;
+}
+
+// 360px is the narrowest viewport this form is required to fit without
+// horizontal scrolling (T-C1-10 AC2). Nothing above sets a width wider than
+// 100%, so this query only trims the outer padding at the very edge.
+@media (max-width: 22.5rem) {
+  :host {
+    padding-inline: var(--incident-intake-spacing-sm);
+  }
+}

@@ -19,8 +19,11 @@
 # Neither command uses `ports`, `healthcheck`, `depends_on` or `restart` —
 # they are kept anyway, see the note below.
 #
-# It correctly has no `postgres` service: stage uses Render's managed
-# PostgreSQL instance, not a container this file could own.
+# It correctly has no `postgres` service: ADR-015 (the stage prototype,
+# docs/product/ARCHITECTURE.md §10, decision 4) removed PostgreSQL from
+# stage entirely — the API runs PERSISTENCE_MODE=memory below, and the web
+# service reverse-proxies /api/ to it (T-C10-79) — so there is no database,
+# managed or otherwise, for this file to own.
 #
 # `IMAGE_TAG` defaults to `local` so `docker compose build` works
 # out of the box for a manual smoke test; the pipeline overrides it with the
@@ -52,15 +55,20 @@ services:
     ports:
       - '${PORT:-3300}:${PORT:-3300}'
     environment:
-      # Exactly the two keys apps/api/src/config/env.validation.ts recognises
-      # today — see the equivalent note in docker-compose.dev.yml. Database,
-      # auth and any other feature's variables are added here only once that
-      # feature's ticket adds them to env.validation.ts and .env.example.
-      # Render itself sets these (and, once T-C10-16 lands, the database
-      # variables) by hand in the dashboard — this block only serves the
-      # local smoke-test path described above.
+      # NODE_ENV/PORT plus PERSISTENCE_MODE (ADR-015, T-C10-76) — see the
+      # equivalent note in docker-compose.dev.yml for why all three are
+      # mandatory in env.validation.ts. Render itself sets these by hand in
+      # the dashboard — this block only serves the local smoke-test path
+      # described above.
+      #
+      # PERSISTENCE_MODE is the literal `memory`, not `${…:-memory}`: this is
+      # the one file that models the real stage topology for a local
+      # `docker compose up` dry run (ADR-015 — two Render services, no
+      # database), so the value must be the actual stage value, not an
+      # overridable default.
       - NODE_ENV=${NODE_ENV:-staging}
       - PORT=${PORT:-3300}
+      - PERSISTENCE_MODE=memory
     healthcheck:
       # TCP-only — see docker/backend/Dockerfile.dev for why an HTTP probe
       # against a health path is not honest today.
@@ -87,6 +95,15 @@ services:
     container_name: sport-itsm-web-stage
     ports:
       - '4200:80'
+    environment:
+      # nginx reverse-proxies /api/ to the API service, same origin, no CORS
+      # (ADR-015 decision 4, T-C10-79). Render sets this by hand on the web
+      # service's own dashboard entry to the API service's public Render
+      # URL — this entry only serves the local `docker compose up`
+      # smoke-test path described above. Origin only: no path, no trailing
+      # slash (docker/frontend/docker-entrypoint.d/10-check-api-upstream-url.sh
+      # rejects the container start otherwise).
+      - API_UPSTREAM_URL=http://api:3300
     depends_on:
       api:
         condition: service_healthy

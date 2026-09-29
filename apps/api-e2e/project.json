@@ -5,16 +5,47 @@
   "projectType": "application",
   "tags": ["platform:backend", "scope:shared", "type:e2e"],
   "targets": {
+    "e2e-db-up": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker compose -f docker/docker-compose.e2e.yml up -d --wait --wait-timeout 90"
+      }
+    },
+    "e2e-migrate": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["e2e-db-up"],
+      "cache": false,
+      "options": {
+        "command": "pnpm migration:run",
+        "env": {
+          "NODE_ENV": "test",
+          "PORT": "3333",
+          "PERSISTENCE_MODE": "postgres",
+          "POSTGRES_HOST": "localhost",
+          "POSTGRES_PORT": "5499",
+          "POSTGRES_DB": "sport_itsm_e2e",
+          "POSTGRES_USER": "postgres",
+          "POSTGRES_PASSWORD": "postgres"
+        }
+      }
+    },
     "serve-under-test": {
       "executor": "nx:run-commands",
       "continuous": true,
-      "dependsOn": ["api:build"],
+      "dependsOn": ["api:build", "e2e-migrate"],
       "cache": false,
       "options": {
         "command": "node tools/e2e/serve-under-test.mjs dist/apps/api/main.js tmp/e2e/api-under-test.json",
         "env": {
           "NODE_ENV": "test",
-          "PORT": "3333"
+          "PORT": "3333",
+          "PERSISTENCE_MODE": "postgres",
+          "POSTGRES_HOST": "localhost",
+          "POSTGRES_PORT": "5499",
+          "POSTGRES_DB": "sport_itsm_e2e",
+          "POSTGRES_USER": "postgres",
+          "POSTGRES_PASSWORD": "postgres"
         },
         "parallel": true,
         "readyWhen": "Sport ITSM API listening on"
@@ -25,11 +56,7 @@
       "dependsOn": ["api:build", "serve-under-test"],
       "cache": false,
       "options": {
-        "commands": [
-          "node ../../tools/e2e/assert-under-test.mjs ../../tmp/e2e/api-under-test.json",
-          "cypress run"
-        ],
-        "parallel": false,
+        "command": "node ../../tools/e2e/teardown-after.mjs ../../docker/docker-compose.e2e.yml -- \"node ../../tools/e2e/assert-under-test.mjs ../../tmp/e2e/api-under-test.json && cypress run\"",
         "cwd": "apps/api-e2e"
       }
     }

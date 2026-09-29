@@ -1,9 +1,12 @@
 # User Stories — C1 · Incident Management
 
-> Source: `docs/backlog/epic-map.md` (generated 2026-09-06, HEAD `815672f`; repository HEAD at drill time `57b3837`) · PRD §7.1, §4 · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5
-> Scope: 18 requirements remaining · 32 stories · greenfield 32 · gap 0 · defect 0
-> Requirements skipped as already built: none — every `FR-INC-*` is 🔴 Not built, so the epic map's build-state invariant (`remaining == total`) holds.
-> `ReadTheCode()` was a no-op: no requirement is 🟡 / ⚫ / 🔍 and the workspace contains no `package.json`, no `apps/` and no `libs/`. No story carries a **Today:** line — that field belongs exclusively to gap and defect stories.
+> Source: `docs/backlog/epic-map.md` (generated 2026-09-06, HEAD `815672f`; repository HEAD at drill time `57b3837`) — **its C1 build-state column is stale as of this revision; not relied on, see below** · PRD §7.1, §14.10 (uncommitted working-tree revision, 2026-09-26) · `CLAUDE.md` §3 · `docs/product/ARCHITECTURE.md` §5
+> Scope: **20** requirements remaining (`FR-INC-01` → `FR-INC-20`) · **34** stories · greenfield **30** · gap **4** · defect 0
+> Requirements skipped as already built: none — no `FR-INC-*` is fully 🟢 Built end to end.
+>
+> **As-built changed since the epic map's stamp — `ReadTheCode()` is no longer a no-op.** The epic map (stamped `b129e03`, 2026-09-24) still records every `FR-INC-*` as 🔴 Not built. It is wrong as of this revision: commits `1d0a8b9` → `5e7dcc4` (2026-09-26) landed real, unit-tested code in `libs/incident/domain` — `Incident.log()` (the creation invariants), `OriginChannel` (the four-value closed set) and `IncidentReferencePolicy` (`INC` + 7 zero-padded digits, round-trip tested) — with no HTTP, no persistence adapter and no UI behind any of it. That makes **`FR-INC-01`, `FR-INC-02` and `FR-INC-04` `🟡 Partial`**, not `🔴`. `US-C1-01`, `US-C1-02`, `US-C1-05` and `US-C1-08` are reshaped to **gap** below, each with a **Today:** line naming exactly the domain-layer guarantee that already exists, so nobody re-derives it. Every other requirement in this epic has no code behind it and stays greenfield. Per this drill's instructions, `docs/backlog/epic-map.md`'s C1 counts are **not** relied on for this revision — the Product Owner is regenerating that map in parallel — and the disagreement above is reported (finding **F31**), not silently reconciled with it.
+>
+> **PRD delta this revision (§14.10, "Recorded decision — Incident intake and triage", ADR-014 reconciliation).** `FR-INC-01`'s "contact channel" is now the **origin channel** (decision D1): exactly four values — portal, email, in-app, agent-logged — with **no separate phone channel** (a phone or chat contact is agent-logged). The **affected service is optional at logging, mandatory to leave `New`** (D5). `FR-INC-04` now states plainly that an Incident with no assessed Impact or Urgency has **no Priority — never a default** — and that the governing Impact × Urgency matrix version is fixed at the Incident's **first derivation**, not at its creation (D4). Two requirements were appended at the end of the `FR-INC` series, both **Must**, both Phase 1: **`FR-INC-19`** (the triage gate — category, Impact, Urgency and affected service required to leave `New`; Impact and Urgency required to be assigned, D3) and **`FR-INC-20`** (no indefinite rest in `New`; value and default action on expiry are open, PRD assumption `A11`, D2). No `FR-INC-*` ID was renumbered, reused or retired. `US-C1-01`, `US-C1-02`, `US-C1-07`, `US-C1-08`, `US-C1-09`, `US-C1-15` and `US-C1-24` are updated in place for this delta; `US-C1-33` and `US-C1-34` are new, appended at the end of the series.
 
 ### Scope boundary
 
@@ -20,14 +23,17 @@
 | `FR-INC-04` → `FR-INC-13`, `FR-INC-18` | `US-C1-08` → `US-C1-26`, `US-C1-32` | Phase 1 (MVP). |
 | `FR-INC-14`, `FR-INC-17` | `US-C1-27`, `US-C1-31` | Phase 3 (§14.5). |
 | `FR-INC-15`, `FR-INC-16` | `US-C1-28` → `US-C1-30` | **Unphased** — see **F9** and **F26**. |
+| `FR-INC-19` | `US-C1-33` (new) | Phase 1 (MVP) — added to the PRD 2026-09-26, §14.10. |
+| `FR-INC-20` | `US-C1-34` (new) | Phase 1 (MVP) — added to the PRD 2026-09-26, §14.10; mechanism only, value open (assumption `A11`). |
 
 ---
 
 ## US-C1-01 · A requester logs an Incident from the portal
 
-- **Shape:** greenfield
+- **Shape:** gap
 - **Traces to:** `FR-INC-01` · Player / Competitor · epic `C1`
 - **Phase:** disputed 0/1 (**F6**)
+- **Today:** `libs/incident/domain`'s `Incident.log()` (`T-C1-05`, committed) already enforces the record's creation invariants as pure, unit-tested domain logic: reporter, **origin channel** (`OriginChannel.fromCode()`, exactly `portal` / `email` / `in_app` / `agent_logged`, no `phone` member — decision **D1**), short description (≤255 chars) and detailed description are mandatory and each raises its own typed error when missing; **the affected service is accepted as optional** (`affectedServiceId?: Identity`) and a `null` value is stored, not rejected — this already matches decision **D5** ("optional at logging") exactly, without needing to change. `loggedAtEpochMs`/`loggedBy` are populated from `ClockPort`/the acting actor, never `new Date()`. What is missing is everything a requester or an operator would actually touch: `libs/shared/contracts` DTOs and the `class-validator` `ValidationPipe` wiring that rejects priority-bearing fields (`T-C1-08`, not started), the `IncidentController` route, the `IncidentRepositoryPort` TypeORM adapter (`IncidentModule` in `apps/api` is registered empty, no provider bound), the requester-facing UI, attachments, and the structured affected competition subject/instance (`affectedSubject` is a typed `null` slot on the aggregate — no `CompetitionSubject` value object exists yet).
 
 **As a** Player / Competitor **I want** to report a problem with SCMS in plain language **so that** I get help without needing to know how a service desk works.
 
@@ -35,7 +41,11 @@
 
 **Given** an authenticated requester on the intake form
 **When** they submit a report
-**Then** an Incident is created capturing reporter, contact channel, short description, detailed description and affected service, and the reporter is taken from the authenticated session — never from a field the requester can type.
+**Then** an Incident is created capturing reporter, **origin channel** — the channel the Incident arrived through, not a preferred way of contacting the requester back (`FR-OMN-02`, decision D1) — short description, detailed description and, if the requester knows it, affected service; the reporter is taken from the authenticated session, never from a field the requester can type.
+
+**Given** a requester who does not know which service is failing
+**When** they submit without selecting one
+**Then** creation succeeds with the affected service left unset (decision **D5**) — it becomes mandatory only when the Incident later tries to leave `New` (`US-C1-33`, `FR-INC-19`), never at intake.
 
 **Given** the requester-facing intake form
 **When** it is rendered
@@ -51,23 +61,24 @@
 
 **Given** a submission missing a mandatory field
 **When** it is posted
-**Then** it is rejected by a `class-validator` DTO declared in `libs/shared/contracts`, with field-level messages resolved through Transloco / `nestjs-i18n`.
+**Then** it is rejected by a `class-validator` DTO declared in `libs/shared/contracts`, with field-level messages resolved through Transloco / `nestjs-i18n` — the domain-level typed errors of `Incident.log()` already exist for reporter, origin channel and both descriptions; this criterion is about the HTTP-facing DTO that has to reject the same cases before the aggregate is even reached.
 
 ---
 
-## US-C1-02 · An agent logs a phone-reported Incident in one flow
+## US-C1-02 · An agent logs a phone- or chat-reported Incident in one flow
 
-- **Shape:** greenfield
+- **Shape:** gap
 - **Traces to:** `FR-INC-01` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** disputed 0/1 (**F6**)
+- **Today:** the domain distinction this story depends on already exists and is deliberately documented for it: `Incident.log()`'s `LogIncidentCommand` keeps `reporterId` (who the Incident is *about*, `FR-OMN-04`) and `actor`/`loggedBy` (who performed the logging, `FR-OMN-02`) as two separate identities, and `incident.aggregate.spec.ts` has a dedicated test proving they stay distinct even when a caller passes the same value for both. **There is no separate `phone` origin channel to set** — decision **D1** confirms `agent_logged` is the correct value for a phone or chat contact, and `OriginChannel`'s closed set (`origin-channel.vo.ts`) already omits `phone` on exactly that reasoning, recorded in the file before the PRD decision existed. What is missing is the entire agent-facing surface: the one-continuous-flow UI, reporter lookup/creation, the agent intake contract and controller (distinct from `T-C1-08`'s requester contract, since an agent is permitted to set Impact/Urgency/the competition flag at logging), and the persistence adapter — none of which exist yet.
 
 **As a** Service Desk Agent (L1) **I want** to log an Incident on behalf of a caller in a single uninterrupted flow **so that** I can keep talking to a referee mid-match instead of navigating between screens.
 
 ### Acceptance criteria
 
-**Given** an agent logging on behalf of a caller
+**Given** an agent logging on behalf of a caller reached by phone or chat
 **When** they create the Incident
-**Then** the reporter is the caller (not the agent), the contact channel records how it arrived, and the acting agent is recorded separately as the actor of the creation.
+**Then** the reporter is the caller (not the agent), the **origin channel is `agent_logged`** — phone and chat are not separate channels (decision D1, `FR-OMN-02`) — and the acting agent is recorded separately (`loggedBy`) as the actor of the creation.
 
 **Given** the agent intake surface
 **When** it is used
@@ -141,9 +152,10 @@
 
 ## US-C1-05 · A unique, human-readable reference number
 
-- **Shape:** greenfield
+- **Shape:** gap
 - **Traces to:** `FR-INC-02` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** disputed 0/1 (**F6**)
+- **Today:** `IncidentReferencePolicy` (`libs/incident/domain`, `T-C1-03`) already renders and parses the documented shape — `INC` + seven zero-padded digits, prefix and numeric part in fixed positions, no ambiguous-when-spoken characters — with round-trip unit tests and no I/O. `IncidentRepositoryPort.nextReference(): Promise<TicketReference>` is declared as the port `Incident.log()` expects a reference from. What is missing is everything that makes the reference real: the `incident.incident_reference_seq` sequence and its migration, the TypeORM adapter implementing `nextReference()`, the database-level uniqueness guarantee, and the same-transaction assignment at creation that `NFR-DAT-01` depends on — today nothing calls this policy outside its own unit tests.
 
 **As a** Service Desk Agent (L1) **I want** every Incident to carry a readable reference number from the moment it is created **so that** I can quote it to a caller on the phone and find it again later.
 
@@ -200,6 +212,7 @@
 - **Shape:** greenfield
 - **Traces to:** `FR-INC-03` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** disputed 0/1 (**F6**)
+- **Scope note (2026-09-26):** `FR-INC-19` (new, `§14.10`) adds two further conditions to this same exit-from-`New` gate — Impact/Urgency assessed and affected service recorded — explicitly "in addition to the category required by `FR-INC-03`," never restating it. Those two conditions, and the companion gate on assignment, are **`US-C1-33`**, not here: this story stays scoped to the category condition alone so `FR-INC-03`'s own text is not diluted by a requirement it does not carry. The two gates compose at the same `transitionTo()` call in the implementation (`T-C1-25` for this story, `T-C1-49` for `US-C1-33`'s half) — see finding **F32**.
 
 **As a** Service Desk Agent (L1) **I want** the system to stop an uncategorized Incident from moving on **so that** every ticket carries the categorization the reporting and routing depend on.
 
@@ -225,9 +238,10 @@
 
 ## US-C1-08 · Priority derived server-side from the Impact × Urgency matrix
 
-- **Shape:** greenfield
+- **Shape:** gap
 - **Traces to:** `FR-INC-04` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** 1 (MVP)
+- **Today:** `Incident.log()` already creates every Incident with `impact`, `urgency` and `priority` all `null`, and `incident.aggregate.spec.ts` (AC3) already asserts Priority "reads as explicitly not-yet-derived, not as a disguised default" — this is precisely the revised `FR-INC-04` wording ("the Incident has **no** Priority... MUST NOT substitute a default Priority"), built and tested before the PRD text was even reconciled. What is entirely missing is the derivation itself: no matrix exists, no derive-on-assessment logic, no matrix-version pinning, no override and no event publication — `impact`/`urgency`/`priority` are typed slots with no mutator that ever changes them.
 
 **As a** Service Desk Agent (L1) **I want** Priority to be derived from the assessed Impact and Urgency **so that** prioritization is consistent between agents instead of being a personal judgement call.
 
@@ -243,7 +257,11 @@
 
 **Given** an Incident whose Impact or Urgency is not yet assessed
 **When** it is read
-**Then** Priority is explicitly "not yet derived" rather than defaulted to a middle value that could be mistaken for a real assessment.
+**Then** Priority is explicitly "not yet derived" — never defaulted to a middle value that could be mistaken for a real assessment — exactly as `Incident.log()` already guarantees at creation; this criterion only becomes non-trivial once a mutator exists that could otherwise be tempted to default it.
+
+**Given** an Incident with no prior derivation
+**When** its Impact and Urgency are both assessed for the first time
+**Then** Priority is derived under the Impact × Urgency matrix version **in force at that moment** — not the version in force when the Incident was logged (decision **D4**) — and that version is recorded and pinned on the Incident for every later re-derivation, even after a newer version is published (`NFR-CFG-02`).
 
 **Given** a Priority change from any cause
 **When** it commits
@@ -267,7 +285,7 @@
 
 **Given** a matrix change
 **When** it commits
-**Then** it applies to subsequent derivations and is published as a domain event for the audit trail (`FR-AUD-05`); Incidents already in flight keep the configuration version they were created under (`NFR-CFG-02`).
+**Then** it applies to every Incident that has not yet had its first derivation, and is published as a domain event for the audit trail (`FR-AUD-05`); an Incident that has already derived a Priority keeps the matrix version in force at that **first derivation** (decision **D4**, corrected 2026-09-26 from "the version they were created under" — before the first derivation no matrix governs the record at all, so there is nothing yet for `NFR-CFG-02` to pin).
 
 **Given** the matrix configuration screen
 **When** it is used
@@ -312,6 +330,7 @@
 - **Shape:** greenfield
 - **Traces to:** `FR-INC-05` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** 1 (MVP)
+- **Open point carried from §14.10 (5):** the flag may be set at logging, before Impact has ever been assessed. How the uplift applies to an Impact that does not yet exist is **undecided** by the PRD — this story does not assume an answer (finding **F39**).
 
 **As a** Service Desk Agent (L1) **I want** to flag, with a written justification, that an Incident is hitting a competition that is actually running **so that** live competition impact is deliberately assessed and reflected in Priority rather than argued case by case.
 
@@ -424,6 +443,7 @@
 - **Shape:** greenfield
 - **Traces to:** `FR-INC-06` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** 1 (MVP)
+- **Scope note (2026-09-26):** the exit-from-`New` transition this story's state model exposes is where `US-C1-07` (category, `FR-INC-03`) and `US-C1-33` (Impact, Urgency and affected service, `FR-INC-19`) compose their own gates — this story owns the state model and the generic transition mechanism, not either gate's condition. `§14.10` open point 2 asks whether the exit to `Cancelled` is exempt from those gates; it is **undecided** and this story does not assume an answer (see finding **F36**).
 
 **As a** Service Desk Agent (L1) **I want** the Incident to move through a defined lifecycle whose allowed transitions are configured **so that** the process is consistent and can be adjusted without a code change.
 
@@ -484,6 +504,7 @@
 - **Shape:** greenfield
 - **Traces to:** `FR-INC-08` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** 1 (MVP)
+- **Open point carried from §14.10 (4):** which SLA policy (and therefore which response target) applies to a newly logged Incident before its first Priority derivation is **undecided** — `FR-SLA-01`/`FR-SLA-02` own the answer (`C7`), not this story; `US-C1-34`'s untriaged-period visibility is a separate measure and does not substitute for it (finding **F38**).
 
 **As a** Service Desk Agent (L1) **I want** the resolution clock to stop while I am legitimately waiting on the customer or a third party **so that** the SLA measures the time the service desk actually controls.
 
@@ -680,6 +701,7 @@
 - **Shape:** greenfield
 - **Traces to:** `FR-INC-12` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** 1 (MVP)
+- **Scope note (2026-09-26):** `FR-INC-19` (new, `§14.10`) additionally blocks **any** assignment path — manual, self-assignment (`FR-QUE-03`), this story's reassignment, or an automatic routing rule (`FR-WFL-02/03`) — until Impact and Urgency are assessed. That gate's condition and its own acceptance criteria are **`US-C1-33`**, not restated here; this story keeps its own scope to the mechanics of appending to and preserving assignment history. `§14.10` open point 3 asks whether placing an unassessed Incident in an intake/triage queue itself counts as "assignment" under that gate — **undecided** (finding **F37**).
 
 **As a** Service Desk Agent (L1) **I want** to hand an Incident to the right Resolver Group or colleague without losing where it has been **so that** routing mistakes are visible and reassignment ping-pong can be measured.
 
@@ -688,6 +710,10 @@
 **Given** an assigned Incident
 **When** an agent reassigns it to another Resolver Group or to an individual agent
 **Then** the current assignee changes and a new assignment record is appended; previous assignments are never overwritten or deleted.
+
+**Given** an Incident whose Impact or Urgency has not yet been assessed
+**When** any assignment operation is attempted — initial assignment, self-assignment or reassignment
+**Then** it is refused per the gate of `US-C1-33` (`FR-INC-19`), naming the missing assessment, and no history entry is appended.
 
 **Given** an Incident's assignment history
 **When** it is read
@@ -764,6 +790,7 @@
 - **Shape:** greenfield
 - **Traces to:** `FR-INC-14` · Service Desk Agent (L1) · epic `C1`
 - **Phase:** **3** (§14.5)
+- **Open point carried from §14.10 (2):** whether converting an Incident that has not cleared the `US-C1-07`/`US-C1-33` exit gate is itself exempt from those gates is **undecided** by the PRD — this story does not assume an answer (finding **F36**).
 
 **As a** Service Desk Agent (L1) **I want** to convert a record that was logged as the wrong type **so that** a misfiled ticket is corrected without losing its reference number or its history.
 
@@ -931,6 +958,76 @@
 
 ---
 
+> **Decision on `FR-INC-19` — own story, not an extension of `US-C1-07`/`US-C1-24` (2026-09-26).** `docs/backlog/C1/test-plan.md`'s own "Findings for `business-analyst`" section reads `FR-INC-19` as "a natural extension" of `US-C1-07` (category gate) and `US-C1-24` (reassignment), and notes the tickets (`T-C1-49`, `T-C1-51`, `T-C1-73`) already implement the requirement either way. This backlog decides **`FR-INC-19` gets its own story, `US-C1-33`**, for three reasons: (1) `FR-INC-19`'s own text is explicit that it is additive — "in addition to the category required by `FR-INC-03`" — never a restatement of `FR-INC-03` or of `FR-INC-12`'s reassignment-history concern, so folding it into either dilutes what that story's requirement actually says; (2) it is one coherent business rule (an unassessed Incident cannot be worked further) expressed as **two** gates on **two** different operations (a lifecycle transition and an assignment) — splitting its acceptance criteria across `US-C1-07` and `US-C1-24` would scatter one requirement's proof across two files with no single home; (3) it is a newly added **Must** requirement in its own right and deserves the same visibility any other Must requirement gets, rather than being an implicit rider on two stories about something else. `US-C1-07`, `US-C1-15` and `US-C1-24` are each annotated with a short cross-reference so a reader lands on `US-C1-33` for the gate's own acceptance criteria. See finding **F32** for the resulting ticket-reparenting action.
+
+## US-C1-33 · The triage gate: Impact, Urgency and affected service must be known before an Incident leaves `New` or is assigned
+
+- **Shape:** greenfield
+- **Traces to:** `FR-INC-19` · Service Desk Agent (L1) · epic `C1`
+- **Phase:** 1 (MVP) — new requirement, PRD 2026-09-26, §14.10
+
+**As a** Service Desk Agent (L1) **I want** the system to refuse to move an Incident past `New`, or to hand it to anyone, until it has actually been triaged **so that** no ticket is worked, routed, escalated or reported on before its Priority is known — instead of an agent finding out three screens later that nobody ever assessed it.
+
+### Acceptance criteria
+
+**Given** an Incident in `New` with a category set but Impact or Urgency not yet assessed
+**When** a transition out of `New` is attempted
+**Then** it is refused with a typed domain error naming the missing assessment, and the state does not change — this composes with, and never replaces, the category gate of `US-C1-07`.
+
+**Given** an Incident in `New` with a category and a full Impact/Urgency assessment (and therefore a derived Priority, `US-C1-08`) but no affected service recorded
+**When** a transition out of `New` is attempted
+**Then** it is refused with a typed domain error naming the missing affected service, and the state does not change.
+
+**Given** an Incident in `New` with a category, a full Impact/Urgency assessment and an affected service
+**When** a transition out of `New` is attempted
+**Then** these two conditions permit it, subject to `US-C1-07`'s category gate and the rest of `US-C1-15`'s transition rules.
+
+**Given** an Incident whose Impact or Urgency has not yet been assessed
+**When** it is assigned to a Resolver Group or to an individual agent by **any** path — manual assignment, self-assignment (`FR-QUE-03`), reassignment (`US-C1-24`) or an automatic routing rule (`FR-WFL-02`/`FR-WFL-03`)
+**Then** the assignment is refused with a typed domain error naming the missing assessment, and nothing is written to the assignment record or its history — note that the affected service is **not** part of this particular gate: it governs exit from `New` only, per `FR-INC-19`'s own text.
+
+**Given** the lifecycle or routing configuration
+**When** it is changed
+**Then** it may add further conditions on top of these two gates, but may never remove either — `FR-INC-19`'s own wording ("configuration can add conditions, never remove these").
+
+**Given** a rejected transition or assignment attempt from any inbound path
+**When** the actor reads the response
+**Then** it names exactly which mandatory element is missing, distinguishably from every other refusal reason on the same operation.
+
+---
+
+## US-C1-34 · An Incident overdue for triage becomes visible to the Service Desk
+
+- **Shape:** greenfield
+- **Traces to:** `FR-INC-20` · Service Desk Agent (L1) · epic `C1`
+- **Phase:** 1 (MVP) — new requirement, PRD 2026-09-26, §14.10; depends on PRD assumption `A11`
+
+**As a** Service Desk Agent (L1) **I want** an Incident that has sat in `New` with no category past a configured maximum period to show up as overdue for triage **so that** a ticket is never simply forgotten before anyone has even looked at it.
+
+### Acceptance criteria
+
+**Given** a configurable maximum untriaged period
+**When** the application boots
+**Then** the value is read from validated configuration through `ConfigService` with **no in-code default**, and boot fails fast naming the missing key if it is absent, zero, negative or not a duration — the production value itself is an open point the business has not set (PRD assumption `A11`); this story does not invent one.
+
+**Given** an Incident in `New` with no category, older than the configured period
+**When** the overdue condition is evaluated
+**Then** it is reported as overdue for triage.
+
+**Given** an Incident in `New` with no category, within the configured period
+**When** the overdue condition is evaluated
+**Then** it is not reported as overdue.
+
+**Given** an Incident that has left `New`, or one that already has a category
+**When** the overdue condition is evaluated
+**Then** it is never reported as overdue, regardless of its age — no persisted "overdue" flag exists to go stale if the configured period later changes; the condition is evaluated live.
+
+**Given** an Incident that becomes overdue
+**When** the `FR-WFL-05` scheduled-rule mechanism (owned by `C12`) evaluates it
+**Then** it receives the trigger condition this story exposes; what happens beyond visibility — a reminder, or a functional or hierarchical escalation under `US-C1-25`/`US-C1-26` — is configured through that mechanism and is **not** decided by this story (PRD assumption `A11` leaves the default action on expiry open, as well as the period's value).
+
+---
+
 ## Findings
 
 Observations raised while writing these stories. **F6** and **F9** are carried over from `docs/backlog/epic-map.md`; the rest are new.
@@ -947,3 +1044,12 @@ Observations raised while writing these stories. **F6** and **F9** are carried o
 | **F28** | New | **`FR-INC-18` does not define "the first interaction".** FCR requires resolution "by L1 within the first interaction without reassignment", but whether a public comment, a callback, a requester reply or an elapsed period ends the first interaction is unstated — and the metric is one of the MVP's stated acceptance outputs. | `US-C1-32` derives FCR from assignment history and resolving tier, which are unambiguous, and defers the interaction boundary to a rule that must be settled and stated once in the domain. Until it is, FCR is not implementable to a testable definition. |
 | **F29** | New | **`FR-INC-01`'s treatment of the structured competition subject is ambiguous.** The same requirement lists affected competition subject and instance among the fields captured at logging by "a requester **or** an agent", then forbids the requester from setting priority-bearing fields — and the competition subject is precisely what the `FR-INC-05` assessment turns on. | This backlog reads it as: **requesters supply free text; agents set the structured subject and instance.** `US-C1-01` and `US-C1-03` are written to that reading. If the intent was that requesters pick a structured subject, `US-C1-01`'s form and `US-C1-03`'s permissions change — **needs Product Owner confirmation.** |
 | **F30** | New | **`FR-INC-04`'s override and `FR-INC-05`'s re-derivation can contradict each other.** If an agent overrides Priority and the competition-in-progress flag is then set or cleared, the requirement set does not say whether re-derivation wins or the override stands. | `US-C1-10` and `US-C1-13` both require a **single documented rule** exercised by an explicit test, and assume the override stands until an agent explicitly returns the Incident to the derived value. Stated as an assumption; two independently reasonable implementations exist and they produce different P1 counts. |
+| **F31** | New (2026-09-26) | **`docs/backlog/epic-map.md`'s C1 build-state column disagrees with the code.** The map (stamped `b129e03`, 2026-09-24) records every `FR-INC-*` as 🔴 Not built. Reading `libs/incident/domain` at HEAD shows `FR-INC-01`, `FR-INC-02` and `FR-INC-04` are `🟡 Partial`: `Incident.log()`, `OriginChannel` and `IncidentReferencePolicy` are real, unit-tested domain code (commits `1d0a8b9` → `5e7dcc4`, 2026-09-26), landed after the map's stamp. | Reported per `ReadTheCode()`, not silently reconciled. `US-C1-01`, `US-C1-02`, `US-C1-05` and `US-C1-08` are reshaped to **gap** in this revision on that basis. This backlog does **not** edit `epic-map.md`; the Product Owner's parallel regeneration should pick this up, and this file's per-story build-state notes should be treated as more current than the map's C1 row until it is re-stamped. |
+| **F32** | New (2026-09-26) | **`FR-INC-19`'s tickets are already parented to `US-C1-15` and `US-C1-24`, not to the new `US-C1-33` this document creates for it.** `T-C1-49`, `T-C1-50` and `T-C1-51` (the exit-from-`New` half) carry `story: US-C1-15`; `T-C1-73` (the assignment half) carries `story: US-C1-24`. This backlog gives `FR-INC-19` its own story (`US-C1-33`) because it is a distinct, newly added Must requirement spanning two operations, not a restatement of either `FR-INC-06` or `FR-INC-12` — see the "Decision on `FR-INC-19`" note above the Findings table for the full reasoning. | **Action for `architect-tech-lead`:** reparent `T-C1-49`, `T-C1-50`, `T-C1-51` and `T-C1-73`'s `story:` front-matter field to `US-C1-33` for the acceptance criteria that implement `FR-INC-19`'s conditions specifically (they may keep a secondary reference to `US-C1-15`/`US-C1-24` for the `FR-INC-06`/`FR-INC-12` behavior the same ticket also carries). `T-C1-102` (`story: —`) should be reparented to the new `US-C1-34` (`FR-INC-20`). No ticket is renumbered. |
+| **F33** | New (2026-09-26) — **Resolved** | **The "contact channel" naming question the domain code itself raised is now closed.** `libs/incident/domain/src/lib/origin-channel.vo.ts` and `T-C1-05`'s own reported deviation asked the Product Owner to confirm or correct the term, since neither the PRD nor `DATA-MODEL.md` defined "contact channel" and the code adopted `origin_channel` as the closest documented fact. | **Closed by PRD 2026-09-26, §14.10 decision D1:** the field is the **origin channel** — how the Incident arrived, not a preferred way of contacting the requester back — with exactly four values (portal, email, in-app, agent-logged) and no separate `phone` value; a phone or chat contact is `agent_logged`. `US-C1-01` and `US-C1-02` are updated to this term. No code or ticket change is made by this document; recorded here so the resolution is traceable from the backlog side too. |
+| **F34** | New (2026-09-26) — **Resolved** | **What exactly gates an Incident's exit from `New`, and its assignment, was previously answered only by `FR-INC-03` (category) — leaving Impact/Urgency/service and the assignment path fully open.** | **Closed by PRD 2026-09-26, §14.10, new `FR-INC-19` (decision D3, D5):** category (`FR-INC-03`, `US-C1-07`) plus Impact, Urgency and affected service (`FR-INC-19`, `US-C1-33`) gate exit from `New`; Impact and Urgency alone gate assignment by any path. `US-C1-33` is authored to this text. |
+| **F35** | §14.10 open point 1 (not decided by this backlog) | **The untriaged period's value and its default action on expiry are open** (PRD assumption `A11`: "the service organization will set the maximum untriaged period... This PRD deliberately states no value"). | `US-C1-34` builds the mechanism (configuration key, fail-fast boot, overdue evaluation, trigger exposure to `FR-WFL-05`) with no invented default and no invented default action, consistent with `CLAUDE.md`'s instruction not to invent timelines. Awaits the service organization's decision. |
+| **F36** | §14.10 open point 2 (not decided by this backlog) | **Whether cancelling an Incident (`US-C1-15`'s `Cancelled` transition) or converting it (`US-C1-27`, `FR-INC-14`) is exempt from the `US-C1-07`/`US-C1-33` exit gate is undecided.** As written, `FR-INC-03` and `FR-INC-19` gate **every** exit from `New`, including these two. | `US-C1-15` and `US-C1-27` are both annotated with this open point rather than assuming an exemption either way. Needs a Product Owner decision before either transition's gate behavior is ticketed. |
+| **F37** | §14.10 open point 3 (not decided by this backlog) | **Whether placing an unassessed Incident into an intake or triage queue counts as "assignment" under `FR-INC-19`'s assignment gate is undecided.** `FR-WFL-03` maps category/subject/channel to a Resolver Group or **queue**; if queue placement is "assignment," an intake rule can never route an unassessed Incident anywhere, including to a triage queue meant to hold it. | `US-C1-33` and `US-C1-24` are annotated with this open point. This is a real implementation fork: one reading makes intake routing impossible before triage, the other makes the gate meaningless for queue-based routing. Needs a Product Owner decision. |
+| **F38** | §14.10 open point 4 (not decided by this backlog) | **Which SLA policy — and therefore which response target — applies to a newly logged Incident before its first Priority derivation is undecided.** `FR-SLA-02` attaches exactly one policy at creation, but `FR-INC-04` gives a new Incident no Priority to attach one by. | Cross-epic: the decision belongs to `C7` (`FR-SLA-01`/`FR-SLA-02`), not to this backlog. `US-C1-17` is annotated so the gap is not silently assumed away when `C7` is drilled. `US-C1-34`'s untriaged-period visibility is a different measure and does not answer this. |
+| **F39** | §14.10 open point 5 (not decided by this backlog) | **How the competition-in-progress flag's Impact uplift applies when it is set at logging, before Impact has ever been assessed, is undecided.** `FR-INC-05` permits the flag at logging; `FR-INC-04` says a not-yet-assessed Incident has no Impact for an uplift to raise. | `US-C1-11` is annotated with this open point. It interacts with **F24** (the uplift's undefined behavior at the ceiling of the Impact scale): both need a Product Owner decision before `FR-INC-05`'s logging-time path can be ticketed with confidence. |

@@ -1,0 +1,274 @@
+import { DataSource } from 'typeorm';
+import {
+  FixedClock,
+  Identity,
+  TicketReference,
+} from '@sport-itsm/shared-domain';
+import {
+  Incident,
+  IncidentReferenceSequenceOutOfRangeError,
+  OriginChannel,
+} from '@sport-itsm/incident-domain';
+import { IncidentEntity } from './incident.entity';
+import { IncidentMapper } from './incident.mapper';
+import { TypeOrmIncidentRepository } from './typeorm-incident.repository';
+
+const IDENTITY = Identity.fromString('0192f3a4-5b6c-7d8e-8f90-123456789abc');
+const REPORTER = Identity.fromString('0192f3a4-5b6c-7d8e-8f90-123456789abd');
+const ACTOR = Identity.fromString('0192f3a4-5b6c-7d8e-8f90-123456789abe');
+const REFERENCE = TicketReference.fromString('INC0000001');
+const CLOCK = FixedClock.at(new Date('2026-09-24T10:30:00.000Z'));
+
+/** A minimal fake standing in for TypeORM's `Repository<IncidentEntity>`. */
+function fakeOrmRepository() {
+  return {
+    findOne: jest.fn(),
+    save: jest.fn(),
+  };
+}
+
+/**
+ * A fake `DataSource` — no PostgreSQL involved. The real connection is
+ * exercised only by the separate `integration` target (T-C1-06 Trap 7); this
+ * spec is the unit-level proof that `TypeOrmIncidentRepository` calls the
+ * right methods with the right arguments. `isInitialized: true` by default so
+ * most tests skip the lazy-connect path entirely; the dedicated
+ * "lazy connection" suite below overrides it to exercise that path.
+ */
+function fakeDataSource(
+  ormRepository: ReturnType<typeof fakeOrmRepository>,
+  overrides: { isInitialized?: boolean; initialize?: jest.Mock } = {},
+) {
+  return {
+    getRepository: jest.fn().mockReturnValue(ormRepository),
+    query: jest.fn(),
+    isInitialized: overrides.isInitialized ?? true,
+    initialize: overrides.initialize ?? jest.fn(),
+  } as unknown as DataSource;
+}
+
+describe('TypeOrmIncidentRepository', () => {
+  describe('nextIdentity()', () => {
+    it('wraps the uuidv7() PostgreSQL 18 core function, never a v4 generator (T-C1-06 Trap 5)', async () => {
+      const ormRepository = fakeOrmRepository();
+      const dataSource = fakeDataSource(ormRepository);
+      (dataSource.query as jest.Mock).mockResolvedValue([
+        { id: '0192f3a4-5b6c-7d8e-8f90-fedcba987654' },
+      ]);
+      const repository = new TypeOrmIncidentRepository(dataSource);
+
+      const identity = await repository.nextIdentity();
+
+      expect(dataSource.query).toHaveBeenCalledWith('SELECT uuidv7() AS id');
+      expect(
+        identity.equals(
+          Identity.fromString('0192f3a4-5b6c-7d8e-8f90-fedcba987654'),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe('nextReference()', () => {
+    it('reads incident.incident_reference_seq via nextval() and renders it through IncidentReferencePolicy (T-C1-04)', async () => {
+      const dataSource = fakeDataSource(fakeOrmRepository());
+      (dataSource.query as jest.Mock).mockResolvedValue([{ next_value: '42' }]);
+      const repository = new TypeOrmIncidentRepository(dataSource);
+
+      const reference = await repository.nextReference();
+
+      expect(dataSource.query).toHaveBeenCalledWith(
+        "SELECT nextval('incident.incident_reference_seq') AS next_value",
+      );
+      expect(reference.equals(TicketReference.fromString('INC0000042'))).toBe(
+        true,
+      );
+    });
+
+    it('converts the bigint-as-string value the pg driver returns, not just any numeric-looking string', async () => {
+      const dataSource = fakeDataSource(fakeOrmRepository());
+      // The `pg` driver parses a bigint (OID 20) column as a JS `string`,
+      // never a `number` — this fixture mirrors that shape rather than a
+      // driver-impossible `{ next_value: 42 }`.
+      (dataSource.query as jest.Mock).mockResolvedValue([
+        { next_value: '9999999' },
+      ]);
+      const repository = new TypeOrmIncidentRepository(dataSource);
+
+      const reference = await repository.nextReference();
+
+      expect(reference.value).toBe('INC9999999');
+    });
+
+    it('propagates IncidentReferencePolicy.format()`s typed error instead of re-validating the range itself', async () => {
+      const dataSource = fakeDataSource(fakeOrmRepository());
+      (dataSource.query as jest.Mock).mockResolvedValue([
+        { next_value: '10000000' },
+      ]);
+      const repository = new TypeOrmIncidentRepository(dataSource);
+
+      await expect(repository.nextReference()).rejects.toThrow(
+        IncidentReferenceSequenceOutOfRangeError,
+      );
+    });
+  });
+
+  describe('findById()', () => {
+    it('returns null when no row matches', async () => {
+      const ormRepository = fakeOrmRepository();
+      ormRepository.findOne.mockResolvedValue(null);
+      const repository = new TypeOrmIncidentRepository(
+        fakeDataSource(ormRepository),
+      );
+
+      const result = await repository.findById(IDENTITY);
+
+      expect(ormRepository.findOne).toHaveBeenCalledWith({
+        where: { id: IDENTITY.value },
+      });
+      expect(result).toBeNull();
+    });
+
+    it('maps the row through IncidentMapper.toDomain() when found', async () => {
+      const entity = new IncidentEntity();
+      entity.id = IDENTITY.value;
+      entity.reference = REFERENCE.value;
+      entity.shortDescription = 'Cannot submit match roster';
+      entity.description = 'Details.';
+      entity.originChannel = 'portal';
+      entity.reporterUserId = REPORTER.value;
+      entity.serviceId = null;
+      entity.createdAt = CLOCK.now();
+      entity.updatedAt = CLOCK.now();
+      entity.createdBy = ACTOR.value;
+      entity.updatedBy = null;
+      entity.version = 1;
+      const ormRepository = fakeOrmRepository();
+      ormRepository.findOne.mockResolvedValue(entity);
+      const repository = new TypeOrmIncidentRepository(
+        fakeDataSource(ormRepository),
+      );
+
+      const result = await repository.findById(IDENTITY);
+
+      expect(result).toBeInstanceOf(Incident);
+      expect(result?.id.equals(IDENTITY)).toBe(true);
+      expect(
+        result?.originChannel.equals(OriginChannel.fromCode('portal')),
+      ).toBe(true);
+    });
+  });
+
+  describe('findByReference()', () => {
+    it('returns null when no row matches', async () => {
+      const ormRepository = fakeOrmRepository();
+      ormRepository.findOne.mockResolvedValue(null);
+      const repository = new TypeOrmIncidentRepository(
+        fakeDataSource(ormRepository),
+      );
+
+      const result = await repository.findByReference(REFERENCE);
+
+      expect(ormRepository.findOne).toHaveBeenCalledWith({
+        where: { reference: REFERENCE.value },
+      });
+      expect(result).toBeNull();
+    });
+
+    it('maps the row through IncidentMapper.toDomain() when found, never mutating it (T-C1-99 Trap 5)', async () => {
+      const entity = new IncidentEntity();
+      entity.id = IDENTITY.value;
+      entity.reference = REFERENCE.value;
+      entity.shortDescription = 'Cannot submit match roster';
+      entity.description = 'Details.';
+      entity.originChannel = 'portal';
+      entity.reporterUserId = REPORTER.value;
+      entity.serviceId = null;
+      entity.createdAt = CLOCK.now();
+      entity.updatedAt = CLOCK.now();
+      entity.createdBy = ACTOR.value;
+      entity.updatedBy = null;
+      entity.version = 1;
+      const ormRepository = fakeOrmRepository();
+      ormRepository.findOne.mockResolvedValue(entity);
+      const repository = new TypeOrmIncidentRepository(
+        fakeDataSource(ormRepository),
+      );
+
+      const result = await repository.findByReference(REFERENCE);
+
+      expect(result).toBeInstanceOf(Incident);
+      expect(result?.reference.equals(REFERENCE)).toBe(true);
+      expect(ormRepository.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('save()', () => {
+    it('maps the aggregate with IncidentMapper.toEntity() and persists it through the ORM repository', async () => {
+      const ormRepository = fakeOrmRepository();
+      ormRepository.save.mockResolvedValue(undefined);
+      const repository = new TypeOrmIncidentRepository(
+        fakeDataSource(ormRepository),
+      );
+      const { incident } = Incident.log({
+        id: IDENTITY,
+        reference: REFERENCE,
+        reporterId: REPORTER,
+        originChannel: OriginChannel.fromCode('portal'),
+        shortDescription: 'Cannot submit match roster',
+        description: 'Details.',
+        actor: ACTOR,
+        correlationId: 'req-1',
+        occurredAt: CLOCK.now(),
+      });
+
+      await repository.save(incident);
+
+      expect(ormRepository.save).toHaveBeenCalledTimes(1);
+      const [persisted] = ormRepository.save.mock.calls[0];
+      expect(persisted).toEqual(IncidentMapper.toEntity(incident));
+    });
+  });
+
+  describe('lazy connection — a deliberate deviation from Trap 4 (see the class doc comment)', () => {
+    it('never calls dataSource.initialize() when it is already initialized', async () => {
+      const ormRepository = fakeOrmRepository();
+      ormRepository.findOne.mockResolvedValue(null);
+      const initialize = jest.fn();
+      const dataSource = fakeDataSource(ormRepository, {
+        isInitialized: true,
+        initialize,
+      });
+      const repository = new TypeOrmIncidentRepository(dataSource);
+
+      await repository.findById(IDENTITY);
+
+      expect(initialize).not.toHaveBeenCalled();
+    });
+
+    it('initializes exactly once, memoizing concurrent callers onto the same in-flight promise', async () => {
+      const ormRepository = fakeOrmRepository();
+      ormRepository.findOne.mockResolvedValue(null);
+      let resolveInitialize!: (dataSource: DataSource) => void;
+      const initialize = jest.fn().mockReturnValue(
+        new Promise<DataSource>((resolve) => {
+          resolveInitialize = resolve;
+        }),
+      );
+      const dataSource = fakeDataSource(ormRepository, {
+        isInitialized: false,
+        initialize,
+      });
+      const repository = new TypeOrmIncidentRepository(dataSource);
+
+      const first = repository.findById(IDENTITY);
+      const second = repository.findById(IDENTITY);
+      // TypeORM's real `DataSource.initialize()` resolves to the DataSource
+      // itself; the fake mirrors that so `ensureInitialized()` has something
+      // to call `.getRepository()` on.
+      resolveInitialize(dataSource);
+      await Promise.all([first, second]);
+
+      expect(initialize).toHaveBeenCalledTimes(1);
+    });
+  });
+});

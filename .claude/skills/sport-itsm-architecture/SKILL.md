@@ -104,10 +104,12 @@ These two matrices together enforce the dependency rule (§3) and context isolat
 - Visualize the graph: `pnpm nx graph`
 - Check only what changed: `pnpm nx affected -t lint test build`
 - Lint (runs boundary checks): `pnpm nx lint <project>`
-- Scaffold libs with correct tags:
-  - `pnpm nx g @nx/js:lib <context>-domain --directory=libs/<context>/domain --tags=platform:backend,scope:<context>,type:domain`
-  - `pnpm nx g @nx/angular:lib <context>-feature --directory=libs/<context>/feature --tags=platform:frontend,scope:<context>,type:feature`
-  - `pnpm nx g @nx/angular:lib shared-ui --directory=libs/shared/ui --tags=platform:frontend,scope:shared,type:ui`
+- Prove the boundaries still bite (deliberate violations, scaffolded and torn down): `pnpm verify:boundaries`
+- Scaffold libs with correct tags. **The project name is `--name=`, never a positional** — `@nx/js:lib` binds the first positional to `directory` and silently names the project after the last directory segment, and `@nx/angular:lib` refuses positionals outright (`Schema does not support positional arguments`). The generator defaults are also wrong for this project (`@nx/js:lib` defaults to `--bundler=tsc`, which adds a per-library `package.json` and a `build` target; `@nx/angular:lib` defaults to `--style=css` and `--changeDetection=Default`), so pass the full flag set:
+  - `pnpm nx g @nx/js:lib --name=<context>-domain --directory=libs/<context>/domain --tags=platform:backend,scope:<context>,type:domain --importPath=@sport-itsm/<context>-domain --bundler=none --unitTestRunner=jest --linter=eslint --testEnvironment=node --useProjectJson=true`
+  - `pnpm nx g @nx/angular:lib --name=<context>-feature --directory=libs/<context>/feature --tags=platform:frontend,scope:<context>,type:feature --importPath=@sport-itsm/<context>-feature --prefix=<context> --style=scss --changeDetection=OnPush --standalone --skipModule --unitTestRunner=jest --linter=eslint`
+  - `pnpm nx g @nx/angular:lib --name=shared-ui --directory=libs/shared/ui --tags=platform:frontend,scope:shared,type:ui --importPath=@sport-itsm/shared-ui --prefix=ui --style=scss --changeDetection=OnPush --standalone --skipModule --unitTestRunner=jest --linter=eslint`
+  - Dry-run first (`--dry-run --no-interactive`), then do the two things the generator cannot: set `"types": []` in `tsconfig.lib.json` for every `type:domain`, `type:application`, `type:contracts` and `type:util` library — `@types/node` otherwise lets `process`, `Buffer` and `fs` compile inside a layer the dependency rule declares pure — and replace the placeholder `src/lib/<name>.ts` with the library's real public API, exported from the barrel. Full rationale and the complete command set: `ARCHITECTURE.md` §5.5.
 
 # 8. Architecture Decision Records
 

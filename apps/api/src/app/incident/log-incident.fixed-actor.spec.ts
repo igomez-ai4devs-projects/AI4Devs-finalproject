@@ -1,0 +1,163 @@
+import { Test } from '@nestjs/testing';
+import {
+  EventPublisherPort,
+  FixedClock,
+  Identity,
+  TicketReference,
+} from '@sport-itsm/shared-domain';
+import {
+  Incident,
+  IncidentReferencePolicy,
+  IncidentRepositoryPort,
+  INCIDENT_REPOSITORY,
+  SlaPolicyPort,
+} from '@sport-itsm/incident-domain';
+import {
+  LogIncidentInput,
+  LogIncidentUseCase,
+} from '@sport-itsm/incident-application';
+import { BOOTSTRAP_REQUESTER_ID } from '../../bootstrap/bootstrap-identities';
+import { PersistenceMode } from '../../config/env.validation';
+import { EventDispatchModule } from '../../event-dispatch/event-dispatch.module';
+import { PersistenceModule } from '../../persistence/persistence.module';
+import { IncidentModule } from './incident.module';
+import {
+  INCIDENT_ACTOR_RESOLVER,
+  IncidentActorResolver,
+} from './incident-actor-resolver';
+
+/**
+ * `T-C10-74` AC3: "`T-C1-07` executes against this fixed `Actor` exactly as
+ * it would against any resolved `Actor`, with no change to its own file."
+ *
+ * The `IncidentActor` this test hands to `LogIncidentUseCase` is obtained
+ * from `IncidentModule`'s own `INCIDENT_ACTOR_RESOLVER` binding — resolved
+ * through the real production wiring (`IncidentModule`), never by
+ * hand-instantiating `FixedRequesterActorResolver`. Only
+ * `INCIDENT_REPOSITORY` is overridden, so this test needs no PostgreSQL
+ * connection: `TypeOrmIncidentRepository` (`IncidentModule`'s other
+ * provider) depends on a live `DataSource` this suite has no reason to open.
+ *
+ * `git diff libs/incident/application` staying empty is the other half of
+ * this AC — this file only ever imports from that library's public barrel,
+ * never edits it.
+ *
+ * **`EventDispatchModule` import added by `T-C1-08`.** `IncidentModule` now
+ * also binds `LogIncidentUseCase` itself via `useFactory`, `inject:
+ * [..., EVENT_PUBLISHER, ...]` (Trap 5). In the real app `EVENT_PUBLISHER`
+ * is resolved globally because `AppModule` imports `EventDispatchModule`
+ * (`@Global()`); a `Test.createTestingModule` that composes `IncidentModule`
+ * on its own never pulls that global module in, so without this import
+ * `.compile()` fails to resolve `LogIncidentUseCase`'s dependency — nothing
+ * about this test's own assertions changes, only what makes the module
+ * graph as production-accurate as this narrower fixture can be.
+ *
+ * **`PersistenceModule.forMode(PersistenceMode.Memory)` import added by
+ * `T-C10-78`.** `IncidentModule` no longer binds `INCIDENT_REPOSITORY`
+ * itself (`incident-persistence.bindings.ts`) — without this import,
+ * `.overrideProvider(INCIDENT_REPOSITORY)` below has no token in the graph to
+ * override and `.compile()` fails the same way it would for
+ * `EVENT_PUBLISHER`. `Memory` is an arbitrary but harmless choice of mode
+ * here: this suite immediately overrides `INCIDENT_REPOSITORY` with its own
+ * local double regardless, so the mode's *own* binding is never actually
+ * constructed. The local double below is named `FixedIdentityIncidentRepository`,
+ * not `InMemoryIncidentRepository`, precisely to avoid colliding with the
+ * real, exported `@sport-itsm/incident-infrastructure` adapter of that name —
+ * this class is a fixed-identity test double for this suite's own narrow
+ * needs (`nextIdentity()` always returns `ALLOCATED_IDENTITY`), not that
+ * adapter, and is not meant to be confused with it.
+ */
+
+const ALLOCATED_IDENTITY = Identity.fromString(
+  '0192f3a4-5b6c-7d8e-8f90-123456789abd',
+);
+const CLOCK = FixedClock.at(new Date('2026-09-26T09:00:00.000Z'));
+
+/**
+ * A fixed-identity test double, the same shape `T-C1-07`'s own AC3 spec uses
+ * — renamed from `InMemoryIncidentRepository` by `T-C10-78` to avoid
+ * colliding with the real, exported `@sport-itsm/incident-infrastructure`
+ * adapter of that name (this suite's own doc comment above).
+ */
+class FixedIdentityIncidentRepository implements IncidentRepositoryPort {
+  private nextSequenceValue = 1;
+  private readonly incidentsById = new Map<string, Incident>();
+
+  async nextIdentity(): Promise<Identity> {
+    return ALLOCATED_IDENTITY;
+  }
+
+  async nextReference(): Promise<TicketReference> {
+    return IncidentReferencePolicy.format(this.nextSequenceValue++);
+  }
+
+  async findById(id: Identity): Promise<Incident | null> {
+    return this.incidentsById.get(id.value) ?? null;
+  }
+
+  async save(incident: Incident): Promise<void> {
+    this.incidentsById.set(incident.id.value, incident);
+  }
+}
+
+/** Provisional until `T-C1-58` binds the real adapter — see `SlaPolicyPort`'s own doc comment. */
+class NoopSlaPolicy implements SlaPolicyPort {
+  async attachFor(): Promise<void> {
+    // Intentionally empty: no real SLA adapter exists before T-C1-58.
+  }
+}
+
+/** Provisional stub — this test only asserts on persistence and authorization, not on dispatch. */
+class NoopEventPublisher implements EventPublisherPort {
+  publish(): void {
+    // Intentionally empty: event dispatch is out of this test's scope.
+  }
+}
+
+const VALID_INPUT: LogIncidentInput = {
+  originChannel: 'portal',
+  shortDescription: 'Cannot submit match roster',
+  description:
+    'The roster submission form rejects a valid squad list with no error message.',
+};
+
+describe('LogIncidentUseCase composed with IncidentModule’s fixed actor binding (T-C10-74 AC3)', () => {
+  it('authorizes and persists exactly as it would against any resolved Actor', async () => {
+    const repository = new FixedIdentityIncidentRepository();
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        EventDispatchModule,
+        PersistenceModule.forMode(PersistenceMode.Memory),
+        IncidentModule,
+      ],
+    })
+      .overrideProvider(INCIDENT_REPOSITORY)
+      .useValue(repository)
+      .compile();
+
+    const actorResolver = moduleRef.get<IncidentActorResolver>(
+      INCIDENT_ACTOR_RESOLVER,
+    );
+    const actor = await actorResolver.resolveActor();
+
+    const useCase = new LogIncidentUseCase(
+      repository,
+      new NoopSlaPolicy(),
+      new NoopEventPublisher(),
+      CLOCK,
+    );
+
+    const result = await useCase.execute(VALID_INPUT, {
+      actor,
+      correlationId: 'req-t-c10-74-ac3-001',
+    });
+
+    const persisted = await repository.findById(result.id);
+    expect(persisted).not.toBeNull();
+    expect(persisted?.reporterId.equals(BOOTSTRAP_REQUESTER_ID)).toBe(true);
+    expect(persisted?.loggedBy.equals(BOOTSTRAP_REQUESTER_ID)).toBe(true);
+
+    await moduleRef.close();
+  });
+});

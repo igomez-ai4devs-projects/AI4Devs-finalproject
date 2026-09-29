@@ -1375,3 +1375,3961 @@ pega la salida completa.
 Implementado ticket T-C10-06
 
 </br>
+
+**Prompt 7:**
+
+Agent: Claude Code - Sonnet 4.6
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-07.md ·
+`libs/shared/util` — librería de helpers puros
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+El ticket lleva `agent: backend-engineer`, pero **aquí no se escribe una línea de NestJS**: es
+`platform:shared` y framework-free. La skill que manda es `sport-itsm-engineering-principles`
+(SOLID, KISS, YAGNI, errores tipados, funciones pequeñas), con `sport-itsm-architecture` para la
+fila `util` de la matriz y `sport-itsm-workflow` para el ciclo de cierre. No apliques idiomas de
+`sport-itsm-backend` a este código.
+
+#### Precondición
+T-C10-01 … T-C10-06 deben estar hechos. Compruébalo antes de tocar nada:
+
+    node -v                                  # v22.x
+    ls libs                                  # NO debe existir: esta es la primera librería
+    pnpm nx show projects                    # EXACTAMENTE: api, api-e2e, web, web-e2e
+    pnpm verify:boundaries                   # 9/9 en verde, exit 0
+    node -e "console.log(JSON.stringify(require('./tsconfig.base.json').compilerOptions.paths))"
+                                             # debe imprimir {} — este ticket escribe el PRIMER alias
+    git status --porcelain                   # limpio antes de empezar
+
+Si `verify:boundaries` falla, PARA: este ticket crea el primer proyecto `type:util` real, que es
+justo la fila más restrictiva de la matriz (`util` solo puede depender de `util`).
+
+#### El ticket es el contrato
+Lee docs/backlog/C10/tickets/T-C10-07.md entero: su `## Scope` es exhaustivo y su "Out of scope"
+es vinculante. Lee además, y no de memoria:
+
+- ARCHITECTURE.md §5.5 — el comando generador EXACTO para `shared-util` (no lo inventes).
+- ARCHITECTURE.md §5.2/§5.3 — la fila `util` de la matriz de tipos y la regla de plataforma:
+  `platform:shared` solo puede depender de `platform:shared` (§5.4). Es el tipo más restringido
+  del workspace y por eso va primero entre las librerías compartidas.
+- ARCHITECTURE.md §369 — `scope:shared` NO implica `platform:shared`; aquí sí coinciden, y la
+  razón (código sin framework que ambas plataformas importan) es justamente lo que debes proteger.
+- PROJECT-STRUCTURE.md — la fila `libs/shared/util` ("pure, dependency-free helpers") y la
+  convención de **Public API**: un único barrel `src/index.ts` y el alias `@sport-itsm/*`.
+- CLAUDE.md §2 (Jest **29.7**, TypeScript 5.9 strict) y §3 ("What NOT to do", primera viñeta:
+  ningún framework dentro de `type:domain` / `type:application` — con más razón en `type:util`).
+
+### Response:
+
+Implementado ticket T-C10-07
+
+</br>
+
+**Prompt 8:**
+
+Agent: Claude Code - Sonnet 4.6
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-08.md ·
+`libs/shared/domain` — primitivas de identidad y de ticket del kernel compartido
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero igual que en T-C10-07 **aquí no se escribe una línea de NestJS**:
+es `platform:shared`, `type:domain`, código puro. Manda `sport-itsm-engineering-principles`
+(inmutabilidad, errores tipados, hacer irrepresentables los estados ilegales, YAGNI), con
+`sport-itsm-architecture` para la fila `domain` de la matriz y `sport-itsm-workflow` para el cierre.
+No apliques idiomas de `sport-itsm-backend`.
+
+#### Precondición
+T-C10-01 … T-C10-07 deben estar hechos. Compruébalo antes de tocar nada:
+
+    node -v                                  # v22.x
+    pnpm nx show projects                    # EXACTAMENTE: shared-util, api-e2e, web-e2e, api, web
+    pnpm nx test shared-util                 # 3 suites, 19 tests, exit 0
+    node -e "console.log(Object.keys(require('./tsconfig.base.json').compilerOptions.paths))"
+                                             # exactamente ['@sport-itsm/shared-util']
+    pnpm verify:boundaries                   # 10/10, exit 0
+    git status --porcelain                   # limpio antes de empezar
+
+**El arnés de sondas es de un solo proceso a la vez.** `libs/__boundary-probe` funciona como lock:
+si ves el mensaje "another run is in flight", **espera** — no borres el directorio, hay otra
+ejecución viva y borrarlo le destruye el andamiaje y deja `tsconfig.base.json` contaminado.
+
+#### El ticket es el contrato
+Lee docs/backlog/C10/tickets/T-C10-08.md entero: su `## Scope` es exhaustivo y su "Out of scope"
+es vinculante. Lee además, y no de memoria:
+
+- **`ARCHITECTURE.md` §5.5** — el comando exacto (ya está transcrito en el Scope del ticket) **y
+  los dos pasos que el generador no sabe hacer**: poner `"types": []` en `tsconfig.lib.json` y
+  borrar la unidad de ejemplo. Ambos son obligatorios antes de dar la librería por andamiada.
+- **`ARCHITECTURE.md` §5.3** — fila `domain`: solo puede depender de `domain` y `util`. Y §5.4,
+  la regla de plataforma: `platform:shared` solo alcanza `platform:shared`.
+- **`DATA-MODEL.md` §3.1** (tabla de value objects inline) y **§3.1.1** — de ahí salen la forma y
+  las reglas de tres de las seis primitivas. No las deduzcas del nombre.
+- **`PRD.md` FR-INC-04, FR-INC-05 y NFR-CFG-01** — para entender qué **no** es de esta librería.
+- `libs/shared/util/src/index.ts` — lo que ya existe y puedes usar.
+
+#### Dónde vive la verdad de cada primitiva — y dónde NO está
+Esto es el 70% del riesgo del ticket. Tres de las seis se pueden implementar "razonablemente" y
+quedar mal, porque su regla está escrita en otro documento.
+
+- **`Identity` NO genera identificadores.** `DATA-MODEL.md` §3.1 es explícito: UUID **v7**, generado
+  por el **puerto de repositorio** (`nextIdentity()`), no por la base de datos y no por el value
+  object — para que el agregado esté completo y válido en código de dominio puro antes de cualquier
+  I/O (ADR-005). Un `Identity.generate()` con `crypto.randomUUID()` rompe eso, y además no compila
+  con `"types": []`, que es exactamente la señal que esa política existe para dar. El VO **valida y
+  envuelve**. Decide y justifica si además exige la **versión 7** o acepta cualquier UUID: §3.1.1
+  argumenta por qué hasta la red de seguridad de la base de datos es v7, y ese argumento aplica
+  aquí igual. Ninguna de las dos respuestas es obviamente errónea; la que no argumentes, sí.
+- **`TicketReference` NO genera referencias.** Formato real, de `DATA-MODEL.md`: `INC0000123`,
+  `SRQ0000045` — `varchar(20)`, único, **nunca reutilizado**, servido por una `SEQUENCE` de
+  PostgreSQL que lee el adaptador de repositorio (`nextReference()`). El VO valida el formato y
+  nada más. No inventes un contador, ni un prefijo que no esté en el documento.
+- **`Priority` NO deriva de nada.** FR-INC-04 exige que la Prioridad salga de una matriz
+  **Impacto × Urgencia configurable**, y NFR-CFG-01 exige que un administrador pueda cambiarla sin
+  release; el esquema llega a tener columna `priority_matrix_id`. Codificar aquí una matriz 5×5
+  congelaría en el kernel una regla que es configuración, y además metería vocabulario de
+  `incident` en `shared`. `Priority` es un valor validado — **P1…P4**, según `DATA-MODEL.md` — y la
+  derivación es de otro ticket y de otro contexto. Si te parece que el ticket debería incluirla,
+  **repórtalo, no la escribas**.
+- **`ImpactLevel` y `UrgencyLevel`**: escala **1–5** (`impact_enum`/`urgency_enum`). Son los únicos
+  valores legales; cualquier otro es un error de construcción.
+- **`DateTimeRange` no conoce el reloj.** Nada de `new Date()` como valor por defecto ni como
+  validación contra "ahora": `ClockPort` es **T-C10-09** y el AC2 prohíbe `new Date()` en el
+  código fuente. El rango recibe sus dos instantes y valida su relación (inicio ≤ fin, y decide y
+  documenta si el fin es inclusivo). Su uso conocido es la ventana de calendario de SLA.
+
+#### Errores: se lanzan, no se devuelven
+El AC3 es literal: construir con entrada inválida **lanza un error tipado de dominio** y nunca
+devuelve una instancia a medio construir. Sé que `@sport-itsm/shared-util` exporta `Result`/`ok`/
+`err` desde T-C10-07 y la tentación de "mejorar" el AC devolviendo un `Result` es real: **no lo
+hagas**. `Result` es para fallos esperados que el llamante debe tratar; una invariante de value
+object rota es un error de programación en el borde. Si crees que el AC está mal, es un hallazgo
+que se reporta, no se reinterpreta mientras implementas.
+
+Diseña la jerarquía de errores con criterio: una clase base de error de dominio con nombre propio y
+subtipos por invariante, o un tipo discriminado — lo que elijas, que permita a un llamante
+distinguir **qué** invariante falló sin parsear el mensaje. Preserva el contexto (valor ofensivo).
+
+#### Esta es la primera arista del grafo — si la hay
+Hoy `pnpm nx graph` tiene 5 nodos y **cero aristas**: `shared-util` existe pero nadie la importa.
+`ARCHITECTURE.md` §12.3 dice que la inspección del grafo se vuelve una comprobación real con el
+primer ticket que **consuma** una librería. Este puede serlo: el AC2 permite explícitamente que
+`shared-domain` importe `libs/shared/util` y nada más.
+
+- Si `assertNever` te sirve de verdad para un `switch` exhaustivo sobre una escala cerrada, o
+  `isNonEmptyString` para una validación, **úsalos por el barrel** `@sport-itsm/shared-util` —
+  nunca por ruta profunda — y entonces verifica la arista: `pnpm nx graph --file=tmp/graph.json` debe
+  mostrar `shared-domain -> shared-util` **y ninguna otra**, y `pnpm nx lint shared-domain` debe
+  pasar (es la dirección legal de la matriz, hoy sin probar sobre proyectos reales).
+- **Si ninguno encaja, no fuerces un import para dibujar la arista.** Un helper usado por decoración
+  es peor que un grafo vacío. Dilo en el informe y ya está.
+
+#### Trampas ya pagadas — no las redescubras
+- **`--name=` como flag.** El comando del Scope ya lo lleva. Con el posicional, el proyecto se
+  llamaría `domain` y el AC1 (`pnpm nx test shared-domain`) fallaría contra un proyecto inexistente.
+- **Jest 30.** Tras generar, `git diff package.json`: si el generador ha tocado `jest`, `ts-jest`,
+  `@types/jest` o `jest-environment-node`, restaura los pines (29.7.0 / 29.4.12 / 29.5.14) y
+  reinstala. Lo ideal es que `git diff package.json pnpm-lock.yaml` quede **vacío**: esta librería
+  no añade ni una dependencia.
+- **`tsconfig.base.json`** pasa de una entrada a exactamente **dos**. Ni una más, y no toques nada
+  más del fichero.
+- **`jest.config.ts`** con `displayName: 'shared-domain'`, `preset` y `coverageDirectory` a tres
+  niveles. **No declares un target `test` en `project.json`** (lo infiere `@nx/jest`) y **no pongas
+  `passWithNoTests`**.
+- **`eslint.config.mjs` de proyecto**: las dos líneas que reexportan el raíz, igual que en
+  `shared-util` y `apps/api`. Ni una regla añadida ni relajada.
+- **Prettier en Windows.** `pnpm prettier --check .` marca ~50 ficheros que no has tocado: es
+  `core.autocrlf=true` dejando CRLF en el árbol, condición preexistente que CI no ve. Comprueba
+  **solo lo tuyo**: `pnpm prettier --check libs/shared/domain tsconfig.base.json`. No reformatees
+  el repositorio.
+
+#### Lo que NO debes tocar
+- **`libs/shared/util`.** Si necesitas un helper que no existe, **no lo añadas ahí**: ese es otro
+  ticket y otro Scope. Resuélvelo dentro de `shared-domain` o repórtalo.
+- **`DomainEvent`, `EventPublisherPort`, `ClockPort`** (T-C10-09) y **`StateModel`** (T-C10-10).
+  Están en el "Out of scope" del ticket con nombre y número. Ni un esqueleto, ni un `TODO`.
+- **Cualquier agregado de contexto** (`Incident`, `User`, `Session`…), **`libs/shared/contracts`**
+  (T-C10-11) y cualquier otra librería.
+- **`eslint.config.mjs` raíz, `nx.json`, `tools/boundary-probes/`, `.github/workflows/`, `CLAUDE.md`
+  y todo `docs/`.** El ticket no se edita ni se marca como hecho.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — `pnpm nx test shared-domain`: pega el resumen de Jest con el número de specs. Cada
+   primitiva con sus cuatro casos del Scope: construcción válida, rechazo de entrada inválida,
+   igualdad e inmutabilidad. Un "No tests found" no cumple.
+2. **AC2 — pureza.** Pega la salida de
+   `grep -rnE "from '(@nestjs|@angular|typeorm|rxjs|express|node:|fs|path|crypto)|new Date\(" libs/shared/domain/src`
+   — debe estar vacía. Confirma que el único import externo, si lo hay, es
+   `@sport-itsm/shared-util`. Y enseña `libs/shared/domain/tsconfig.lib.json` con `"types": []`.
+3. **AC3** — demuestra con un test por primitiva que la construcción inválida **lanza**, y que el
+   error es distinguible por tipo, no por mensaje.
+4. **AC4 — tags y lint.** `pnpm nx show project shared-domain --json`: exactamente tres tags,
+   `projectType: library`, targets `lint` y `test` (sin `build`: `--bundler=none`). Y
+   `pnpm nx lint shared-domain` en verde.
+5. **El grafo.** `pnpm nx graph --file=tmp/graph.json`, inspecciona nodos y aristas, borra el
+   fichero, y di si este ticket ha dibujado la primera arista del workspace o si el grafo sigue
+   vacío y por qué.
+6. `pnpm nx show projects` → exactamente `shared-domain`, `shared-util`, `api-e2e`, `web-e2e`,
+   `api`, `web`.
+7. `pnpm verify:boundaries` → **10/10**, exit 0, y después `git diff tsconfig.base.json` muestra
+   solo los dos alias. Ejecútalo **solo**, sin otro proceso corriéndolo a la vez.
+8. `pnpm nx run-many -t lint test build` en verde — es lo que corre CI — con `shared-domain` en
+   `lint` y en `test`.
+9. `pnpm prettier --check libs/shared/domain tsconfig.base.json` pasa.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Si no cabe en la estimación
+El ticket dice 3h para seis value objects con sus invariantes. Si al llegar al final ves que no
+cabe, **no recortes los tests**: entrega las primitivas completas que quepan, di exactamente cuáles
+faltan y por qué, y déjalo como hallazgo de estimación. Media docena de VOs sin cobertura de
+invariantes es peor que cuatro bien cerrados.
+
+#### Restricciones
+- No modifiques nada bajo `docs/` ni `.claude/`. No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar
+- Ficheros creados y el comando generador exacto; qué borraste de la salida del generador.
+- **Cada value object con su decisión de diseño**: cómo garantizas la inmutabilidad (`readonly`,
+  constructor privado + factoría estática, `Object.freeze`… y por qué esa), cómo implementas
+  `equals`, y las dos decisiones que el ticket deja abiertas — si `Identity` exige v7, y si el fin
+  de `DateTimeRange` es inclusivo.
+- Si usaste algo de `@sport-itsm/shared-util` y, si no, por qué no encajaba.
+- La salida de las nueve verificaciones.
+- Qué notas de estado quedan obsoletas (`ARCHITECTURE.md` §12.3 sobre el grafo y las suites,
+  `readme.md` §2.3.6, la nota final de `PROJECT-STRUCTURE.md`): **repórtalas, no las corrijas**.
+- Cualquier regla que hayas necesitado y no estuviera en PRD, DATA-MODEL ni ARCHITECTURE: dila como
+  hallazgo para el Product Owner o el arquitecto, no la inventes dentro del código.
+
+### Response:
+
+Implementado ticket T-C10-08
+
+</br>
+
+**Prompt 9:**
+
+Agent: Claude Code - Opus 5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-09.md ·
+`libs/shared/domain` — `DomainEvent`, `EventPublisherPort` y `ClockPort`
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, y de nuevo **sin una línea de NestJS**: `platform:shared`, `type:domain`,
+código puro. Manda `sport-itsm-engineering-principles` (inmutabilidad, ISP — puertos pequeños y
+específicos, YAGNI), con `sport-itsm-architecture` para la regla de puertos y `sport-itsm-workflow`
+para el cierre.
+
+#### Precondición
+T-C10-01 … T-C10-08 hechos y commiteados. Compruébalo antes de tocar nada:
+
+    git log --oneline -1                 # 6ce1b5e o posterior
+    git status --porcelain               # limpio
+    pnpm nx show projects                # shared-domain, shared-util, api-e2e, web-e2e, api, web
+    pnpm nx test shared-domain           # 5 suites, 66 tests, exit 0
+    node -e "console.log(Object.keys(require('./tsconfig.base.json').compilerOptions.paths))"
+                                         # exactamente dos alias
+
+**`verify:boundaries` es de un solo proceso a la vez** (`libs/__boundary-probe` hace de lock). Este
+ticket no crea proyecto ni toca tags, así que **no necesitas ejecutarlo**; si lo ejecutas, que no
+haya nadie más corriéndolo, y si ves "another run is in flight", **espera** — no borres el
+directorio.
+
+#### Lo primero que tienes que entender: aquí NO se crea ninguna librería
+A diferencia de T-C10-07 y T-C10-08, este ticket **añade a `libs/shared/domain`, que ya existe**.
+No hay generador, no hay `project.json` nuevo, no hay alias nuevo en `tsconfig.base.json`, y
+`pnpm nx show projects` debe seguir devolviendo **seis** proyectos al terminar. Si te descubres
+ejecutando `nx g`, párate: te has equivocado de ticket.
+
+Lo que ya existe y debes leer antes de escribir — `libs/shared/domain/src/index.ts`:
+`DomainError`, `Identity`, `TicketReference`, `ImpactLevel`, `UrgencyLevel`, `Priority`,
+`DateTimeRange` y sus errores tipados. Convenciones vigentes en esa librería, síguelas: constructor
+privado + factoría estática, `readonly` + `Object.freeze(this)`, `equals`, errores que **se lanzan**
+y se distinguen por `instanceof`, y ficheros nombrados según `PROJECT-STRUCTURE.md`
+(`domain-event.ts`, `clock.port.ts`, y por extensión `event-publisher.port.ts`).
+
+#### La contradicción que debes REPORTAR, no resolver
+El `## Scope` del ticket pide `EventPublisherPort` en `libs/shared/domain`. **`ARCHITECTURE.md` §9
+dice lo contrario**, con todas las letras:
+
+> `DomainEvent` base type in `shared/domain`; **`EventPublisherPort` in each context's domain**; a
+> single in-process dispatcher in `apps/api`.
+
+Y el diagrama de clases de §6.2 lo dibuja **dentro del contexto `incident`**, no en el kernel.
+
+La doctrina del repositorio zanja quién manda: `CLAUDE.md` §4.3 — *"The backlog is derived, never a
+source"* —, y hoy mismo se aplicó ese criterio para corregir tickets contra `DATA-MODEL.md`. Pero
+el caso tiene dos lados y quiero que los expongas antes de que nadie decida:
+
+- **A favor del kernel** (lo que pide el ticket): la firma es `publish(events): void`, idéntica en
+  todos los contextos y sin una palabra de vocabulario de ninguno — N copias idénticas es
+  duplicación, no lenguaje ubicuo. Y el kernel **ya alberga un puerto**: `ClockPort` vive ahí por
+  §9 y ADR-009, así que "el kernel no tiene puertos" no es una regla de este proyecto.
+- **A favor de cada contexto** (lo que dice §9 y dibuja §6.2): es el patrón de ADR-003 — el
+  contexto consumidor declara su puerto de salida en su propio dominio, como `SlaPolicyPort` —, y
+  un puerto en el kernel lo convierte en dependencia de todos.
+
+**Qué hacer:** implementa `DomainEvent`, `ClockPort` y `FixedClock`, que no están en disputa, y
+**no coloques `EventPublisherPort` en ningún sitio hasta que se decida**. Repórtalo como hallazgo
+con las dos citas (§9 línea 927 y el diagrama de §6.2), tu recomendación argumentada, y déjalo
+fuera de la entrega. Entregar tres cuartos con el conflicto a la vista es mejor que entregar cuatro
+cuartos habiendo elegido en silencio. Si al leerlo concluyes que el ticket tiene razón y §9 está
+mal, esa es exactamente la misma respuesta: **repórtalo**, no lo escribas.
+
+#### Diseño de cada pieza
+- **`DomainEvent`** — nombre del evento, instante de ocurrencia, identidad del actor, identificador
+  de correlación y payload inmutable.
+  - **El instante se lo pasa el llamante; el evento NO lee el reloj.** Ese es el sentido entero de
+    ADR-009, y el AC2 lo comprueba.
+  - **El actor es `Identity`**, la primitiva que ya existe en esta misma librería. Sería la primera
+    composición interna del kernel: úsala, no declares un `string`.
+  - **El identificador de correlación: decide y justifica.** `DATA-MODEL.md` lo modela de dos
+    formas distintas según la tabla — `correlation_event_id uuid` en `ntf_dispatch`, y un
+    `correlation_id` de petición que viene de pino en otra. No son lo mismo. Di cuál modelas y por
+    qué, y si tu respuesta es "hacen falta los dos", dilo en vez de fundirlos.
+  - **Payload inmutable de verdad.** `readonly` no impide `event.payload.x = 1`, y `Object.freeze`
+    es superficial. Decide hasta dónde llegas —congelación profunda, o una firma de tipo que lo
+    haga irrepresentable— y **escribe el test que lo demuestra**, que es literalmente el AC1.
+  - Tipado del payload: genérico o `Record<string, unknown>`. Elige pensando en quién lo consume
+    (`RoleAssigned`/`RoleRevoked` de `US-C10-13`), y no construyas una jerarquía de eventos
+    concretos: eso es de sus tickets.
+- **`ClockPort`** — interfaz que devuelve un instante UTC. **Decide el tipo de retorno y
+  justifícalo**: `DateTimeRange` (T-C10-08) recibe `Date` en su factoría, así que un `ClockPort`
+  que devuelva `Date` compone sin conversión, y el AC2 presupone justamente eso al hablar del
+  `new Date(` dentro del doble de test. Si prefieres milisegundos epoch, tendrás que decir cómo
+  encaja con lo ya construido.
+- **`FixedClock`** — doble determinista, **exportado desde el barrel** porque el ticket lo pide
+  para tests de otros. Consecuencia que debes nombrar en el informe: eso lo convierte en superficie
+  pública de producción. Y decide si además avanza (`advanceBy`) o solo devuelve un instante fijo —
+  YAGNI dice lo segundo hasta que algo lo necesite; si añades lo primero, justifícalo.
+
+#### Una trampa en el propio AC2 — no la resuelvas rompiendo tests
+El AC2 dice: *"grepped for `new Date(` → the only matches are inside the ClockPort test double"*.
+**Eso hoy ya es falso**, y no por tu culpa: `date-time-range.spec.ts` de T-C10-08 usa `new Date(...)`
+para construir sus fixtures, que es la única forma de pasarle instantes a un VO que recibe `Date`.
+
+Ejecuta el grep, **pega la salida completa** y desglósala honestamente: cuántas coincidencias en
+código de producción (deben ser cero salvo el doble), cuántas en specs y por qué son legítimas.
+**No borres ni reescribas los tests de T-C10-08 para que un grep salga verde** — eso sería degradar
+cobertura para maquillar un criterio. Repórtalo como hallazgo sobre la redacción del AC, que
+tendría que decir "fuera de los specs".
+
+#### Lo que NO debes tocar
+- **Ningún dispatcher, ningún suscriptor, ninguna persistencia.** El dispatcher in-process es de
+  `apps/api` (**T-C10-55**) y persistir eventos como entradas de auditoría es de **C18**.
+- **`StateModel`** es T-C10-10. Ni un esqueleto.
+- **`libs/shared/util`**: si necesitas un helper que no existe, resuélvelo aquí o repórtalo.
+- **`tsconfig.base.json`, `nx.json`, `eslint.config.mjs`, `tools/`, `docs/`, `.claude/`.** El ticket
+  no se edita ni se marca como hecho.
+- Ni una dependencia nueva: `git diff package.json pnpm-lock.yaml` debe quedar vacío.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — test que demuestra que el payload no se puede mutar; pega el resumen de Jest con el
+   número total de tests (hoy son 66; debe subir).
+2. **AC2** — `grep -rn "new Date(" libs/shared/domain/src` con el desglose honesto descrito arriba.
+   Y el de framework:
+   `grep -rnE "from '(@nestjs|@angular|typeorm|rxjs|express|node:|fs|path|crypto)" libs/shared/domain/src`
+   debe estar vacío.
+3. **AC3** — enseña que `ClockPort` (y `EventPublisherPort` si finalmente se coloca) son interfaces
+   sin implementación: no `class`, no `abstract class` con cuerpo, cero imports de framework.
+4. **AC4** — `pnpm nx test shared-domain` y `pnpm nx lint shared-domain`, ambos en verde.
+5. `pnpm nx show projects` sigue devolviendo **seis**, y `git diff tsconfig.base.json` está vacío.
+6. `pnpm nx run-many -t lint test build` en verde — es lo que corre CI.
+7. `pnpm prettier --check libs/shared/domain` pasa. **No** ejecutes `prettier --check .`: marca ~50
+   ficheros por CRLF (`core.autocrlf`), condición preexistente que CI no ve.
+8. El barrel: enseña `src/index.ts` final y confirma que cada export nuevo es intencionado.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Informa al terminar
+- Ficheros creados y modificados; qué queda fuera y por qué.
+- **El hallazgo de `EventPublisherPort`** con las dos citas y tu recomendación argumentada.
+- **El hallazgo sobre la redacción del AC2** y el desglose real del grep.
+- Tus cuatro decisiones de diseño: tipo de retorno de `ClockPort`, forma del identificador de
+  correlación, hasta dónde llega la inmutabilidad del payload, y si `FixedClock` avanza o no.
+- La salida de las ocho verificaciones.
+- Qué notas de estado quedan obsoletas: **repórtalas, no las corrijas**.
+
+### Response:
+
+Implementado ticket T-C10-09
+
+</br>
+
+**Prompt 10:**
+
+Agent: Claude Code - Opus 5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-16.md ·
+El data source de TypeORM y la configuración de su conexión
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, y este sí es backend de verdad: `apps/api`, `@nestjs/config`, TypeORM.
+Aplica **`sport-itsm-backend`** (es el primer ticket de la rebanada donde manda), con
+`sport-itsm-workflow` para el cierre. Es infraestructura, no dominio: aquí no se modela nada.
+
+#### Por qué este ticket y por qué ahora
+Es el **primero de la rebanada 1**, "un requester registra una incidencia y la ve" — 18 tickets, 41h,
+que el Product Owner cortó verticalmente y el usuario aprobó. Los README de `C10` y `C1` llevan la
+sección `## Delivery slices` con la secuencia completa. Lo que viene detrás de ti es `T-C10-17`
+(cadena de migraciones), y la razón de que estén separados es que esta ficha hace la base de datos
+**alcanzable** y la siguiente hace el esquema **reproducible**.
+
+#### Precondición
+    git log --oneline -1
+    git status --porcelain      # limpio
+    pnpm nx show projects       # seis proyectos
+    pnpm nx test shared-domain  # 8 suites, 85 tests
+    docker --version            # necesitas Docker corriendo para los AC
+
+#### El ticket es el contrato
+Léelo entero: su Scope es exhaustivo y trae tres notas de contexto que **no** son decorativas —
+el servicio `postgres` ya existe y está fuera de alcance, el entrypoint del contenedor no puede
+ganar un paso de migración, y la mitad desplegable es `T-C10-69`. Lee además:
+
+- **`CLAUDE.md` §2, fila Database/ORM**: PostgreSQL 18, **TypeORM 1.1**, driver `pg` ^8,
+  `synchronize` siempre `false`, cambios de esquema **solo** por migración. Y §3, la lista de
+  comandos `pnpm typeorm`.
+- **`CLAUDE.md` §3, "What NOT to do"**, backend: *no `synchronize: true`; no unconditional migration
+  auto-run in staging/prod; no raw `process.env` in feature code*.
+- `docker/docker-compose.dev.yml` — el servicio real, con `postgres:18.6`, `POSTGRES_DB:
+  sport_itsm_dev`, `POSTGRES_USER`/`POSTGRES_PASSWORD`. **No lo toques**: es de `ci-cd-expert`.
+- `apps/api/src/config/env.validation.ts` y `.env.example` — el patrón que tienes que extender, no
+  reinventar: claves obligatorias, sin default en código, con mensaje que nombra la clave que falta.
+
+#### Trampa 1 — las primeras dependencias nuevas desde el bootstrap
+Verificado: **`typeorm` y `pg` no están instalados**. Serán las primeras dependencias de runtime que
+entran desde `T-C10-01`, así que:
+
+- **`package.json` no tiene un solo rango `^` ni `~`. Mantenlo así**: versiones exactas, incluidas
+  las nuevas. CLAUDE.md pinea `major.minor` y el patch lo decide `package.json`, que es la única
+  autoridad de lo instalado.
+- Instala **solo** lo que el Scope pide. En particular, **no instales `@nestjs/typeorm`**: este
+  ticket no registra ningún módulo de Nest para la base de datos, solo crea un data source y valida
+  su configuración. Si crees que hace falta, párate y repórtalo.
+- Ejecuta `pnpm why typeorm` y `pnpm why pg` al terminar y pega la salida: una sola copia de cada.
+- `CLAUDE.md` §2 dice que TypeORM **requiere Node ≥ 22.13**, y `engines.node` de este repositorio
+  dice `>=22.0.0 <23.0.0` — es **más laxo que el suelo real**. No lo cambies: tocar un pin es un
+  cambio aprobado. **Repórtalo como hallazgo** para el arquitecto.
+
+#### Trampa 2 — la que rompe CI y no se ve hasta que rompe
+El AC te pide claves de conexión **obligatorias y sin default en código**: si falta una, el boot
+aborta. Perfecto. Pero `apps/api-e2e` **arranca la API sin fichero `.env`**: su target suministra
+él mismo `NODE_ENV` y `PORT` (mira `apps/api-e2e/project.json`), y ese comportamiento es un criterio
+de aceptación de `T-C10-06` — *"Given a checkout with no `.env` file … Then it boots, because the
+target supplies `NODE_ENV` and `PORT` itself"*.
+
+En cuanto añadas claves obligatorias de base de datos, **ese arnés deja de arrancar**, y con él el
+job `acceptance` de `.github/workflows/deploy-stage.yml`. Decide cómo lo resuelves —suministrarlas
+también desde el target, o cualquier otra vía que no rompa la propiedad de "arranca sin `.env`"— y
+**demuéstralo ejecutando `pnpm nx e2e api-e2e`**, no razonándolo. Si tu solución implica levantar
+Postgres para los E2E, dilo explícitamente: eso cambia lo que CI necesita y es información que el
+`ci-cd-expert` tiene que conocer.
+
+#### Trampa 3 — el problema de diseño real: `ConfigService` vs la CLI de TypeORM
+El Scope dice que los valores de conexión se resuelven **solo** a través de `ConfigService`, y el
+AC7 exige que `process.env` aparezca únicamente dentro del módulo de configuración. Pero
+`apps/api/src/data-source.ts` lo carga **la CLI de TypeORM fuera de Nest**, sin contenedor de DI y
+sin aplicación arrancada — que es justo lo que el AC3 te hace ejecutar
+(`pnpm typeorm migration:show -d apps/api/src/data-source.ts`).
+
+Ahí está la tensión entera de este ticket, y tiene dos formas fáciles de resolverse mal: un data
+source que lee `process.env` a pelo (viola el AC7) o uno que depende del contexto de Nest y **no se
+puede cargar desde la CLI** (viola el AC3). Encuentra la forma que satisface ambos —reutilizar la
+misma validación que ya existe, sin duplicar el esquema de claves— y **explica en el informe por qué
+tu solución no es ninguna de las dos malas**.
+
+#### Lo que NO debes tocar
+- **`docker/**`** — ni el compose, ni el Dockerfile, ni el entrypoint. Son de `ci-cd-expert`, y el
+  entrypoint tiene una nota explícita de que **no** puede ganar un paso de migración incondicional.
+- **Ninguna migración** (`T-C10-17`), **ninguna entidad** (`T-C10-21` en adelante), ningún módulo
+  de base de datos en Nest.
+- `libs/**`, `docs/**`, `.claude/**`, `nx.json`, `eslint.config.mjs`. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `docker compose -f docker/docker-compose.dev.yml up -d postgres` y comprueba que acepta
+   conexiones; pega la versión que reporta el servidor (debe ser PostgreSQL 18).
+2. `pnpm typeorm migration:show -d apps/api/src/data-source.ts` → conecta y lista vacío, sin error.
+3. `grep -rn "process.env" apps/api/src` → solo dentro del módulo de configuración. Pega la salida.
+4. `grep -rn "synchronize" apps/api/src` → solo `false`, sin ninguna ruta que lo ponga a `true`.
+5. **Fail-fast**: quita una de las claves nuevas del entorno y arranca; pega el mensaje, que debe
+   nombrar la clave que falta, igual que hace hoy con `NODE_ENV`.
+6. **`pnpm nx e2e api-e2e` en verde** — la trampa 2. Si has tenido que tocar
+   `apps/api-e2e/project.json`, dilo y explica por qué era la vía correcta.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde.
+8. `pnpm why typeorm` y `pnpm why pg`; `git diff package.json` sin un solo `^`.
+9. `pnpm prettier --check apps/api` pasa. **No** ejecutes `prettier --check .`.
+10. Los cuatro scripts `pnpm typeorm migration:generate|run|revert|show` declarados y ejecutables.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Informa al terminar
+- Ficheros creados y modificados, y las dependencias añadidas con su versión exacta.
+- **Cómo resolviste la tensión `ConfigService` / CLI de TypeORM**, y por qué no es ninguna de las
+  dos soluciones malas.
+- **Qué hiciste con `api-e2e`** y la salida real de su ejecución.
+- La salida de las diez verificaciones.
+- El hallazgo del suelo de Node (`engines` más laxo que el requisito de TypeORM) y cualquier otro
+  que encuentres: **repórtalos, no los corrijas**.
+
+### Response:
+
+Implementado ticket T-C10-16
+
+</br>
+
+**Prompt 11:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-17.md ·
+Cadena base de migraciones y la migración de arranque
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** y cierra con `sport-itsm-workflow`.
+Es infraestructura de migraciones: aquí no se crea ninguna tabla, ninguna entidad ni ningún módulo
+de Nest.
+
+#### Por qué este ticket y por qué ahora
+Es el **segundo de la rebanada 1** ("un requester registra una incidencia y la ve"). `T-C10-16`
+dejó la base de datos **alcanzable** (commit `44a9699`); este ticket la deja **reproducible**: fija
+la primera migración y la convención que heredan todas las demás. Detrás de ti vienen `T-C10-11` y
+`T-C10-73`, y más tarde `T-C1-02`/`T-C1-04`, que crean el esquema `incident` y su primera tabla
+**siguiendo la convención que tú escribas**. Lo que dejes aquí es lo que copiarán.
+
+#### Precondición
+    git log --oneline -1          # 44a9699 [T-C10-16] ...
+    git status --porcelain        # limpio
+    docker compose -f docker/docker-compose.dev.yml up -d postgres
+    pnpm typeorm migration:show -d apps/api/src/data-source.ts   # conecta, lista vacía
+
+Si la última falla, **para**: la precondición es `T-C10-16`, no algo que arregles tú.
+
+#### El ticket es el contrato
+Léelo entero, incluida la sección *Defect fixed here*. Lee además:
+
+- `apps/api/src/data-source.ts` — **ya declara** el glob de migraciones
+  (`join(__dirname, 'migrations', '*.{ts,js}')`), con un comentario que dice que llegan con este
+  ticket. Tu trabajo en ese fichero es **verificar** que cumple el AC del glob único `.ts`/`.js`
+  sin rama por entorno, no reescribirlo. Si lo tocas, justifícalo.
+- `tools/typeorm.cjs` y los scripts `migration:*` de `package.json` — cómo se ejecuta la CLI.
+- `docs/product/DATA-MODEL.md` §3.1 y §3.1.1 (clave primaria `DEFAULT uuidv7()`, suelo PG ≥ 18),
+  §6/§20.1 (esquema **`iam`**) y §19 (el orden de verificación: `SELECT uuidv7();` antes de generar
+  nada, y "las migraciones generadas son un borrador, no una autoridad").
+- `.claude/skills/ci-cd/references/gotchas.md`, *TypeORM CLI entity globs must match what the
+  image ships* — la regla que tu nota de convención tiene que dejar escrita para `T-C10-69`.
+
+#### Trampa 1 — cuántos esquemas crea la migración de arranque
+El Scope dice "the per-context schema namespaces of DATA-MODEL, **starting with** the `iam`
+schema". Leído a la ligera, eso son los diez esquemas de `DATA-MODEL.md`. **No lo son.**
+`T-C1-02` lo resuelve: *"every other context's namespace is that context's own cost"*, y su propio
+Scope incluye la migración que crea el esquema `incident`. Si tú creas `incident` aquí, la
+migración de `T-C1-02` choca o queda vacía.
+
+La migración de arranque crea **`iam` y las dos extensiones, y nada más**. Ningún otro esquema.
+
+#### Trampa 2 — el nombre del esquema, otra vez
+El esquema se llama **`iam`**. `identity_access` es el slug del contexto en Nx, nunca un nombre de
+Postgres. El ticket lo corrigió en origen, pero `T-C1-02` (línea 19) **todavía cita** la redacción
+antigua: *"starting with the `identity_access` schema"*. No edites ese ticket — está fuera de tu
+alcance —: **repórtalo como hallazgo** para que se regenere.
+
+#### Trampa 3 — `down` y las extensiones
+El `up` usa `CREATE EXTENSION IF NOT EXISTS`; el `down` tiene que borrarlas (el ticket lo exige).
+Eso tiene un filo: si la extensión **ya existía** antes de la migración, el `down` borra algo que
+no creó. En la base de desarrollo, recién creada, no pasa; pero razónalo, decide (y di en el informe
+qué decidiste y por qué), y déjalo escrito en la nota de convención si afecta a migraciones
+futuras. No añadas una tercera extensión: el AC exige exactamente dos. Tampoco `uuid-ossp` ni
+`pgcrypto`: `uuidv7()` es core en PostgreSQL 18.
+
+#### Trampa 4 — la convención de nombres de TypeORM
+El fichero es `<timestamp>-<PascalCaseName>.ts`; la clase, por convención de TypeORM,
+`<PascalCaseName><timestamp>` e implementa `MigrationInterface`. Escríbela **a mano** con SQL
+explícito (`queryRunner.query`), no con `migration:generate`: no hay entidades, y aunque las
+hubiera, el AC pide SQL explícito revisable. Nada de `synchronize`.
+
+#### Lo que NO debes tocar
+- **`docker/**`**, el entrypoint y el `Dockerfile` — son de `ci-cd-expert`. Que la migración viaje
+  dentro de la imagen desplegada es `T-C10-69`; si ves que el build de webpack de `apps/api` no
+  empaqueta `migrations/` y que `__dirname` apunta a otro sitio en `dist/`, **repórtalo**, no lo
+  arregles.
+- Ninguna tabla (`T-C10-21`, `T-C10-36`, `T-C10-44`), ninguna entidad, ningún módulo de Nest,
+  ningún otro esquema (trampa 1).
+- `libs/**`, `docs/**`, `.claude/**`, `nx.json`, `eslint.config.mjs`, `package.json` (no hacen falta
+  dependencias nuevas; si crees que sí, párate y repórtalo). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `SELECT version();` y `SELECT uuidv7();` contra el Postgres de desarrollo — pega ambas salidas
+   (DATA-MODEL §19 paso 3).
+2. **Base vacía de verdad**: parte de una base sin la migración aplicada y sin `iam` ni las
+   extensiones. Pega el estado inicial (`\dn` y `\dx`, o las consultas equivalentes a
+   `pg_namespace`/`pg_extension`).
+3. `pnpm typeorm migration:run -d apps/api/src/data-source.ts` → éxito; pega la salida y el estado
+   después (`iam` existe, `citext` y `pg_trgm` instaladas, una fila en la tabla `migrations`).
+4. `pnpm typeorm migration:revert -d apps/api/src/data-source.ts` → pega el estado después: debe ser
+   **idéntico** al del punto 2, sin residuos.
+5. La secuencia run → revert → run, **dos veces seguidas**, con el mismo resultado ambas veces.
+   Pega la salida, no un resumen.
+6. `pnpm typeorm migration:show -d apps/api/src/data-source.ts` lista la migración como aplicada.
+7. `grep -rn "synchronize" apps/api/src` → solo `false`.
+8. `pnpm nx e2e api-e2e` sigue en verde (su target ya apunta al Postgres de desarrollo desde
+   `T-C10-16`).
+9. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde.
+10. `pnpm prettier --check apps/api` pasa. **No** ejecutes `prettier --check .`.
+
+Deja la base de desarrollo con la migración **aplicada** al terminar. Un criterio que no has
+ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Informa al terminar
+- Ficheros creados y modificados, y si tocaste `data-source.ts`, por qué.
+- El contenido literal de la migración (`up` y `down`) y de la nota de convención.
+- Qué decidiste sobre el `down` de las extensiones (trampa 3) y por qué.
+- La salida de las diez verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la redacción `identity_access` que
+  sobrevive en `T-C1-02`, y el estado del empaquetado de migraciones en el build de `apps/api` para
+  `T-C10-69`.
+
+### Response:
+
+Implementado ticket T-C10-17
+
+</br>
+
+**Prompt 12:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-11.md ·
+`libs/shared/contracts` — superficie base de DTOs, enums y códigos de error
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero **aquí no se escribe NestJS ni Angular**: es `platform:shared`,
+`type:contracts`, **solo tipos**. Manda `sport-itsm-architecture` (ADR-007, la fila `contracts` de
+la matriz §5.3), con `sport-itsm-engineering-principles` (YAGNI, nombres del lenguaje ubicuo) y
+`sport-itsm-workflow` para el cierre. No apliques idiomas de `sport-itsm-backend`.
+
+#### Por qué este ticket y por qué ahora
+Es el tercero de la rebanada 1 ("un requester registra una incidencia y la ve"). Es **el único
+acoplamiento permitido entre frontend y backend** (ADR-007, `ARCHITECTURE.md` §3.2): el `POST` de
+`T-C1-08`, el data-access de `T-C1-10` y el envelope de error que mostrará el formulario de
+`T-C1-09` se escriben contra lo que dejes aquí. Detrás de ti viene `T-C10-73` (dispatcher de
+eventos), que no depende de esta librería.
+
+#### Precondición
+    git status --porcelain                   # limpio antes de empezar
+    pnpm nx show projects                    # EXACTAMENTE: shared-domain, shared-util, api-e2e, web-e2e, api, web
+    node -e "console.log(Object.keys(require('./tsconfig.base.json').compilerOptions.paths))"
+                                             # exactamente ['@sport-itsm/shared-domain', '@sport-itsm/shared-util']
+    pnpm verify:boundaries                   # todas las sondas en verde, exit 0 — anota el número
+
+**El arnés de sondas es de un solo proceso a la vez.** `libs/__boundary-probe` funciona como lock:
+si ves "another run is in flight", **espera** — no borres el directorio.
+
+Este ticket no necesita base de datos ni Docker.
+
+#### El ticket es el contrato
+Lee `docs/backlog/C10/tickets/T-C10-11.md` entero; su "Out of scope" es vinculante. Lee además, y
+no de memoria:
+
+- **`ARCHITECTURE.md` §3.2** — la fila *Errors*: los errores de dominio se mapean a un envelope
+  **estable y declarado en el contrato**; *"error codes are part of the contract, error **text** is
+  not"*, y el cliente mapea códigos a claves de Transloco. Esa frase decide la forma del envelope.
+- **`ARCHITECTURE.md` §5.3** — fila `type:contracts`: solo `contracts` y `util`. Y la regla de
+  plataforma: `platform:shared` solo alcanza `platform:shared`.
+- **`ARCHITECTURE.md` §5.5** — el comando generador completo y los pasos posteriores.
+- **ADR-007** en `ARCHITECTURE.md` §10.
+- `libs/shared/util` y `libs/shared/domain` — cómo quedaron andamiadas las dos librerías hermanas.
+  Imita su forma.
+
+#### Trampa 1 — el comando del ticket está incompleto
+El Scope del ticket trae `pnpm nx g @nx/js:lib --name=shared-contracts --directory=... --tags=...`
+y **nada más**. Con eso, `@nx/js:lib` usa `--bundler=tsc` (le da `package.json` propio y un target
+`build` que CI ejecutará) y te puede ofrecer Vitest. **Usa el comando completo de
+`ARCHITECTURE.md` §5.5**, bloque *Shared kernel*, primera línea: `--importPath`, `--bundler=none`,
+`--unitTestRunner=jest`, `--linter=eslint`, `--testEnvironment=node`, `--useProjectJson=true`.
+Ejecútalo primero con `--dry-run --no-interactive` y revisa la lista. Después, los pasos que el
+generador no sabe hacer: `"types": []` en `tsconfig.lib.json` (§12, *layer purity*) y borrar la
+unidad de ejemplo.
+
+#### Trampa 2 — "pagination and correlation-identifier shapes" no están definidas en ningún sitio
+El Scope pide, además del envelope y del enum, *"the pagination and correlation-identifier
+shapes"*, citando `ARCHITECTURE.md` §3.2. **§3.2 no las define**: la única mención de correlación
+en el documento es la de logs de `nestjs-pino` (§9). Búscalas en `PRD.md`, `DATA-MODEL.md` y
+`ARCHITECTURE.md` antes de decidir, y cita lo que encuentres.
+
+Si no encuentras nada normativo, declara la forma **mínima y convencional** — sin campos
+especulativos —, documenta en el propio barrel o en un comentario de qué se deriva cada campo, y
+**repórtalo como hallazgo** para el arquitecto: el ticket cita una fuente que no dice lo que el
+ticket le atribuye. Para la paginación, en concreto: no inventes ordenación, filtros ni cursores si
+nada los pide; una página de resultados con su total y sus parámetros de petición basta. Para el
+identificador de correlación: decide si es un tipo (alias con nombre) y/o el nombre de la cabecera
+HTTP como constante, y justifícalo.
+
+#### Trampa 3 — "const enums" y el cliente Angular
+El AC admite "type declarations and `const` enums". Ojo: `apps/web/tsconfig.json` tiene
+`"isolatedModules": true`, y el builder de Angular compila fichero a fichero. Un `export const enum`
+consumido desde otra librería por alias de ruta puede comportarse distinto que un `enum` normal o
+que un objeto `as const` + tipo unión. Elige **una** representación para el enum de códigos de
+error y **demuestra** que ambos lados pueden consumirla: un import temporal desde `apps/web` y otro
+desde `apps/api` que usen un **valor** del enum (no solo el tipo), con `pnpm nx build web` y
+`pnpm nx build api` en verde. **Revierte ambos imports después.** Justifica la elección en el
+informe. Si eliges `as const`, verifica que eso sigue cumpliendo el AC "no runtime logic beyond type
+declarations and const enums" y dilo explícitamente: es un objeto literal congelado, no lógica, pero
+es tu responsabilidad argumentarlo, no la del revisor.
+
+#### Trampa 4 — el enum de códigos de error es exactamente cuatro
+`UNAUTHENTICATED`, `FORBIDDEN`, `VALIDATION_FAILED`, `NOT_FOUND`. Ni `CONFLICT`, ni
+`INTERNAL_ERROR`, ni `LICENSE_REQUIRED`, por muy obvios que parezcan: cada ticket posterior añade
+los suyos. Y ningún contrato de identidad (sign-in, asignación de roles…) ni de incidencia: son de
+`T-C10-27`, `T-C10-48`, `T-C10-52`, `T-C10-60` y de `C1`.
+
+Si el envelope necesita el detalle de un fallo de validación (qué campo, qué regla), recuerda §3.2:
+**el texto no es contrato**. Un detalle por campo con un código máquina sí; un mensaje traducido,
+no.
+
+#### Trampas ya pagadas — no las redescubras
+- **`--name=` como flag**, nunca posicional (ya está en §5.5).
+- **Jest 30.** Tras generar, `git diff package.json`: si el generador ha tocado `jest`, `ts-jest`,
+  `@types/jest` o `jest-environment-node`, restaura los pines exactos y reinstala. Lo ideal es que
+  `git diff package.json pnpm-lock.yaml` quede **vacío**: esta librería no añade dependencias. Y
+  nada de rangos `^`/`~`.
+- **`tsconfig.base.json`** pasa de dos entradas a exactamente **tres**. No toques nada más.
+- **`jest.config.ts`** con `displayName: 'shared-contracts'`. **No declares un target `test`** en
+  `project.json` (lo infiere `@nx/jest`) y **no pongas `passWithNoTests`**. Una librería de solo
+  tipos tiene poco que testear en runtime: si no escribes ningún spec, decide qué hacer con el
+  target `test` para que `pnpm nx run-many -t test` no se ponga rojo por "No tests found", y
+  justifícalo (un spec que verifique que el enum tiene exactamente los cuatro valores es legítimo;
+  un spec de decoración, no).
+- **`eslint.config.mjs` de proyecto**: las dos líneas que reexportan el raíz, como en `shared-util`.
+  Ni una regla añadida ni relajada.
+- **Prettier en Windows**: no hay `.gitattributes` y `core.autocrlf=true` deja CRLF en el árbol.
+  Comprueba **solo lo tuyo**: `pnpm prettier --check libs/shared/contracts tsconfig.base.json`. No
+  reformatees el repositorio.
+
+#### Lo que NO debes tocar
+- `libs/shared/util`, `libs/shared/domain`, `apps/**` (salvo los imports temporales de la trampa 3,
+  revertidos), el `eslint.config.mjs` raíz, `nx.json`, `tools/boundary-probes/`, `.github/`,
+  `docker/`, `CLAUDE.md`, `docs/**`, `.claude/**`, `prompts.md`. El ticket no se edita.
+- Ningún DTO con decoradores de `class-validator`: esos viven en `apps/api` y los crea el ticket que
+  los necesite.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1 — pureza.** `grep -rnE "class-validator|@nestjs|@angular|typeorm" libs/shared/contracts/src`
+   → vacío. Pega la salida.
+2. **AC2 — sin lógica.** Enseña el contenido completo de `libs/shared/contracts/src` y
+   `tsconfig.lib.json` con `"types": []`.
+3. **AC3 — la sonda.** Añade un import de `@sport-itsm/shared-contracts` en `libs/shared/domain`,
+   ejecuta `pnpm nx lint shared-domain` y pega el error de `@nx/enforce-module-boundaries`. **Revierte
+   la sonda** y vuelve a ejecutar `pnpm nx lint shared-domain` en verde. `git diff libs/shared/domain`
+   debe quedar vacío.
+4. **AC4 — tags y lint.** `pnpm nx show project shared-contracts --json`: exactamente los tres tags
+   `platform:shared`, `scope:shared`, `type:contracts`; `projectType: library`; sin target `build`.
+   Y `pnpm nx lint shared-contracts` en verde.
+5. **Trampa 3** — `pnpm nx build web` y `pnpm nx build api` en verde **con** los imports temporales de
+   un valor del enum; pega las salidas relevantes; revierte; `git diff apps` vacío.
+6. `pnpm nx show projects` → exactamente siete: los seis de antes más `shared-contracts`.
+7. `pnpm verify:boundaries` → el mismo número de sondas que en la precondición, todas en verde.
+   Ejecútalo **solo**. Después, `git diff tsconfig.base.json` muestra solo el alias nuevo.
+8. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde.
+9. `pnpm prettier --check libs/shared/contracts tsconfig.base.json` pasa.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- El comando generador exacto y qué borraste o ajustaste de su salida.
+- El contenido literal de cada tipo exportado, y por cada uno **de dónde sale** (sección y documento)
+  o, si no sale de ningún sitio, que es una decisión tuya y por qué es la mínima.
+- La representación elegida para el enum (trampa 3) y la prueba de que ambos lados la consumen.
+- Qué hiciste con el target `test`.
+- La salida de las nueve verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, que `ARCHITECTURE.md` §3.2 no define las
+  formas de paginación y correlación que el ticket le atribuye, que el comando del Scope del ticket
+  está incompleto respecto a §5.5, y qué notas de estado quedan obsoletas (`ARCHITECTURE.md` §12.3,
+  `PROJECT-STRUCTURE.md`).
+
+### Response:
+
+Implementado ticket T-C10-11
+
+</br>
+
+**Prompt 13:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-73.md ·
+Dispatcher genérico de eventos post-commit, extraído de `T-C10-55`
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (NestJS 11, DI por tokens, Logger),
+`sport-itsm-architecture` (ADR-003, ADR-008, §5.4 y §6.3: `apps/api` es la raíz de composición) y
+`sport-itsm-engineering-principles` (errores tipados, YAGNI). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el cuarto de la rebanada 1 ("un requester registra una incidencia y la ve"). `T-C1-07`
+(`LogIncidentUseCase`) tiene un AC que exige que un suscriptor que lanza al manejar
+`IncidentLogged` no afecte a la incidencia ya persistida: necesita **este** mecanismo, y no puede
+sacarlo de `T-C10-55`, que está escrito contra eventos de roles. Aquí se construye el mecanismo
+**genérico**; cada consumidor cablea sus propios eventos en su propio ticket.
+
+#### Precondición
+    git status --porcelain                 # limpio
+    pnpm nx show projects                  # 7: shared-contracts, shared-domain, shared-util, api-e2e, web-e2e, api, web
+    pnpm nx test shared-domain             # verde
+    pnpm verify:boundaries                 # todas las sondas en verde — anota el número
+
+Este ticket no necesita la base de datos.
+
+#### El ticket es el contrato
+Léelo entero; su "Out of scope" es vinculante. Lee además, y no de memoria:
+
+- `libs/shared/domain/src/lib/event-publisher.port.ts` — el puerto **ya existe** (`T-C10-09`):
+  `publish(events: readonly DomainEvent<object>[]): void`. Su comentario dice que publicar después
+  del commit es **responsabilidad del caso de uso, no del puerto**, y que el dispatcher vive en
+  `apps/api`.
+- `libs/shared/domain/src/lib/domain-event.ts` — `DomainEvent` lleva `name`, `occurredAtEpochMs`,
+  `actor`, **`correlationId`** y `payload`, congelado. El identificador de correlación que el AC2
+  pide loguear **ya viaja en el evento**.
+- `ARCHITECTURE.md` **ADR-008** y §5.4 (el bloque sobre por qué `audit` y `notification` no tienen
+  puerto) y §6.3 (raíz de composición).
+- `apps/api/src/app/app.module.ts`, `apps/api/src/main.ts`, y el arnés `apps/api-e2e` (su
+  `project.json`, `harness-smoke.feature` y sus step definitions).
+
+#### Trampa 1 — no hay transacción todavía, y el AC habla de commit y rollback
+Hoy no existe ningún `TypeOrmModule`, ningún repositorio y ninguna unidad de trabajo: el primer
+commit real llega con `T-C1-06`/`T-C1-07`. Los AC1 y AC3 (despachado "strictly after the commit";
+con rollback, "no event reaches any subscriber") hay que demostrarlos sin esa infraestructura.
+
+- **No inventes** un `UnitOfWorkPort` en `libs/shared/domain`, ni un módulo de TypeORM, ni un
+  decorador `@Transactional`. Eso es diseño de otro ticket y cambiaría el kernel compartido.
+- El puerto ya fija el reparto: el caso de uso hace commit y **después** llama a `publish`. Demuestra
+  AC1/AC3 con un **caso de uso de prueba genérico** (solo en código de test) que modela commit y
+  rollback, y comprueba el orden y la ausencia de despacho tras el rollback.
+- Decide y justifica si `publish` despacha **en el acto** (síncrono, dentro de la llamada) o lo
+  **difiere** (microtask/`setImmediate`). Las dos tienen consecuencias: diferir aleja el despacho
+  del commit pero hace que el AC2 ("the caller receives success") y los tests dependan del
+  scheduling. Elige una y di por qué.
+- **Repórtalo como hallazgo**: la frontera de commit real la pondrá `T-C1-07`, y ese ticket tendrá
+  que garantizar que `publish` se llama fuera de la transacción.
+
+#### Trampa 2 — `publish(): void` y suscriptores asíncronos
+La firma es síncrona y devuelve `void`. Un suscriptor `async` que **rechaza** su promesa no lanza
+dentro de tu `try/catch`: acaba como *unhandled rejection*, y en **Node 22 eso tumba el proceso**.
+El aislamiento del AC2 tiene que cubrir **las dos** formas de fallo (throw síncrono y promesa
+rechazada), y un suscriptor que falla **no** puede impedir que los demás suscriptores del mismo
+evento lo reciban. Demuéstralo con tests de ambos casos y de varios suscriptores.
+
+No cambies la firma de `EventPublisherPort` ni toques `libs/shared/domain`. Si crees que la firma
+debe cambiar, **para y repórtalo**.
+
+#### Trampa 3 — el escenario API-E2E necesita algo que lo dispare
+El Scope pide un escenario API-E2E con un evento de prueba genérico y un suscriptor que falla. Hoy la
+API no tiene ninguna ruta, y `harness-smoke.feature` recuerda que `T-C10-06` prohíbe añadir rutas
+para "poner verde" ese smoke. Para disparar el dispatcher por HTTP necesitas algo que **no puede
+existir en producción**.
+
+Decide y justifica la vía. Si es un módulo/ruta solo de test:
+- se registra **únicamente** con `NODE_ENV=test` (el que ya pone el target de `api-e2e`), decidido
+  en la raíz de composición, sin `process.env` fuera del módulo de configuración (usa
+  `ConfigService`/el entorno validado);
+- **demuestra** que con `NODE_ENV=development` y `production` la ruta responde **404**;
+- vive claramente marcado como test harness, no mezclado con código de producción.
+
+Si concluyes que la vía correcta es otra (p. ej. un test de integración de Nest con
+`@nestjs/testing` en vez de Cypress), justifícalo contra `CLAUDE.md` §2 (E2E con
+Cypress/Cucumber) y **repórtalo como desviación**, no la escondas. Recuerda que el aislamiento de
+Cypress en esta máquina exige `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+
+#### Trampa 4 — genérico de verdad
+- La costura de registro se indexa por **nombre de evento** (`DomainEvent.name` es un `string`; no
+  hay subclases por evento). Tipa el payload genéricamente para que un consumidor futuro registre
+  `IncidentLogged` con su payload sin que este código lo conozca.
+- El token de inyección para `EventPublisherPort` (una interfaz no puede ser token) y la costura de
+  registro viven en `apps/api`. **No generes ninguna librería nueva** para esto; si crees que hace
+  falta, para y repórtalo.
+- AC4: ni `identity`, ni `role`, ni `Role`, ni `incident`, ni `Incident` en el código del
+  dispatcher. Nombres de test: `TestEvent`, `FailingTestSubscriber`, o similares.
+- **Nada de reintentos**: ADR-008 menciona "retry" como mitigación de audit, pero el ticket no lo
+  pide. No lo implementes; menciónalo como hallazgo si lo ves necesario para `C18`.
+
+#### Logging
+`nestjs-pino` **no está instalado** (llega con `T-C10-28`). Usa el `Logger` de `@nestjs/common`,
+nunca `console.log`. El log del fallo incluye el `correlationId` del evento, el nombre del evento y
+el error, y nunca el `payload` completo (puede contener datos personales). No instales dependencias.
+
+#### Lo que NO debes tocar
+- `libs/**` (incluido `EventPublisherPort` y `DomainEvent`), `docker/**`, `.github/**`, `docs/**`,
+  `.claude/**`, `prompts.md`, `package.json`. El ticket no se edita.
+- Ningún evento concreto, ningún caso de uso real, nada de `incident` ni de roles.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api` — pega el resumen: tests de despacho único, orden tras commit, nada tras
+   rollback, suscriptor que lanza (síncrono), suscriptor que rechaza (asíncrono), varios suscriptores
+   con uno que falla, y el log con `correlationId`. Ya no puede pasar por `passWithNoTests`.
+2. **AC4**: `grep -rniE "identity|role|incident" <ficheros del dispatcher>` → vacío. Pega la salida.
+3. **Trampa 3**: `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde con el escenario nuevo
+   y el smoke existente. Y la prueba de que la ruta de test responde 404 fuera de `NODE_ENV=test`.
+4. Ninguna *unhandled rejection* en la salida de los tests (búscala explícitamente).
+5. `grep -rn "process.env" apps/api/src` → solo dentro de `apps/api/src/config`.
+6. `grep -rn "console.log" apps/api/src` → vacío.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde.
+8. `pnpm verify:boundaries` → mismo número de sondas que en la precondición, en verde.
+9. `pnpm prettier --check` sobre los ficheros que has creado o tocado (no `prettier --check .`).
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- El diseño: token, costura de registro, dispatcher, y cómo los usará `T-C1-07` (un ejemplo de
+  registro de dos líneas, sin escribirlo en código).
+- Tus decisiones de las trampas 1, 2 y 3, con su porqué.
+- La salida de las nueve verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, la frontera de commit que hereda
+  `T-C1-07`, la cuestión del reintento de ADR-008, y qué debe ajustar `T-C10-55` ahora que el
+  mecanismo existe.
+
+### Response:
+
+Implementado ticket T-C10-73
+
+</br>
+
+**Prompt 14:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como sport-itsm-architect e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-01.md ·
+Andamiar las seis librerías del contexto `incident` con sus tres ejes de etiquetas
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+El ticket tiene `agent: —`: son seis librerías de **las dos plataformas**, así que no es de ningún
+agente de desarrollo. Es andamiaje de estructura, y eso es del arquitecto. Aplica
+**`sport-itsm-architecture`** (contextos, tags, matriz §5.3), con `sport-itsm-workflow` para el
+cierre. **Aquí no se escribe ni una línea de dominio, caso de uso, componente ni migración.**
+
+#### Por qué este ticket y por qué ahora
+Es el primero del bloque 3 de la rebanada 1 ("un requester registra una incidencia y la ve"):
+`T-C1-01` → `02` → `03` → `05` → `06` → `04`. Nada de `incident` compila hasta que existan estas
+seis librerías, y todo lo que viene detrás (agregado, referencia, caso de uso, endpoint, formulario)
+vive dentro de ellas.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx show projects                    # EXACTAMENTE 7: shared-contracts, shared-domain, shared-util, api-e2e, web-e2e, api, web
+    node -e "console.log(Object.keys(require('./tsconfig.base.json').compilerOptions.paths))"
+                                             # exactamente los 3 alias shared-*
+    pnpm verify:boundaries                   # 10/10, exit 0
+
+**El arnés de sondas es de un solo proceso a la vez.** `libs/__boundary-probe` funciona como lock:
+si ves "another run is in flight", **espera** — no borres el directorio.
+
+#### El ticket es el contrato
+Léelo entero; su "Out of scope" es vinculante (el esquema `incident` y el `IncidentModule` son
+`T-C1-02`). Lee además, y no de memoria:
+
+- **`ARCHITECTURE.md` §5.5** — los **seis comandos exactos**, bajo "Backend hexagon for one context"
+  y "Frontend slice for the same context". El ticket solo lista las etiquetas; **los flags de §5.5 no
+  son opcionales** (`--name`, `--importPath`, `--bundler=none`, `--unitTestRunner=jest`,
+  `--testEnvironment=node`, `--useProjectJson=true` en las de TypeScript; `--prefix=incident`,
+  `--style=scss`, `--changeDetection=OnPush`, `--standalone --skipModule` en las de Angular).
+  Ejecuta **cada uno primero con `--dry-run --no-interactive`** y revisa la lista.
+- **Los dos pasos posteriores de §5.5**: `"types": []` en `tsconfig.lib.json` de
+  **`incident-domain` e `incident-application`** (no en `incident-infrastructure`, que hará I/O; las
+  de Angular no llevan entrada `types`), y **borrar la unidad de ejemplo** de las seis (en las de
+  Angular, el componente de ejemplo con su `.html`, `.scss` y `.spec.ts`).
+- **`ARCHITECTURE.md` §5.3** (matriz de tipos, regla de scope, regla de plataforma) y **§8**
+  (`incident` nunca importa `sla`).
+- `libs/shared/util`, `libs/shared/domain` y `libs/shared/contracts` — cómo quedaron andamiadas las
+  hermanas. Imita su forma.
+- `tools/boundary-probes/verify.mjs` — cómo el arnés crea proyectos temporales etiquetados y los
+  retira. Te servirá para la trampa 2.
+
+#### Trampa 1 — seis librerías vacías y el target `test`
+El ticket prohíbe cualquier código, así que las seis quedan **vacías**. Jest sin ningún spec sale
+con "No tests found" y **código 1**, y el AC6 exige `pnpm nx run-many -t lint test` en verde.
+
+- Un spec de decoración (`expect(true).toBe(true)`) **no** es aceptable.
+- La vía razonable es `passWithNoTests: true` en el `jest.config.ts` de cada una de las seis, con un
+  comentario de una línea que diga que se retira cuando llegue el primer código (`T-C1-03` en
+  `incident-domain`, etc.). Es lo que ya hacen `apps/api` y `apps/web`. Si eliges otra vía,
+  justifícala.
+- **No declares un target `test` en `project.json`** (lo infiere `@nx/jest`).
+
+#### Trampa 2 — las sondas del ticket apuntan a una librería que no existe
+- **AC3** (`incident-domain` → `incident-infrastructure`): falla por la **matriz de tipos**. Directo.
+- **AC4** (`incident-domain` → `libs/sla/domain`): **`libs/sla/domain` no existe.** No generes el
+  contexto `sla`. Crea un proyecto **temporal** etiquetado `platform:backend,scope:sla,type:domain`
+  (a mano o como hace el arnés), añade su alias, importa desde `incident-domain`, pega el error de la
+  **regla de scope**, y retira el proyecto, su alias y la sonda. Al final `tsconfig.base.json` debe
+  tener exactamente **nueve** alias: los tres `shared-*` y los seis `incident-*`.
+- **AC5** (`incident-application` → `incident-feature`): el AC dice que falla por la **regla de
+  plataforma**, pero esa importación viola **también** la matriz de tipos (`application` no puede
+  depender de `feature`). Pega **todos** los mensajes que emita `@nx/enforce-module-boundaries` y di
+  explícitamente si aparece el de plataforma. Si solo aparece el de tipos, el AC no se ha demostrado:
+  dilo y repórtalo como hallazgo, no lo fuerces.
+- Revierte **las tres** sondas. `git diff libs/incident` sin rastro de ellas, y
+  `pnpm nx lint incident-domain incident-application` en verde después.
+
+#### Trampas ya pagadas — no las redescubras
+- **`--name=` como flag**, nunca posicional (§5.5 punto 1).
+- **`@nx/angular:library` escribe un bloque `generators` en `nx.json`** la primera vez que se usa
+  (§5.5 punto 3). Es esperado: revisa el diff de `nx.json`, confirma que **solo** añade ese bloque y
+  que sus valores coinciden con los flags que pasaste, y dilo en el informe. Nada más en `nx.json`.
+- **Jest 30 / versiones.** Tras generar, `git diff package.json pnpm-lock.yaml` debe quedar
+  **vacío**: `@nx/angular`, `jest-preset-angular` y todo lo necesario ya están instalados. Si un
+  generador añade o cambia una dependencia, restaura el pin exacto; nada de `^`/`~`.
+- **`eslint.config.mjs` de cada proyecto**: el que genere Nx, reexportando el raíz, sin reglas
+  añadidas ni relajadas. Las de Angular llevan el prefijo `incident` para selectores.
+- **Prettier en Windows**: comprueba solo lo tuyo:
+  `pnpm prettier --check libs/incident tsconfig.base.json nx.json`. No `prettier --check .`.
+
+#### Lo que NO debes tocar
+- `libs/shared/**`, `apps/**`, el `eslint.config.mjs` raíz, `tools/boundary-probes/`, `.github/`,
+  `docker/`, `package.json`, `CLAUDE.md`, `docs/**`, `.claude/**` (salvo tu propia memoria de
+  agente), `prompts.md`. El ticket no se edita.
+- Ningún agregado, puerto, caso de uso, entidad, componente, servicio, migración ni módulo de Nest.
+- Ningún otro contexto (`sla` incluido): la sonda del AC4 es temporal.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — `pnpm nx show projects`: exactamente 13 (los 7 de antes + los 6 `incident-*`), y
+   `ls libs/incident` muestra exactamente `application data-access domain feature infrastructure ui`.
+2. **AC2** — `pnpm nx show project <p> --json` de las seis: pega sus tags (exactamente tres, los del
+   ticket), `projectType: library`, sin target `build`.
+3. **AC3, AC4, AC5** — el error de lint de cada sonda, literal, y la reversión de cada una.
+4. `"types": []` en `tsconfig.lib.json` de `incident-domain` e `incident-application`; enséñalos.
+   Y ninguna unidad de ejemplo en las seis (`find libs/incident -name "*.ts" -path "*/lib/*"` vacío
+   o justificado).
+5. **AC6** — `pnpm nx run-many -t lint test --projects='incident-*'` en verde, y
+   `pnpm nx graph --file=tmp/graph.json`: nodos y aristas; con seis librerías vacías no debería haber
+   ninguna arista nueva. Borra `tmp/graph.json` después.
+6. `node -e "..."` sobre `tsconfig.base.json`: exactamente nueve alias.
+7. `git diff package.json pnpm-lock.yaml` vacío; `git diff nx.json` solo el bloque `generators` de
+   Angular.
+8. `pnpm verify:boundaries` → 10/10, ejecutado **solo**.
+9. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde — es lo que corre CI.
+10. `pnpm prettier --check libs/incident tsconfig.base.json nx.json` pasa.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Los seis comandos generadores exactos y qué borraste o ajustaste de la salida de cada uno.
+- Tu decisión sobre el target `test` (trampa 1) y por qué.
+- Cómo hiciste la sonda del AC4 sin crear el contexto `sla`, y qué reglas saltaron en el AC5.
+- El diff de `nx.json`.
+- La salida de las diez verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: notas de estado obsoletas (`ARCHITECTURE.md` §12.3,
+  `PROJECT-STRUCTURE.md`), y cualquier AC que no se pueda demostrar tal como está escrito.
+
+### Response:
+
+Implementado ticket T-C1-01
+
+</br>
+
+
+**Prompt 15:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-02.md ·
+Namespace de esquema `incident` y la raíz de composición `IncidentModule`
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (NestJS 11, TypeORM, migraciones),
+`sport-itsm-architecture` (§6.3: `apps/api` es la única raíz de composición) y cierra con
+`sport-itsm-workflow`. Aquí no hay dominio: una migración, un módulo vacío pero cableado y el
+registro de una ruta de entidades.
+
+#### Por qué este ticket y por qué ahora
+Es el segundo del bloque 3 de la rebanada 1 (`T-C1-01` → **`02`** → `03` → `05` → `06` → `04`).
+Nada del contexto `incident` se puede persistir ni exponer por HTTP hasta que exista esto: la tabla
+de `T-C1-04`, el repositorio de `T-C1-06` y el endpoint de `T-C1-08` cuelgan de este esquema y de
+este módulo. **Lo que dejes aquí es el patrón que copiarán todos los contextos siguientes.**
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx show projects                    # 13 (incluidos los seis incident-*)
+    docker ps --filter name=sport-itsm-postgres-dev   # healthy, 0.0.0.0:5452->5432
+    POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres pnpm typeorm migration:show -d apps/api/src/data-source.ts
+                                             # [X] CreateIamSchemaAndExtensions1790349248155
+
+#### Trampas del entorno — ya pagadas, no las redescubras
+- **Puerto de desarrollo 5452**, no 5432 (5432 está ocupado en esta máquina). No lo cambies.
+- Hay variables globales de Windows `POSTGRES_*` de otro proyecto (usuario `userdev`) que **pisan el
+  `.env`**: pasa los cinco valores explícitos **en la misma llamada Bash** en cada comando de la CLI,
+  como en la precondición.
+- `pnpm typeorm <cmd> -d apps/api/src/data-source.ts` lleva `-d`; los atajos
+  `pnpm migration:run|revert|show` **ya lo llevan** — no añadas otro, rompe con un error confuso.
+- Cypress desde el terminal de VS Code: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- Prettier en Windows: comprueba solo tus ficheros.
+
+#### El ticket es el contrato
+Léelo entero; su "Out of scope" es vinculante (ninguna tabla, puerto, adaptador ni controlador). Lee
+además, y no de memoria:
+- **`apps/api/src/migrations/README.md`** — la convención de `T-C10-17`: nombre, clase, reversibilidad,
+  nombres de esquema reales de `DATA-MODEL.md`. El esquema es **`incident`** (`DATA-MODEL.md` §8/§20.3).
+- La migración de arranque `1790349248155-CreateIamSchemaAndExtensions.ts` — el ejemplo a seguir.
+- `apps/api/src/data-source.ts`, `apps/api/tsconfig.migrations.json`, `tools/build-api-runtime.mjs`
+  y `docker/backend/Dockerfile` — cómo se carga el data source en local (ts-node) y en la imagen
+  (compilado, WORKDIR `/app/dist/apps/api`).
+- `ARCHITECTURE.md` §6.3 y `PROJECT-STRUCTURE.md` — el módulo va en
+  **`apps/api/src/app/incident/incident.module.ts`**.
+- `apps/api/src/app/app.module.ts` y `apps/api/src/event-dispatch/event-dispatch.module.ts` — cómo
+  se registran hoy los módulos.
+
+#### Trampa 1 — el AC3 pide `/health/ready`, y no existe
+`/health/live` y `/health/ready` son de **`T-C10-28`** (observabilidad, `@nestjs/terminus`), que no
+está hecho: hoy `main.ts` solo reserva la exclusión del prefijo. **No implementes health aquí.**
+Demuestra lo demostrable del AC3 — que la API arranca con `IncidentModule` registrado (log de Nest
+`IncidentModule dependencies initialized`, la API escuchando, `pnpm nx e2e api-e2e` en verde) — y
+**reporta el AC3 como parcialmente no demostrable** por dependencia de `T-C10-28`.
+
+#### Trampa 2 — "registrar la ruta de entidades de `incident`" es más difícil de lo que parece
+Hoy el data source declara `entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')]`. Con
+`__dirname = apps/api/src`, eso busca en `apps/api/**`: **no alcanza `libs/incident/infrastructure`**,
+que es donde `T-C1-06` pondrá la entidad TypeORM.
+
+Decide cómo registrar el contexto `incident` y **justifícalo** contra estas tres restricciones:
+- **Local (CLI con ts-node)**: la ruta tiene que encontrar
+  `libs/incident/infrastructure/src/**/*.entity.ts` desde el `__dirname` real.
+- **Imagen desplegada**: `tsconfig.migrations.json` solo compila `data-source.ts`, `config/` y
+  `migrations/`. Un `import` de `@sport-itsm/incident-infrastructure` en `data-source.ts` **no
+  funciona** allí: `tsc` no reescribe los alias de ruta, y el `require` compilado fallaría en la
+  imagen. Por eso **no importes clases de entidad por alias** en `data-source.ts`.
+- **El glob no puede escapar al sistema de ficheros**: `T-C10-69` descubrió que un glob con `..` que
+  en la imagen resolvía a `/` dejaba colgado `DataSource.initialize()` recorriendo `/proc`. Cualquier
+  ruta nueva tiene que resolver a un directorio acotado tanto en local como en `/app/dist/apps/api`
+  (si en la imagen no existe, que sea un directorio inexistente, no la raíz).
+
+Hoy no hay ninguna entidad, así que el glob no encontrará nada: está bien. **Repórtalo como hallazgo
+para `T-C1-06` y `ci-cd-expert`**: cuando exista la primera entidad, la imagen tendrá que compilarla
+y copiarla (o el data source tendrá que cambiar de estrategia), porque hoy no viaja en `dist/`.
+
+#### Trampa 3 — la migración del esquema
+- Fichero `<timestamp>-CreateIncidentSchema.ts`, clase `CreateIncidentSchema<timestamp>`, timestamp
+  **posterior** a `1790349248155`. SQL explícito con `queryRunner.query`, sin `migration:generate`.
+- Sigue la convención del README en `up`/`down`. Decide si el `down` usa `DROP SCHEMA` **sin**
+  `CASCADE` (falla si alguien dejó tablas: más seguro, obliga a revertir en orden) o con él, y
+  justifícalo. Recomendación: sin `CASCADE`, porque cada tabla futura tendrá su propia migración
+  reversible que se revierte antes.
+- **"Base vacía" del AC1**: la base de desarrollo ya tiene aplicada la migración de arranque. Haz los
+  ciclos run → revert → run contra una base **desechable** (el stack `docker/docker-compose.e2e.yml`
+  en 5499, levantado y destruido a mano, o un contenedor propio), partiendo de verdad vacía, y
+  demuestra que después del `revert` no queda ningún objeto en el esquema `incident` ni el propio
+  esquema. Al terminar, deja la base de **desarrollo** con las dos migraciones aplicadas.
+
+#### Trampa 4 — el módulo vacío pero cableado
+- `IncidentModule` en `apps/api/src/app/incident/incident.module.ts`, importado desde `AppModule`.
+- **Ningún provider de negocio ni controlador** (AC4). El "bloque de binding de tokens" se establece
+  como `providers: []` con un comentario que muestra la forma exacta que añadirán los tickets
+  siguientes (`{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }`, citando
+  §6.3). **No declares tokens ni clases que aún no existen** para rellenar el ejemplo.
+- `EVENT_PUBLISHER` ya es global (`EventDispatchModule`); no lo reimportes.
+- No instales `@nestjs/typeorm` ni conectes `TypeOrmModule`: el ticket no lo pide y la API sigue sin
+  abrir conexión al arrancar. Si crees que hace falta, **para y repórtalo**.
+
+#### Lo que NO debes tocar
+`libs/**`, `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria de agente),
+`package.json`, `prompts.md`, `apps/api/src/event-dispatch/**`, `apps/api/src/testing/**`,
+`apps/api/tsconfig.migrations.json` y `tools/build-api-runtime.mjs` (salvo que la trampa 2 lo exija
+de verdad; si lo tocas, justifícalo). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — contra la base desechable vacía: `migration:run` aplica las dos migraciones; `\dn` muestra
+   `iam` e `incident`. Pega la salida.
+2. **AC2** — `migration:revert` retira solo `CreateIncidentSchema…`; `\dn` sin `incident` y sin
+   objetos residuales (`SELECT … FROM pg_class c JOIN pg_namespace n … WHERE n.nspname='incident'`
+   vacío). Luego run → revert → run otra vez con el mismo resultado. Pega todo.
+3. Destruye la base desechable. En la base de **desarrollo** (5452), `migration:run` y
+   `migration:show` → las dos `[X]`.
+4. **Trampa 2** — muestra la ruta de entidades resuelta en local (p. ej. un `node -e` que cargue el
+   data source con ts-node e imprima `dataSource.options.entities`) y explica cómo resuelve en la
+   imagen. `pnpm nx run api:build-migrations` sigue en verde y `dist/apps/api/migrations/` contiene
+   la nueva migración compilada.
+5. **AC3** — la API arranca: pega la línea `IncidentModule dependencies initialized` y la de
+   escucha. Reporta explícitamente qué parte del AC3 no se puede demostrar (`/health/ready`).
+6. **AC4** — enseña `incident.module.ts` completo; `pnpm nx lint api` en verde.
+7. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde (su `e2e-migrate` aplica ahora las dos
+   migraciones sobre la base efímera: pega esas líneas).
+8. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+9. `grep -rn "synchronize" apps/api/src` → solo `false`; `grep -rn "process.env" apps/api/src` → solo
+   `config/` y el test de gating ya existente.
+10. `pnpm prettier --check` sobre los ficheros que has creado o tocado.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Deja los contenedores desechables eliminados y
+`sport-itsm-postgres-dev` `healthy` en 5452.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- El contenido literal de la migración y de `incident.module.ts`.
+- Tus decisiones de las trampas 2 y 3, con su porqué.
+- La salida de las diez verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el AC3 y `/health/ready` (`T-C10-28`), el
+  empaquetado de entidades en la imagen para `T-C1-06`/`ci-cd-expert`, y el `passWithNoTests` que
+  `apps/api/project.json` mantiene aunque `api` ya tiene tests.
+
+### Response:
+
+Implementado ticket T-C1-02
+
+</br>
+
+**Prompt 16:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-03.md ·
+Política de `TicketReference` para incidencias y el puerto de repositorio `nextReference()`
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero **aquí no se escribe NestJS ni TypeORM**: es `type:domain`, código
+puro. Mandan `sport-itsm-engineering-principles` (inmutabilidad, errores tipados, YAGNI) y
+`sport-itsm-architecture` (§5.3 fila `domain`, §5.4 dónde vive un puerto, §6.2–§6.3 puertos con
+token). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el tercero del bloque 3 de la rebanada 1. El orden real es **`03 → 05 → 06 → 04`** (nota H2 del
+README de `C1`): primero el puerto y la política de referencia (este), luego el agregado (`T-C1-05`),
+la tabla (`T-C1-06`) y por último la secuencia y la restricción única (`T-C1-04`). `US-C1-05` exige
+que ninguna incidencia exista sin referencia, por eso la referencia va antes que el agregado.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx show projects                    # 13
+    pnpm nx test shared-domain               # verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas base de datos.
+
+#### El ticket es el contrato — pero tiene dos puntos que chocan con la fuente
+Léelo entero. Lee además, y no de memoria:
+- **`libs/shared/domain/src/lib/ticket-reference.vo.ts`** — `TicketReference` **ya existe** (`T-C10-08`):
+  valida `^[A-Z]{3}[0-9]{7}$`, expone `value` y `prefix`. No se modifica.
+- **`DATA-MODEL.md` §3.1 y §3.2** (referencias legibles: `INC0000123`, `varchar(20)`, secuencia
+  `incident.incident_reference_seq`, **nunca reutilizada**) y la fila de `id` en §20.3 (UUID v7 emitido
+  por `IncidentRepositoryPort.nextIdentity()`).
+- **`ARCHITECTURE.md` §6.2** (el agregado se construye completo en dominio puro antes de cualquier
+  I/O) y **§6.3** (puerto = `interface` + `Symbol` exportado desde la librería de dominio).
+- `libs/shared/domain/src/lib/event-publisher.port.ts` — el ejemplo vigente de puerto + token.
+- `PRD.md` **FR-INC-02** y `docs/backlog/C1/user-stories.md` → `US-C1-05`.
+
+#### Trampa 1 — el formato: "prefijo, separador y parte numérica"
+El Scope dice *"prefix, separator and numeric part"*. **La fuente dice otra cosa**: `DATA-MODEL.md`
+fija `INC0000123` — prefijo de tres letras y siete dígitos, **sin separador** — y el VO compartido lo
+hace cumplir. Un separador (`INC-0000123`) no pasaría la validación del kernel ni cabría en la forma
+documentada.
+
+- **Implementa la forma de `DATA-MODEL.md`**: `INC` + 7 dígitos con ceros a la izquierda.
+- **Repórtalo como hallazgo** para `architect-tech-lead`: el Scope del ticket contradice
+  `DATA-MODEL.md`. No edites el ticket.
+- El requisito de "no ambigüedad al leerlo en voz alta" se cumple por construcción (prefijo fijo y solo
+  dígitos): **demuéstralo con un test**, no con un comentario.
+- Siete dígitos se agotan en 9.999.999. Decide qué pasa si la secuencia entrega un número mayor:
+  **error de dominio tipado**, nunca truncar ni envolver en silencio (eso reutilizaría referencias,
+  que es exactamente lo que FR-INC-02 prohíbe). Documenta el límite.
+
+#### Trampa 2 — `findById()` y `save()` nombran un agregado que aún no existe
+El Scope pide que `IncidentRepositoryPort` exponga `nextReference()`, `findById()` y `save()`. Pero
+`save(incident: Incident)` y `findById(): Promise<Incident | null>` necesitan el tipo **`Incident`**, que
+es `T-C1-05` — el siguiente ticket.
+
+- **No crees un `Incident` provisional** ni un tipo placeholder para que compile: el agregado es de
+  `T-C1-05` y un esqueleto aquí sería código que ese ticket tendría que deshacer.
+- Declara ahora lo que se puede declarar honestamente (`nextReference()`), y decide entre: (a) dejar
+  `findById`/`save` para `T-C1-05`, que es quien trae el tipo, y reportarlo como desviación del Scope;
+  o (b) otra forma que no invente el agregado. Recomendación: (a). Justifica tu elección.
+- **`nextIdentity()`**: `DATA-MODEL.md` §3.1 y §20.3 dicen que el puerto emite también el UUID v7 del
+  agregado (`nextIdentity()` "alongside the existing `nextReference()`"), y el ticket no lo menciona.
+  Solo nombra tipos del kernel (`Identity`), así que se puede declarar aquí sin inventar nada. Decide
+  si lo incluyes y justifícalo con la fuente; en cualquier caso, repórtalo.
+
+#### Trampa 3 — el puerto y su token
+- `interface IncidentRepositoryPort` + `export const INCIDENT_REPOSITORY = Symbol(...)` en
+  `libs/incident/domain`, exportados por el barrel — igual que `EVENT_PUBLISHER` junto a
+  `EventPublisherPort`. Un `Symbol` es JavaScript puro: nada de `@nestjs/*` aquí.
+- Métodos asíncronos (`Promise<…>`): la referencia sale de una secuencia de base de datos, es I/O
+  detrás del puerto. `Promise` no es un import de I/O.
+- La política de formato/parseo vive en `libs/incident/domain` y **compone** el `TicketReference` del
+  kernel; no dupliques su validación ni la cambies. Si el VO del kernel no expone algo que necesitas (la
+  parte numérica, por ejemplo), resuélvelo en la política de `incident` — **no toques
+  `libs/shared/domain`**. Si crees que el kernel debe cambiar, para y repórtalo.
+- Errores: lanza errores tipados que hereden de `DomainError` del kernel, distinguibles por tipo, no por
+  mensaje (la misma disciplina que `T-C10-08`).
+
+#### Trampa 4 — la primera arista de `incident`
+`libs/incident/domain` pasará a depender de `@sport-itsm/shared-domain`: es la **primera arista** del
+contexto `incident` y es legal (`domain` → `domain`, `scope:incident` → `scope:shared`). Importa **solo
+por el barrel** `@sport-itsm/shared-domain`, nunca por ruta profunda. Verifícalo en el grafo.
+
+Y quita `passWithNoTests: true` de `libs/incident/domain/jest.config.ts`: su propio comentario dice
+que se retira con este ticket.
+
+#### Lo que NO debes tocar
+`libs/shared/**`, las otras cinco librerías `incident-*`, `apps/**`, `docker/**`, `.github/**`,
+`docs/**`, `.claude/**` (salvo tu memoria de agente), `package.json`, `tsconfig.base.json`,
+`prompts.md`. Nada de agregado, adaptador, entidad, migración ni secuencia (`T-C1-04`, `05`, `06`). El
+ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — `pnpm nx test incident-domain`: pega el resumen. Tests de round-trip (formatear → parsear →
+   mismos componentes), forma exacta (`INC0000123`), límite superior (9.999.999 válido, 10.000.000 lanza
+   el error tipado), entradas inválidas (0, negativos, no enteros) y el test de "sin caracteres
+   ambiguos".
+2. **AC2 — pureza**: `grep -rnE "from '(@nestjs|@angular|typeorm|rxjs|express|pg|node:|fs|path|crypto)" libs/incident/domain/src`
+   → vacío. Y `tsconfig.lib.json` sigue con `"types": []`.
+3. **AC2 — lint**: `pnpm nx lint incident-domain` en verde.
+4. **AC3**: los tests corren sin base de datos ni HTTP (ningún mock de red ni de BD necesario).
+5. El grafo: `pnpm nx graph --file=tmp/graph.json` → la arista nueva `incident-domain -> shared-domain` y
+   ninguna otra nueva; borra el fichero.
+6. `libs/incident/domain/jest.config.ts` sin `passWithNoTests`.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+8. `pnpm prettier --check libs/incident/domain`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; el contenido literal del puerto y de la política.
+- Tus decisiones de las trampas 1 y 2 (formato, límite, `findById`/`save`, `nextIdentity`), con su porqué.
+- La salida de las ocho verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, la contradicción del Scope con
+  `DATA-MODEL.md` sobre el separador, qué métodos del puerto quedan para `T-C1-05` y la presencia o no
+  de `nextIdentity()` en el ticket.
+
+### Response:
+
+Implementado ticket T-C1-03
+
+</br>
+
+**Prompt 17:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-05.md ·
+El agregado raíz `Incident` y sus invariantes de creación
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero **aquí no se escribe NestJS ni TypeORM**: es `type:domain`, código
+puro. Mandan `sport-itsm-engineering-principles` (inmutabilidad, errores tipados, estados ilegales
+irrepresentables, YAGNI) y `sport-itsm-architecture` (§6.2, ADR-005, ADR-008, ADR-009). Cierra con
+`sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Cuarto del bloque 3 de la rebanada 1 (orden real `03 → 05 → 06 → 04`). Es **el agregado central del
+producto**: todos los bloques posteriores lo extienden. Detrás vienen `T-C1-06` (entidad TypeORM y
+tabla), `T-C1-04` (secuencia y restricción única) y `T-C1-07` (`LogIncidentUseCase`), que llamará a
+`Incident.log()` y publicará su evento con `EVENT_PUBLISHER` tras el commit.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx test incident-domain             # 2 suites, 20 tests, verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas base de datos.
+
+#### Lo que ya existe y debes usar — léelo, no lo supongas
+- `libs/incident/domain/src/lib/incident-repository.port.ts` — `IncidentRepositoryPort` con
+  `nextIdentity()` y `nextReference()`, y el token `INCIDENT_REPOSITORY` (`T-C1-03`).
+- `libs/incident/domain/src/lib/incident-reference.policy.ts` — la política `INC` + 7 dígitos.
+- `@sport-itsm/shared-domain`: `Identity`, `TicketReference`, `DomainEvent` (+ `DomainEventInput`: exige
+  `name`, `occurredAt`, `actor`, **`correlationId`** y `payload`), `ClockPort`, `FixedClock`,
+  `DomainError`, `ImpactLevel`, `UrgencyLevel`, `Priority`.
+- `ARCHITECTURE.md` **§6.2** (forma del agregado; "every mutating method returns domain events"),
+  **ADR-005, ADR-008, ADR-009**.
+- `DATA-MODEL.md` **§20.3 `incident_ticket`** — columnas, nulabilidad y longitudes.
+- `PRD.md` **FR-INC-01** y `docs/backlog/C1/user-stories.md` → **US-C1-01** y **US-C1-07**.
+
+#### Trampa 1 — "contact channel" no está definido en ninguna parte
+FR-INC-01 y US-C1-01 piden capturar el *"contact channel"*, pero **ningún documento dice qué es**, y
+`DATA-MODEL.md` no tiene ninguna columna con ese nombre. Lo más cercano es **`origin_channel`**
+(`origin_channel_enum`: `portal` y `agent_logged` en el MVP, FR-OMN-01/02), que es el canal por el que
+entró la incidencia, no un medio para contactar al reporter.
+
+- **No inventes** un enum de medios de contacto (email, teléfono…) que ninguna fuente respalde.
+- Recomendación: modela `originChannel` con los valores de `DATA-MODEL.md` y trátalo como el "contact
+  channel" del AC1, citando la fuente en el código. Si concluyes otra cosa, justifícala contra las
+  fuentes.
+- **Repórtalo como hallazgo para el Product Owner**: el término del PRD no está definido y el modelo de
+  datos lo resuelve implícitamente como canal de origen.
+
+#### Trampa 2 — qué es obligatorio: el AC y el modelo de datos no coinciden del todo
+El AC2 exige errores tipados por campo obligatorio ausente. Deriva la lista de **`DATA-MODEL.md`**, no
+de tu intuición: `reporter_user_id`, `short_description`, `description` y `origin_channel` son
+`NOT NULL`, pero **`service_id` (servicio afectado) es `NULL`**, mientras que FR-INC-01 lo enumera entre
+lo que se captura.
+
+- Decide si el servicio afectado es obligatorio en la creación, **justifícalo con la fuente** y
+  **reporta la discrepancia**. Recomendación: sigue `DATA-MODEL.md` (opcional) y repórtalo, porque el
+  modelo de datos es el prescriptivo para el esquema de `T-C1-06`.
+- Cadenas en blanco cuentan como ausentes. Aplica las longitudes de `DATA-MODEL.md` (`short_description`
+  `varchar(255)`) como invariante de dominio, con su propio error tipado.
+- Cada error nombra el campo **por tipo o por una propiedad tipada**, no solo en el mensaje: un
+  llamante (el filtro de excepciones futuro, `T-C1-08`) tiene que poder distinguir qué campo falló sin
+  parsear texto. Hereda de `DomainError`.
+
+#### Trampa 3 — "Priority not yet derived" contra columnas `NOT NULL`
+El AC3 exige que una incidencia recién creada tenga la **Prioridad explícitamente sin derivar**, el flag
+de competición sin marcar y **ninguna categoría**. Pero `DATA-MODEL.md` declara `NOT NULL`
+`base_impact`, `assessed_impact`, `urgency`, `priority`, `priority_matrix_id`, `workflow_id` y
+`state_id`.
+
+- El agregado sigue **el AC**: "sin derivar" se representa de forma **explícita y tipada** (no con un
+  valor por defecto disfrazado como `P4` o `0`). Los campos de bloques posteriores (categoría, Impacto
+  evaluado, Urgencia, Prioridad derivada, flag de competición, sujeto afectado, asignación) quedan
+  declarados como **ausentes** con tipos honestos — usa los VO del kernel que ya existen
+  (`ImpactLevel`, `UrgencyLevel`, `Priority`) y **no crees** VO nuevos para lo que traen otros tickets
+  (`CompetitionSubject` es `T-C1-14`, la asignación es de bloques posteriores).
+- **Repórtalo como hallazgo crítico para `T-C1-06`**: la tabla no puede ser `NOT NULL` en esas columnas
+  si la incidencia nace sin priorizar. Es una contradicción entre `DATA-MODEL.md` y el AC3 que tendrán
+  que resolver el arquitecto y el Product Owner antes de escribir la migración.
+
+#### Trampa 4 — el estado del ciclo de vida
+§6.2 dibuja `IncidentState`, y el modelo de datos tiene `workflow_id`/`state_id` hacia un ciclo de
+vida **configurable** (FR-INC-06, bloque C) que depende de `StateModel` (`T-C10-10`, no construido).
+**No construyas el ciclo de vida.** Decide si el agregado lleva ya un estado inicial (`New`, citando
+US-C1-07) o nada, sin anticipar la configuración, y justifícalo. Repórtalo.
+
+#### Trampa 5 — tiempo, identidad, actor y correlación: todo entra por parámetro
+- **Nada de `new Date()`** (AC4, ADR-009): `log()` recibe el `ClockPort` o el instante ya leído de él.
+  Decide cuál y justifícalo.
+- La **identidad** y la **referencia** llegan ya generadas por el puerto (`nextIdentity()`,
+  `nextReference()`); el agregado no genera nada (§6.2, ADR-005).
+- `DomainEvent.record` exige **actor** y **`correlationId`**: `log()` tiene que recibirlos. El
+  **reporter** es un `Identity` distinto del actor en el caso general (un agente registra en nombre de
+  otro, FR-OMN-02), aunque en el portal coincidan. No colapses los dos conceptos.
+- `IncidentLogged` lleva actor, reporter y el estado creado (AC1). El payload se congela (lo hace
+  `DomainEvent`): que sea un objeto plano serializable, no el agregado.
+- Exactamente **un** evento en éxito; **ninguno** y **ninguna incidencia** en fallo (AC1, AC2).
+
+#### Trampa 6 — completar el puerto
+`T-C1-03` dejó pendientes `findById()` y `save()` porque necesitaban el tipo `Incident`. Añádelos ahora
+a `IncidentRepositoryPort` (`findById(id: Identity): Promise<Incident | null>`,
+`save(incident: Incident): Promise<void>` o la forma que justifiques) y exporta todo por el barrel.
+Actualiza el spec del puerto si hace falta.
+
+#### Lo que NO debes tocar
+`libs/shared/**`, las otras librerías `incident-*`, `apps/**`, `docker/**`, `.github/**`, `docs/**`,
+`.claude/**` (salvo tu memoria de agente), `package.json`, `tsconfig.base.json`, `prompts.md`. Nada de
+persistencia, caso de uso, autorización, controlador, entidad ni migración. Ningún comportamiento de
+prioridad (bloque D) ni de competición. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1** — `pnpm nx test incident-domain`: pega el resumen. Un test crea una incidencia válida y
+   comprueba cada campo, la referencia, y que hay **exactamente un** `IncidentLogged` con actor, reporter,
+   `correlationId`, `occurredAt` del reloj fijo y el estado creado.
+2. **AC2** — un test por cada campo obligatorio (ausente y en blanco) que comprueba el **tipo** de error
+   y el campo nombrado, y que no se devuelve incidencia ni evento. Y el de longitud máxima.
+3. **AC3** — un test que lee una incidencia recién creada: Prioridad explícitamente sin derivar, flag de
+   competición sin marcar, sin categoría.
+4. **AC4 — pureza**:
+   `grep -rnE "from '(@nestjs|@angular|typeorm|rxjs|express|pg|node:|fs|path|crypto)|new Date\(" libs/incident/domain/src --include=*.ts --exclude=*.spec.ts`
+   → vacío. `tsconfig.lib.json` con `"types": []`.
+5. Inmutabilidad: un test demuestra que el agregado y el payload del evento no se pueden mutar.
+6. `pnpm nx lint incident-domain` en verde; el grafo sigue con una sola arista desde `incident-domain`
+   (`-> shared-domain`); borra `tmp/graph.json`.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+8. `pnpm prettier --check libs/incident/domain`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la forma pública del agregado (`log()` y sus parámetros, los campos,
+  el evento) y del puerto completo.
+- Tus decisiones de las trampas 1 a 5, con su porqué y la fuente citada.
+- La salida de las ocho verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo "contact channel" (Product Owner), el
+  servicio afectado obligatorio u opcional, las columnas `NOT NULL` frente al AC3 (crítico para
+  `T-C1-06`) y el estado inicial.
+
+### Response:
+
+Implementado ticket T-C1-05
+
+</br>
+
+**Prompt 18:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-06.md ·
+Entidad TypeORM de `Incident`, mapper, adaptador de repositorio y migración
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (TypeORM 1.1, migraciones, DI por tokens),
+`sport-itsm-architecture` (ADR-005: entidad de persistencia separada del agregado, unidas por un
+mapper; §5.3: `type:infrastructure` puede depender de `domain`/`application`) y
+`sport-itsm-engineering-principles`. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Quinto del bloque 3 de la rebanada 1 (orden `03 → 05 → 06 → 04`). Es **la primera entidad y el primer
+adaptador de persistencia del proyecto**: todo lo que decidas aquí (dónde viven, cómo se registran,
+cómo llega el `DataSource` a Nest, cómo se prueban contra PostgreSQL) lo copiarán las seis entidades
+siguientes. Detrás vienen `T-C1-04` (secuencia, trigger de inmutabilidad y `nextReference()`) y
+`T-C1-07` (`LogIncidentUseCase`, primera escritura alcanzable en producción).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx test incident-domain             # verde
+    docker ps --filter name=sport-itsm-postgres-dev   # healthy, 0.0.0.0:5452->5432
+    POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres pnpm typeorm migration:show -d apps/api/src/data-source.ts
+                                             # [X] ...Iam... y [X] ...IncidentSchema...
+
+#### Trampas del entorno — ya pagadas, no las redescubras
+- Postgres de desarrollo en el **puerto de host 5452**. Variables globales de Windows `POSTGRES_*` de
+  otro proyecto (usuario `userdev`) pisan el `.env`: pasa los cinco valores **en la misma llamada
+  Bash** en cada comando de la CLI. `pnpm typeorm … -d …` lleva `-d`; los atajos `pnpm migration:*`
+  **ya lo llevan**, no añadas otro.
+- `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash si ejecutas Cypress.
+- Prettier en Windows: comprueba solo tus ficheros.
+
+#### El ticket es el contrato — léelo entero, incluido todo su `## Context`
+Fue reescrito por ADR-014 y dos pases posteriores. Lee además, del repo y no de memoria:
+- **`DATA-MODEL.md` §8.5** (tabla de introducción de columnas: este ticket es su primera fila), **§20.3**
+  (`incident_ticket`, `origin_channel_enum`), **§3.7** y **M18**; **ADR-014** en `ARCHITECTURE.md` §10.
+- `libs/incident/domain/src/lib/incident.aggregate.ts` (campos, `loggedAtEpochMs`, `loggedBy`, slots
+  ausentes), `origin-channel.vo.ts`, `incident-repository.port.ts` (`nextIdentity`, `nextReference`,
+  `findById`, `save`, token `INCIDENT_REPOSITORY`).
+- `apps/api/src/data-source.ts` (su comentario explica el glob de entidades de `T-C1-02` y por qué
+  **no** puede importar por alias), `apps/api/tsconfig.migrations.json`, `tools/build-api-runtime.mjs`,
+  `apps/api/webpack.config.js`, `apps/api/src/app/incident/incident.module.ts`,
+  `apps/api/src/migrations/README.md`.
+
+#### Trampa 1 — el AC4 contradice la fuente vigente
+El AC4 dice *"migrations auto-run only when `NODE_ENV=development`"*. **`DATA-MODEL.md` §3.7 (ya
+corregido) dice lo contrario**: las migraciones **nunca** corren al arrancar, en ningún entorno
+(`migrationsRun: false`), porque la API escala en horizontal y migrar en paralelo corrompe. **No
+implementes auto-run.** Demuestra `synchronize: false` y `migrationsRun: false` y **reporta el AC4 como
+contradicción** para `architect-tech-lead`.
+
+#### Trampa 2 — dónde vive cada pieza
+- Entidad, mapper, error de mapeo y `TypeOrmIncidentRepository` en **`libs/incident/infrastructure`**
+  (`type:infrastructure`), con la entidad en un fichero `*.entity.ts` para que el glob de `T-C1-02` la
+  encuentre desde la CLI. Nada de TypeORM en `libs/incident/domain` (AC3).
+- El binding `{ provide: INCIDENT_REPOSITORY, useClass/useFactory: … }` en `IncidentModule`
+  (`apps/api`), la raíz de composición (§6.3).
+- La migración en `apps/api/src/migrations/`, timestamp posterior a `1790366187635`, SQL explícito.
+- Quita `passWithNoTests` de `libs/incident/infrastructure/jest.config.ts` (este ticket trae su primer
+  spec, aunque el comentario diga `T-C1-04`).
+
+#### Trampa 3 — el registro de la entidad en la API arrancada: el glob no sirve en runtime
+Esta es la trampa grande, y el ticket la deja "flagged, not resolved". Verifícala tú:
+- `nx serve api` ejecuta el **bundle de webpack** `dist/apps/api/main.js`. El glob del data source
+  (`libs/incident/infrastructure/src/**/*.entity.{ts,js}`) resuelve, desde `dist/apps/api`, a los
+  ficheros **`.ts` fuente** del repo: TypeORM intentaría `require`-arlos en runtime (Node no carga
+  `.ts`) o, aunque cargaran, serían **otra clase** distinta de la que el bundle usa en el repositorio
+  → *"No metadata for entity"*. En la imagen (`/app/libs/...` no existe) directamente no encuentra nada.
+- Para la **API en ejecución**, la entidad tiene que registrarse **por referencia de clase** (un array
+  explícito importado de `@sport-itsm/incident-infrastructure`, que webpack sí resuelve y empaqueta).
+- Pero **`data-source.ts` no puede importar por alias**: `tsconfig.migrations.json` lo compila con `tsc`
+  para la imagen y `tsc` no reescribe alias (`T-C1-02` lo documentó en el propio fichero). La CLI de
+  migraciones no necesita entidades (las migraciones son SQL a mano).
+- **Diseña** cómo conviven los dos: p. ej. una factoría de opciones compartida (conexión validada,
+  `synchronize: false`, `migrationsRun: false`) que la CLI usa con el glob y la raíz de composición usa
+  con el array explícito — o la alternativa que justifiques. **Sin rama por entorno** y **sin duplicar**
+  la configuración de conexión.
+- **Demuéstralo en el bundle real**: la API construida (`pnpm nx build api` + arrancar `main.js`, o
+  `nx serve api`) contra el Postgres de desarrollo carga la metadata de la entidad (p. ej. log de
+  arranque, o una comprobación que no requiera endpoint). Si no lo puedes demostrar, dilo.
+- **Repórtalo para `ci-cd-expert`** con tu conclusión sobre la imagen desplegada.
+
+#### Trampa 4 — cómo llega el `DataSource` a Nest
+`@nestjs/typeorm` **no está instalado** y la API **no abre conexión al arrancar** hoy. Para inyectar el
+repositorio necesitas un `DataSource` inicializado en el contenedor de Nest.
+- Recomendación: un provider propio en `apps/api` (p. ej. `useFactory` que construye e `initialize()`-a
+  el `DataSource` con las opciones de la trampa 3, y lo destruye en el cierre de la aplicación), sin
+  dependencias nuevas. Si concluyes que hace falta `@nestjs/typeorm`, **para y repórtalo** antes de
+  instalar nada.
+- Consecuencia a documentar y reportar: desde este ticket **la API necesita PostgreSQL para arrancar**.
+  El harness `api-e2e` ya levanta su base efímera (5499) y aplica las migraciones antes de servir la API;
+  comprueba que sigue en verde.
+
+#### Trampa 5 — el puerto completo, con `nextReference()` todavía sin secuencia
+`TypeOrmIncidentRepository` implementa `IncidentRepositoryPort` entero, pero la secuencia
+`incident.incident_reference_seq` es de **`T-C1-04`**, que va después.
+- `nextIdentity()`: UUID v7. `crypto.randomUUID()` es v4 (no vale). El kernel no genera IDs. Opciones:
+  `SELECT uuidv7()` contra PostgreSQL 18 (core, ADR-012) desde el adaptador, u otra que justifiques sin
+  añadir dependencias. Devuelve `Identity`.
+- `nextReference()`: **no inventes** un contador ni una secuencia provisional. Lanza un error tipado
+  explícito ("disponible con `T-C1-04`") con su test, y repórtalo. `T-C1-04` lo implementará.
+- En los tests de round-trip, construye la referencia con `IncidentReferencePolicy.format(n)`.
+
+#### Trampa 6 — mapper y regla 4 de ADR-014
+- Columnas exactamente las del primer grupo de §8.5 (el ticket las lista). `origin_channel_enum` en el
+  esquema `incident` con **`portal`, `agent_logged`, `email`, `in_app`** (sin `phone`).
+- `reference` con **`update: false`** en la entidad y `uq_incident_reference`.
+- `created_at`/`created_by` ← `loggedAtEpochMs`/`loggedBy`. Decide y justifica `updated_at`
+  (`NOT NULL`) y `updated_by` (`NULL`) en el primer guardado sin inventar estado de dominio.
+  `version` como `@VersionColumn`. Timestamps en UTC (`timestamptz`).
+- Al cargar: los slots sin columna (`categoryId`, `impact`, `urgency`, `priority`,
+  `competitionAffectsInProgress`, `affectedSubject`, `assignment`) salen `null`/`false`. Al guardar: si
+  alguno trae valor, **error de mapeo tipado**, nunca descarte silencioso.
+- El agregado necesita poder **reconstituirse** desde persistencia sin pasar por `log()` (que emite
+  evento). Si no existe una vía, añádela en `libs/incident/domain` de forma mínima (p. ej. una factoría
+  `reconstitute` que valida invariantes y **no** emite eventos), con tests. Justifícalo: es la única
+  modificación permitida en el dominio.
+
+#### Trampa 7 — el test contra PostgreSQL real no puede romper CI
+El AC1 exige round-trip **contra PostgreSQL real, no un mock**. Pero `pnpm nx run-many -t test` corre en
+el job `verify` de CI **sin base de datos**: un spec de Jest que necesite Postgres dentro del target
+`test` lo pondría en rojo.
+- Mantén los tests unitarios del mapper (sin BD) en el target `test`.
+- Pon los tests contra BD en un **target aparte** (p. ej. `integration`) que levante la base efímera y la
+  destruya siempre, reutilizando el patrón de `apps/api-e2e` (`docker/docker-compose.e2e.yml`,
+  `--wait`, `pnpm migration:run` contra 5499, `tools/e2e/teardown-after.mjs`) — o la alternativa que
+  justifiques. Que **no** entre en `run-many -t test`.
+- Engancharlo a CI es de `ci-cd-expert`: **repórtalo**, no toques `.github/`.
+
+#### Lo que NO debes tocar
+`libs/shared/**`, `libs/incident/{application,feature,ui,data-access}`, `docker/**`, `.github/**`,
+`docs/**`, `.claude/**` (salvo tu memoria de agente), `package.json` (sin dependencias nuevas),
+`prompts.md`, `apps/api/src/event-dispatch/**`, `apps/api/src/testing/**`. En `libs/incident/domain`,
+solo la vía de reconstitución si hace falta. Ninguna columna, CHECK, secuencia ni trigger de tickets
+posteriores. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **Migración**: contra una base desechable vacía, `migration:run` aplica las tres migraciones; `\d
+   incident.incident_ticket` y `\dT+ incident.origin_channel_enum` muestran exactamente las columnas y
+   los cuatro valores. `migration:revert` retira solo la tuya sin residuos; run → revert → run idéntico.
+2. **AC1/AC2** — el target de integración: guardar y recargar un `Incident` recién registrado contra
+   PostgreSQL real; todos los campos iguales; slots ausentes `null`/`false`. Pega la salida y demuestra
+   que la base efímera se destruye también si el test falla.
+3. **Regla 4**: test unitario del mapper que rechaza guardar un slot sin columna con valor (error tipado).
+4. **AC3**: `grep -rnE "typeorm|@Entity|Column\(" libs/incident/domain/src` → vacío.
+5. **AC4**: `grep -rn "synchronize\|migrationsRun" apps/api/src libs/incident/infrastructure/src` → solo
+   `false`. Reporta la contradicción.
+6. **Trampa 3**: la API construida arranca contra el Postgres de desarrollo (5452) y la entidad está
+   registrada en el `DataSource` del bundle. Pega la evidencia.
+7. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde.
+8. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde **sin** base de datos corriendo
+   (demuéstralo: el target `test` no depende de Postgres) y `pnpm verify:boundaries` 10/10. El grafo:
+   `api -> incident-infrastructure -> incident-domain` y ninguna arista ilegal.
+9. `pnpm nx run api:build-migrations` en verde (la migración nueva compila a `dist/apps/api/migrations/`).
+10. Deja la base de **desarrollo** con las tres migraciones aplicadas; `pnpm prettier --check` sobre tus
+    ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Si no cabe en la estimación
+El ticket son 3h y las trampas 3, 4 y 7 son trabajo real. Si no cabe, **no recortes** la verificación
+contra PostgreSQL ni la demostración en el bundle: entrega lo que esté verificado, di exactamente qué
+falta y déjalo como hallazgo de estimación.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados al terminar;
+`sport-itsm-postgres-dev` `healthy` en 5452.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la migración literal; el diseño de registro de entidades y del
+  provider del `DataSource`.
+- Tus decisiones de las trampas 3 a 7, con su porqué.
+- La salida de las diez verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el AC4 contra §3.7, el registro de entidades
+  en la imagen (`ci-cd-expert`), el target de integración en CI (`ci-cd-expert`), `nextReference()`
+  pendiente de `T-C1-04`, y que la API ya necesita PostgreSQL para arrancar.
+
+### Response:
+
+Implementado ticket T-C1-06
+
+</br>
+
+**Prompt 19:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-04.md ·
+Secuencia de referencias, trigger de inmutabilidad, adaptador `nextReference()` y prueba de concurrencia
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (TypeORM 1.1, migraciones reversibles) y
+`sport-itsm-engineering-principles`. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Último del bloque 3 de la rebanada 1 (`03 → 05 → 06 → 04`). Cierra la garantía de FR-INC-02 y
+NFR-DAT-01 **en la base de datos**: referencias únicas, nunca reutilizadas y nunca modificadas. Tiene
+que estar antes de `T-C1-07` (`LogIncidentUseCase`), la primera escritura alcanzable en producción,
+que llamará a `nextReference()`.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=incident-domain,incident-infrastructure   # verde
+    docker ps --filter name=sport-itsm-postgres-dev   # healthy, 0.0.0.0:5452->5432
+    POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres pnpm typeorm migration:show -d apps/api/src/data-source.ts
+                                             # tres [X]: Iam, IncidentSchema, IncidentTicketTable
+
+#### Trampas del entorno — ya pagadas
+- Postgres de desarrollo en el **puerto de host 5452**; las variables globales `POSTGRES_*` de otro
+  proyecto pisan el `.env`: pasa los cinco valores **en la misma llamada Bash**. `pnpm typeorm … -d …`
+  lleva `-d`; los atajos `pnpm migration:*` ya lo llevan.
+- `libs/incident/infrastructure` tiene dos targets: `test` (unitario, **sin BD**, corre en CI) e
+  **`integration`** (base efímera en 5499 con `docker/docker-compose.e2e.yml`, migra, ejecuta
+  `*.integration-spec.ts` y la destruye siempre). **No lo ejecutes a la vez que `nx e2e api-e2e`**:
+  comparten el mismo stack efímero.
+- Los ficheros `*.entity.ts` no pueden importar alias `@sport-itsm/*` (la CLI de TypeORM no resuelve
+  alias). Las migraciones tampoco.
+- `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash si ejecutas Cypress.
+
+#### El ticket es el contrato
+Léelo entero: su `## Context` ya cierra el mecanismo de inmutabilidad (M18) y el orden respecto a
+`T-C1-06`. Lee además, del repo:
+- `DATA-MODEL.md` **§3.2** (referencias, secuencia `NO CYCLE`), **§3.7** (triggers: solo el guarda de
+  inmutabilidad) y **M18**; §20.3.
+- `libs/incident/infrastructure/src/lib/typeorm-incident.repository.ts` (hoy `nextReference()` lanza
+  `NextIncidentReferenceNotImplementedError`), sus specs y el integration spec, `incident.entity.ts`
+  (`reference` con `update: false`), `incident.mapper.ts`.
+- `libs/incident/domain/src/lib/incident-reference.policy.ts` (`INC` + 7 dígitos, rango 1–9.999.999,
+  error tipado si se sale).
+- `apps/api/src/migrations/README.md` y la migración `1790380866140-CreateIncidentTicketTable.ts`.
+
+#### Trampa 1 — la migración
+- Fichero `<timestamp>-<Nombre>.ts`, timestamp **posterior** a `1790380866140`, SQL explícito.
+- Crea, en el esquema `incident`: `incident_reference_seq` **`NO CYCLE`**,
+  `fn_reject_reference_update()` (`plpgsql`, lanza un error con un `SQLSTATE`/mensaje reconocible) y
+  `tg_incident_ticket_reference_immutable` (`BEFORE UPDATE OF reference … WHEN (OLD.reference IS
+  DISTINCT FROM NEW.reference)`). El `down` retira trigger, función y secuencia, **en ese orden**.
+- **Límite de la secuencia**: la política de dominio acepta 1–9.999.999 y lanza un error tipado si la
+  secuencia entrega más. Decide si la secuencia declara además `MAXVALUE 9999999` (fallo en la base de
+  datos antes que en el dominio) o se queda en el máximo por defecto, y **justifícalo** sin contradecir
+  §3.2. En ambos casos, `NO CYCLE`.
+
+#### Trampa 2 — `nextReference()` y "dentro de la transacción del llamante"
+- Implementa `nextReference()` con `SELECT nextval('incident.incident_reference_seq')` y
+  `IncidentReferencePolicy.format(n)`. Ojo: el driver `pg` devuelve `bigint` como **string**; conviértelo
+  con cuidado y deja que la política valide el rango.
+- **Borra** `NextIncidentReferenceNotImplementedError` y sus tests: ya no tienen sentido. Actualiza el
+  barrel.
+- El Scope dice "within the caller transaction", pero **todavía no existe ningún mecanismo de
+  transacción** (llega con `T-C1-07`). **No construyas una unidad de trabajo aquí.** Recuerda además
+  que `nextval` no es transaccional (no se devuelve con un rollback): justo la semántica de "nunca
+  reutilizada, se aceptan huecos" de §3.2. Documenta en el adaptador qué tendrá que respetar `T-C1-07`
+  y **repórtalo**.
+- La conexión del `DataSource` es **perezosa** (decisión aprobada en `T-C1-06`): no la cambies.
+
+#### Trampa 3 — los criterios de aceptación y lo que todavía no existe
+- **AC1 (concurrencia)**: no hay ninguna comprobación de unicidad en la aplicación que "quitar". Demuestra
+  que la garantía es de la base de datos: N asignaciones concurrentes (`Promise.all` sobre conexiones
+  distintas) producen N referencias distintas, **y** un `INSERT` forzado con una referencia duplicada
+  lo rechaza `uq_incident_reference`.
+- **AC2 (inmutabilidad)**: `UPDATE` SQL directo del `reference` de una fila existente, **como
+  `postgres`**, rechazado por el trigger (comprueba el error concreto). Y además: un `save()` normal de
+  una incidencia ya guardada (misma referencia) **no** dispara el trigger, gracias al `WHEN … IS
+  DISTINCT FROM` y al `update: false`.
+- **AC3 (cancelada y borrada)**: **no existe todavía el estado "cancelada"** (el ciclo de vida es
+  `T-C1-50`). Demuestra la parte de borrado (borrar una fila y comprobar que la siguiente referencia es
+  nueva) y la propiedad general (la secuencia nunca reutiliza un valor, ni tras un rollback). **Reporta**
+  la parte de "cancelada" como no demostrable hasta `T-C1-50`.
+- **AC4**: run → revert → run idéntico, sin residuos (`\ds incident.*`, `\df incident.*`, triggers de
+  `incident_ticket`).
+- Todo lo que necesite PostgreSQL va en `*.integration-spec.ts` (target `integration`), no en `test`.
+
+#### Lo que NO debes tocar
+`libs/incident/domain` (la política ya existe; si crees que debe cambiar, para y repórtalo),
+`libs/shared/**`, las demás librerías `incident-*`, `apps/api/src/database/**`,
+`apps/api/src/app/**`, `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria),
+`package.json`, `prompts.md`. Ni la columna `reference` ni `uq_incident_reference` (son de `T-C1-06`).
+El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. Base desechable vacía: `migration:run` aplica las **cuatro** migraciones; `\ds incident.*` muestra la
+   secuencia (con `NO CYCLE` visible en su definición), `\df incident.*` la función y la tabla tiene el
+   trigger. `migration:revert` retira solo la tuya, sin residuos; run → revert → run idéntico.
+2. `pnpm nx run incident-infrastructure:integration` en verde, con los tests de los AC1–AC3 descritos
+   arriba. Pega la salida.
+3. `pnpm nx test incident-infrastructure` en verde **sin BD** (unitarios del adaptador con el
+   `DataSource` simulado).
+4. `grep -rn "NextIncidentReferenceNotImplemented" libs apps` → vacío.
+5. En la base de **desarrollo** (5452): `migration:run` y `migration:show` → cuatro `[X]`; y una prueba
+   manual con `psql` de que un `UPDATE` de `reference` se rechaza (hazlo sobre una fila de prueba que
+   borres después).
+6. `pnpm nx run api:build-migrations` en verde; la migración nueva está en `dist/apps/api/migrations/`.
+7. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde (su `e2e-migrate` aplica las cuatro).
+8. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+9. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados;
+`sport-itsm-postgres-dev` `healthy` en 5452 con las cuatro migraciones aplicadas.
+
+#### Informa al terminar — en español
+- Ficheros creados, modificados y borrados; la migración literal (`up` y `down`).
+- Tus decisiones: `MAXVALUE`, conversión del `bigint`, qué debe respetar `T-C1-07` sobre la transacción.
+- La salida de las nueve verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la parte "cancelada" del AC3 (`T-C1-50`) y
+  la frontera de transacción para `T-C1-07`.
+
+### Response:
+
+Implementado ticket T-C1-04
+
+</br>
+
+**Prompt 20:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-07.md ·
+`LogIncidentUseCase` para un requester, con el reporter tomado de la sesión
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, pero la pieza central es **`type:application`: sin NestJS, sin TypeORM, sin
+HTTP**. Mandan `sport-itsm-architecture` (§5.3–§5.4, §6.3, §8, §9, ADR-003, ADR-008, ADR-009) y
+`sport-itsm-engineering-principles`. `sport-itsm-backend` solo para lo que toque `apps/api`. Cierra con
+`sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Primero del bloque 4 de la rebanada 1 (`T-C1-07 → T-C1-08 → T-C10-74`). Es el primer caso de uso del
+producto y la primera escritura alcanzable en producción: une el agregado (`T-C1-05`), el repositorio
+(`T-C1-06`/`T-C1-04`) y el dispatcher post-commit (`T-C10-73`). Detrás vienen el endpoint `POST`
+(`T-C1-08`) y el `Actor` fijo de la rebanada (`T-C10-74`), que **no debe obligar a cambiar este fichero**
+(AC3 de `T-C10-74`).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=incident-domain,incident-infrastructure,api   # verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas base de datos para lo principal (AC4: stubs). Si ejecutas el target `integration` o
+`api-e2e`: base efímera en 5499, no los lances a la vez; `unset ELECTRON_RUN_AS_NODE;` para Cypress.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero; `T-C10-74.md` (el `Actor` fijo) y `T-C10-38.md`/`T-C10-39.md` (el `Actor` real).
+- `libs/incident/domain`: `Incident.log()` (su `LogIncidentCommand` pide `id`, `reference`, `reporterId`,
+  `originChannel`, descripciones, `affectedServiceId?`, `actor`, `correlationId`, `occurredAt`),
+  `IncidentRepositoryPort` + `INCIDENT_REPOSITORY`.
+- `libs/incident/infrastructure/src/lib/typeorm-incident.repository.ts` — el doc-comment de
+  `nextReference()` sobre la transacción (`nextval` no se revierte).
+- `@sport-itsm/shared-domain`: `EventPublisherPort` + `EVENT_PUBLISHER`, `ClockPort`, `FixedClock`.
+- `apps/api/src/event-dispatch/` (dispatcher aislado, `T-C10-73`) y `apps/api/src/app/incident/incident.module.ts`.
+- `ARCHITECTURE.md` §8 (el diagrama de secuencia de LogIncident: "authorize actor - requester may log
+  own Incident") y §9 (autorización en el caso de uso, en términos de dominio).
+
+#### Trampa 1 — `Actor` no existe, y su casa prevista está prohibida para `incident`
+`T-C10-38` coloca `Actor` en **`libs/identity-access/domain`**, que no existe. Y aunque existiera, la
+**regla de scope** (§5.3) impide que `scope:incident` dependa de `scope:identity-access`.
+- **No crees `libs/identity-access`** ni muevas `Actor` al kernel compartido por tu cuenta.
+- Declara en `libs/incident/application` (o `domain`, justifícalo) el tipo **mínimo** que el caso de uso
+  necesita del actor, en el lenguaje de `incident`: su `Identity` y la capacidad de decidir si puede
+  registrar una incidencia. Autorización **deny-by-default** con un error tipado que nombre la operación
+  (siguiendo el espíritu de `T-C10-38`), sin inventar un catálogo de permisos.
+- **Repórtalo como hallazgo crítico para el arquitecto**: el `Actor` de `identity-access` no puede
+  cruzar la regla de scope; habrá que decidir si va al kernel compartido o si cada contexto declara su
+  vista del actor y `apps/api` adapta (patrón anticorrupción, como `CompetitionSubjectLookupPort`).
+
+#### Trampa 2 — "save in a single transaction" sin unidad de trabajo
+No existe ningún mecanismo de transacción, y la capa de aplicación **no puede importar TypeORM**.
+- Hoy la escritura es **un único `INSERT` de un único agregado**, que ya es atómico por sí mismo.
+  Recomendación: **no introduzcas** un puerto de unidad de trabajo (YAGNI); documenta que el límite
+  transaccional es el `save()` y que "después del commit" significa "después de que `save()` resuelva".
+- `nextReference()` usa `nextval`, que no se revierte: si `save()` falla, la referencia queda quemada
+  (huecos sí, reutilización nunca — §3.2). Documéntalo.
+- **Repórtalo**: el primer caso de uso con más de una escritura (p. ej. cuando `SlaPolicyPort` escriba
+  de verdad) necesitará un puerto de transacción.
+
+#### Trampa 3 — framework-free y cómo se inyecta
+- `LogIncidentUseCase` es una **clase TypeScript pura** con sus puertos por constructor: **nada de
+  `@Injectable`/`@Inject` ni ningún import de `@nestjs/*`** en `libs/incident/application` (CLAUDE.md §3).
+  Quien la construye con `useFactory` es la raíz de composición.
+- **Reloj**: `ClockPort` no tiene token de inyección (sí lo tiene `EventPublisherPort`). Añade
+  `export const CLOCK = Symbol('ClockPort')` **junto a `ClockPort` en `libs/shared/domain`**, exportado por
+  el barrel, exactamente como `EVENT_PUBLISHER` — es la única modificación permitida en el kernel.
+- **Correlación**: `DomainEvent` exige `correlationId`. Lo aporta el llamante (el adaptador HTTP de
+  `T-C1-08`) como parte del contexto de ejecución, junto al actor; el caso de uso no lo inventa.
+- **Cableado en `IncidentModule`**: decide si registras ya aquí el caso de uso (con `useFactory`) y un
+  adaptador de reloj del sistema en `apps/api`, o si lo dejas a `T-C1-08`. Si lo registras aquí, necesita
+  un `SlaPolicyPort` enlazado (trampa 4). Justifícalo.
+
+#### Trampa 4 — `SlaPolicyPort`
+- El ticket dice `attachFor()`; `ARCHITECTURE.md` §6.2 escribe `attachPolicyFor(ticketSnapshot):
+  SlaCommitment`. `SlaCommitment` es vocabulario de `C7`, que no existe. Declara el puerto en
+  `libs/incident/domain` con la firma **mínima** que no invente tipos de `sla` (p. ej. recibe el
+  `Incident` y no devuelve nada), con token, y **reporta** la discrepancia de nombre y la ausencia de
+  `SlaCommitment`.
+- `incident` nunca importa `sla` (§8). El adaptador real es `T-C1-58`.
+- Decide **cuándo** se llama (tras `save()` y antes de publicar, o después) y qué pasa si falla (la
+  incidencia ya está guardada). Justifícalo con ADR-008/NFR-AVL-03. Recuerda que recibe una incidencia
+  con `priority: null` (ADR-014): la política de SLA sin prioridad es pregunta abierta del PO (§14.10 p.4).
+- Si cableas el caso de uso en `IncidentModule` antes de `T-C1-58`, necesitas un enlace para el puerto:
+  **no escondas** un no-op como si fuera la implementación; si lo usas, que su nombre y su comentario
+  digan que es provisional hasta `T-C1-58`.
+
+#### Trampa 5 — el reporter y el orden de las llamadas
+- El reporter **es** el actor de la sesión; cualquier `reporterId` del comando se **ignora** (AC2). Lo
+  más limpio es que el comando del caso de uso ni siquiera tenga ese campo; si el AC2 exige demostrar
+  que se descarta, hazlo con un test sobre el tipo de entrada que venga del borde.
+- Orden: autorizar → `nextIdentity()` + `nextReference()` → `Incident.log()` con el instante del
+  `ClockPort` → `save()` → (SLA) → `publish(events)`. Si la autorización falla: ninguna llamada al
+  repositorio y ningún evento.
+- Devuelve lo que el borde necesita para responder (identidad y referencia), no el agregado.
+
+#### Trampa 6 — el AC3 (suscriptor que falla)
+El aislamiento lo garantiza el dispatcher de `T-C10-73`, que vive en `apps/api`: un test de
+`libs/incident/application` **no puede importarlo** (`type:application` no depende de `type:app`).
+- En la librería: tests con puertos stub (AC1, AC2, AC4, autorización denegada, orden de llamadas,
+  exactamente un `publish` después de `save`).
+- Para el AC3 con el dispatcher real: un test en `apps/api` que componga el caso de uso con el
+  `InProcessEventDispatcher` real, un repositorio en memoria y un suscriptor de `IncidentLogged` que
+  lanza, y compruebe que la incidencia queda guardada y el caso de uso devuelve éxito.
+
+#### Lo que NO debes tocar
+`libs/identity-access` (no la crees), `libs/incident/{infrastructure,feature,ui,data-access}`,
+`libs/shared/**` salvo el token `CLOCK`, `apps/api/src/{database,event-dispatch,testing}/**`,
+`docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria), `package.json`, `prompts.md`. Nada
+de controlador, DTO ni ruta HTTP (`T-C1-08`), ni del `Actor` fijo (`T-C10-74`). El ticket no se edita.
+Quita `passWithNoTests` de `libs/incident/application/jest.config.ts` (su comentario dice `T-C1-07`).
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-application`: AC1, AC2, AC4, autorización denegada (sin repositorio ni evento),
+   orden de llamadas, un solo `publish` tras `save`, fallo de `save` (sin `publish`). Pega el resumen.
+2. El test de AC3 en `apps/api` con el dispatcher real, en verde.
+3. Pureza: `grep -rnE "from '(@nestjs|typeorm|express|pg|node:)" libs/incident/application/src --include=*.ts`
+   → vacío; `libs/incident/application/tsconfig.lib.json` con `"types": []`.
+4. `grep -rn "new Date(" libs/incident/application/src libs/incident/domain/src --include=*.ts --exclude=*.spec.ts` → vacío.
+5. Grafo (`pnpm nx graph --file=tmp/graph.json`, luego bórralo): `incident-application` depende solo de
+   `incident-domain`, `shared-domain` (y `shared-util`/`shared-contracts` si los usas); ninguna arista a
+   `identity-access`, `sla` ni `apps`.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. Si cableaste el caso de uso en `IncidentModule`: la API construida arranca y resuelve el caso de uso
+   del contenedor. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde.
+8. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la firma pública del caso de uso, del tipo de actor y de `SlaPolicyPort`.
+- Tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las ocho verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el `Actor` frente a la regla de scope
+  (arquitecto), la transacción para el primer caso de uso con varias escrituras, `SlaPolicyPort` frente a
+  §6.2 y `SlaCommitment`, y la SLA de una incidencia sin prioridad.
+
+### Response:
+
+Implementado ticket T-C1-07
+
+</br>
+
+**Prompt 21:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-74.md ·
+Proveedor de `Actor` fijo para la rebanada 1 — desechable
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Es **solo raíz de composición** (`apps/api`). Aplica `sport-itsm-backend`
+(NestJS 11, DI por tokens) y `sport-itsm-architecture` (§5.3, §6.3: `apps/api` es el único sitio que
+cruza contextos). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket, y por qué antes de `T-C1-08`
+El plan decía `T-C1-07 → T-C1-08 → T-C10-74`, pero el usuario ha **adelantado este ticket**: el endpoint
+`POST` de `T-C1-08` necesita un actor para llamar a `LogIncidentUseCase`, y si el controlador se
+registra sin nadie que lo aporte, Nest no arranca y `api-e2e` se pone en rojo. Este ticket deja el
+actor **disponible por inyección** para que `T-C1-08` lo consuma sin apaños. La rebanada 1 no tiene
+autenticación: es un actor fijo, desechable, que **`T-C10-39` borra entero** el día que exista el
+resolvedor real.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=incident-application,api   # verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas base de datos para lo principal.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (5 AC, `disposable: true`, la transferencia de `BOOTSTRAP_REQUESTER_ID` a `T-C10-72`).
+- `libs/incident/application/src/lib/incident-actor.ts` — **`IncidentActor`** (`identity`,
+  `canLogIncidentAsRequester()`), la vista del actor que `incident` declaró en `T-C1-07` porque el
+  `Actor` de `identity-access` (`T-C10-38`) no puede cruzar la regla de scope.
+- `libs/incident/application/src/lib/log-incident.use-case.ts` y su contexto `LogIncidentContext`
+  (`actor` + `correlationId`).
+- `apps/api/src/app/incident/incident.module.ts`, `apps/api/src/app/app.module.ts`,
+  `apps/api/src/app/incident/log-incident.dispatcher.spec.ts` (cómo se compone el caso de uso en un test).
+
+#### Trampa 1 — qué "Actor" construye
+No existe un tipo `Actor` en el código (su casa prevista, `libs/identity-access`, no existe). Lo que el
+único consumidor de esta rebanada necesita es **`IncidentActor`**. La clase fija implementa esa vista
+(identidad = `BOOTSTRAP_REQUESTER_ID`, `canLogIncidentAsRequester()` → `true`, valor estático, sin
+consultar ninguna tabla de roles). **No inventes** un tipo `Actor` genérico ni lo pongas en ninguna
+librería.
+
+#### Trampa 2 — cómo lo recibe `T-C1-08` sin atarse a esta clase
+El AC5 exige que `T-C10-39` pueda **borrar** esta clase sin adaptarla, y el ticket prohíbe que nada
+llegue a depender de que exista.
+- Expón el actor mediante un **token de inyección** propio de `apps/api` (p. ej. un "resolvedor del
+  actor de la petición" con una firma que ya admita el caso real: recibe el contexto de la petición y
+  devuelve el `IncidentActor`), declarado **separado** de esta clase. Este ticket enlaza el token a la
+  implementación fija; `T-C10-39` lo reenlazará a la real. El controlador de `T-C1-08` dependerá del
+  token, nunca de esta clase.
+- Diseña la firma pensando en `T-C10-39` (actor resuelto por petición, `ARCHITECTURE.md` §9), pero **sin
+  construir** nada de su lógica. Justifícalo.
+- Decide dónde se registra el binding (un módulo propio o `IncidentModule`) y que esté disponible para
+  el controlador de `T-C1-08`.
+
+#### Trampa 3 — `BOOTSTRAP_REQUESTER_ID`
+- En `apps/api/src/bootstrap/bootstrap-identities.ts` (o la ubicación única equivalente). Un **UUID v7
+  válido** (que pase `Identity.fromString` del kernel), declarado **una sola vez**: el AC2 exige que el
+  literal aparezca en exactamente un sitio del código. Usa el constante en los tests, nunca otro literal.
+- Comentario con la transferencia de propiedad a `T-C10-72` (lo que el ticket describe), sin hacerla.
+
+#### Trampa 4 — el AC3 sin tocar `T-C1-07`
+"`T-C1-07` executes against this fixed Actor … with no change to its own file": demuéstralo con un test
+en `apps/api` que componga `LogIncidentUseCase` con el actor que entrega el token (no instanciando la
+clase fija a mano), un repositorio en memoria y el resto de puertos stub, y compruebe que autoriza y
+persiste con `reporterId = BOOTSTRAP_REQUESTER_ID`. `git diff libs/incident/application` debe quedar
+vacío.
+
+#### Lo que NO debes tocar
+`libs/**` (ni `incident-application`: la vista del actor ya existe), `apps/api/src/{database,
+event-dispatch,testing,migrations}/**`, `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu
+memoria), `package.json`, `prompts.md`. **Ningún controlador, DTO, ruta, guard, token de sesión ni
+sign-in**: el endpoint es `T-C1-08`. No cablees `LogIncidentUseCase` en `IncidentModule` (también es
+`T-C1-08`). No siembres filas en `iam`. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. **AC1**: `grep -rn "<NombreDeTuClase>" apps libs` → solo su declaración y su binding; y ningún proyecto
+   `type:domain|application|contracts` la referencia (grafo o grep sobre `libs/`).
+2. **AC2**: `grep -rn "<el UUID literal>" apps libs` → exactamente una línea.
+3. **AC3**: el test de la trampa 4 en verde; `git diff --stat libs/incident/application` vacío.
+4. **AC5**: explica en el informe qué habría que borrar exactamente cuando llegue `T-C10-39` (debería ser
+   un fichero y una línea de binding) y confírmalo con el grep.
+5. La API construida arranca (`pnpm nx build api` y `node dist/apps/api/main.js`, o `nx serve api`) y
+   resuelve el token del contenedor. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; el token, su firma y dónde está enlazado.
+- Tus decisiones de las trampas 1 a 4.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, que el ticket habla de `Actor` y el código usa
+  `IncidentActor` (y lo que eso implica para `T-C10-39`), y el cambio de orden aprobado por el usuario.
+
+### Response:
+
+Implementado ticket T-C10-74
+
+</br>
+
+**Prompt 22:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-08.md ·
+Contratos de alta de incidencias y rechazo en servidor de los campos que determinan la prioridad
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (controladores finos, DTO validados,
+`ValidationPipe` global, filtro de excepciones), `sport-itsm-architecture` (ADR-007: `shared/contracts`
+es el único acoplamiento FE↔BE; §3.2: contrato de errores; §6.3) y `sport-itsm-engineering-principles`.
+Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el ticket que **abre la API al mundo**: la primera ruta de negocio del producto, `POST` de alta de
+incidencias. Une el contrato (`T-C10-11`), el caso de uso (`T-C1-07`), el actor fijo (`T-C10-74`, que el
+usuario adelantó precisamente para que este ticket lo consuma por inyección) y la persistencia
+(`T-C1-06`/`T-C1-04`). Detrás vienen la lectura por referencia (`T-C1-99`, `T-C1-100`) y el formulario
+(`T-C1-09`, `T-C1-10`, `T-C1-101`).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=shared-contracts,incident-application,api   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Trampas del entorno — ya pagadas
+- `api-e2e` levanta su PostgreSQL efímera (5499), aplica las migraciones y sirve la API con
+  `NODE_ENV=test`; el `DataSource` es **perezoso**: la primera petición que use el repositorio conecta.
+  `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash. No lo ejecutes a la vez que el target
+  `incident-infrastructure:integration` (mismo stack).
+- Postgres de desarrollo en 5452; las variables globales `POSTGRES_*` pisan el `.env`: pasa los valores
+  en la misma llamada si arrancas la API a mano contra él.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero. `ARCHITECTURE.md` §3.2 (*"error codes are part of the contract, error text is not"*;
+  el cliente mapea códigos a claves), §6.3, ADR-007.
+- `libs/shared/contracts` — `ErrorCode` (4 códigos), `ErrorEnvelope` (`error.code` + `details?` de
+  `ValidationErrorDetail { field, rule }`), `CORRELATION_ID_HEADER`, y su barrel (convención: solo tipos).
+- `libs/incident/application` — `LogIncidentUseCase`, `LogIncidentInput` (`originChannel`,
+  `shortDescription`, `description`, `affectedServiceId?`), `LogIncidentContext` (`actor`,
+  `correlationId`), `IncidentLogAuthorizationError`.
+- Errores de dominio de `libs/incident/domain` (`Incident.log()`: campo obligatorio ausente, longitud).
+- `apps/api/src/main.ts` (`ValidationPipe` con `whitelist`, `forbidNonWhitelisted`, `transform`),
+  `apps/api/src/app/incident/incident.module.ts` (bindings de `INCIDENT_REPOSITORY` e
+  `INCIDENT_ACTOR_RESOLVER`), `apps/api/src/app/incident/incident-actor-resolver.ts`.
+- `docs/backlog/C10/tickets/README.md` y `docs/backlog/C1/tickets/README.md`, sección *Delivery slices*:
+  desviaciones aprobadas para la rebanada 1 (sin auth, **i18n aplazada a un fichero de constantes**).
+
+#### Trampa 1 — "DTOs en `libs/shared/contracts`, validados con `class-validator`"
+El Scope lo pide así, pero **ADR-007 y la convención del barrel de `shared-contracts` (`T-C10-11`) lo
+prohíben**: los contratos son **solo tipos**, sin decoradores ni `class-validator`.
+- Declara en `libs/shared/contracts` los **tipos** de petición y respuesta del alta.
+- La **clase DTO decorada** vive en `apps/api` e **implementa** el tipo del contrato.
+- Reporta la contradicción para `architect-tech-lead`.
+
+#### Trampa 2 — qué campos acepta la petición del requester
+- El **origin channel no lo elige el cliente**: en el alta de un requester desde el portal es `portal`,
+  y lo fija el servidor (FR-OMN-02; un cliente no puede declararse `agent_logged`). El contrato del
+  requester **no** lleva ese campo. El alta por agente es `T-C1-11`.
+- Campos: descripción corta, descripción y servicio afectado opcional (UUID). Nada de reporter (lo pone
+  el actor), ni Impact, Urgency, Priority o flag de competición.
+- Valida en el DTO lo mismo que el dominio exige (obligatoriedad, no en blanco, longitud máxima de la
+  descripción corta, formato UUID del servicio): el rechazo tiene que ocurrir **en el borde**, antes de
+  llegar al agregado. El dominio sigue siendo la defensa final.
+- **AC1**: `forbidNonWhitelisted` ya rechaza propiedades no declaradas. Demuestra con **cuatro
+  peticiones** (una por campo: Impact, Urgency, Priority, flag de competición) que el resultado es
+  idéntico (misma respuesta de validación) y que **no se crea ninguna incidencia**.
+
+#### Trampa 3 — el filtro de excepciones de `T-C10-40` no existe
+El Scope cita "the exception filter established in `T-C10-40`", que no está hecho ni forma parte de la
+rebanada. Sin filtro, un error de validación sale con la forma por defecto de Nest y un error de dominio
+sale como 500.
+- Crea en `apps/api` un **filtro global mínimo** que produzca el `ErrorEnvelope` del contrato:
+  - errores del `ValidationPipe` → `400`, `VALIDATION_FAILED`, `details` con `{ field, rule }` por
+    propiedad y restricción (la `rule` es el nombre de la restricción, un identificador máquina, nunca
+    texto);
+  - errores de dominio de obligatoriedad/longitud de `Incident.log()` → `400`, `VALIDATION_FAILED`, con
+    el campo;
+  - `IncidentLogAuthorizationError` → `403`, `FORBIDDEN`;
+  - cualquier otro error → `500` **sin filtrar detalles internos** (nada de stack ni mensaje del error en
+    el cuerpo), registrado con `Logger` y el `correlationId`.
+- **No añadas códigos** al `ErrorCode` del contrato salvo que sea imprescindible; si decides que el 500
+  necesita uno, justifícalo y repórtalo (`T-C10-11` los limitó a cuatro a propósito).
+- Deja claro en el código y en el informe qué parte es el mínimo de este ticket y cuál es de `T-C10-40`.
+
+#### Trampa 4 — i18n aplazada y el AC2
+El AC2 pide que la respuesta "names the field and states what to do next, resolved in the language of
+the `Accept-Language` header". En la rebanada 1 la **i18n está aplazada** (desviación aprobada) y §3.2
+dice que **el texto no es contrato**.
+- La respuesta nombra el campo (`details[].field`) y la regla (`details[].rule`). El "qué hacer ahora"
+  en lenguaje humano lo resolverá el cliente a partir del código (`T-C1-10`, con su fichero de
+  constantes).
+- **No instales ni configures `nestjs-i18n`.** Si el backend necesita algún texto de cara al usuario,
+  va en **un único fichero de constantes exportado** en `apps/api` para esta feature, nunca literal
+  suelto.
+- **Reporta** la parte "resolved in the language of `Accept-Language`" del AC2 como no demostrable en
+  esta rebanada.
+
+#### Trampa 5 — cablear el caso de uso
+- `LogIncidentUseCase` es una clase pura: regístralo en `IncidentModule` con **`useFactory`** e
+  `inject: [INCIDENT_REPOSITORY, SLA_POLICY, EVENT_PUBLISHER, CLOCK]`.
+- **`CLOCK`**: no hay adaptador. Crea en `apps/api` un reloj del sistema que implemente `ClockPort` (es
+  el único sitio donde `new Date()` es legítimo) y enlázalo al token.
+- **`SLA_POLICY`**: el adaptador real es `T-C1-58`. Enlaza un adaptador **provisional explícito** (su
+  nombre y su comentario dicen que no hace nada hasta `T-C1-58`). Ahora el caso de uso publica
+  `IncidentLogged` **antes** de llamar a `attachFor()`, así que un no-op no pierde ningún evento.
+- `EVENT_PUBLISHER` es global (`EventDispatchModule`).
+
+#### Trampa 6 — el controlador
+- `POST /api/incidents` (prefijo global `/api` ya existente), **fino**: DTO → `LogIncidentInput`
+  (con `originChannel: 'portal'`), actor desde `INCIDENT_ACTOR_RESOLVER`, `correlationId` desde la
+  cabecera `CORRELATION_ID_HEADER` si viene (valida su forma) o uno generado si no, y devuélvelo en la
+  cabecera de la respuesta.
+- **AC3**: `201` con la referencia; el cuerpo solo lleva lo que el requester puede ver (la referencia; el
+  `id` interno solo si lo justificas). Considera la cabecera `Location` hacia la futura ruta de detalle
+  por referencia (`T-C1-100`) y decide.
+
+#### Trampa 7 — dónde se prueba cada cosa
+- Unitarios (sin BD): el DTO (cada restricción), el filtro (cada rama), el mapeo del controlador.
+- **API-E2E con Cypress/Cucumber en `apps/api-e2e`** (CLAUDE.md §2: nada de Supertest): escenarios para
+  AC1 (los cuatro campos, y que no se creó nada), AC2 (campo obligatorio ausente → campo y regla) y AC3
+  (`201` + referencia con forma `INC` + 7 dígitos). Contra la base efímera real. Para comprobar "no se
+  creó ninguna incidencia" sin endpoint de lectura, decide un método honesto (p. ej. que la siguiente
+  alta válida reciba la referencia siguiente a la esperada, o una comprobación contra la BD efímera
+  desde un paso de Cypress) y justifícalo.
+
+#### Lo que NO debes tocar
+`libs/incident/{domain,application,infrastructure}` (si crees que algo debe cambiar, para y repórtalo),
+`libs/shared/{domain,util}`, `apps/api/src/{database,event-dispatch,testing,migrations,bootstrap}/**`,
+`docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria), `package.json` (sin
+dependencias nuevas), `prompts.md`. Nada del alta por agente (`T-C1-11`) ni de la ruta de lectura
+(`T-C1-99`/`T-C1-100`). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api` y `pnpm nx test shared-contracts`: unitarios del DTO, el filtro y el controlador.
+2. **AC4**: `grep -rnE "incident|class-validator|@nestjs" libs/shared/contracts/src` → sin imports de
+   `incident-*` ni decoradores (pega la salida; el nombre del tipo puede contener "Incident").
+3. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde con los escenarios nuevos y los anteriores.
+   Pega la salida.
+4. Una petición manual real contra la API arrancada (contra la base efímera o la de desarrollo): un
+   `201` y un `400` por un campo de prioridad; pega las respuestas completas (estado, cabeceras
+   relevantes y cuerpo).
+5. El cuerpo de un `500` provocado no contiene stack ni mensaje interno (test unitario del filtro).
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados;
+`sport-itsm-postgres-dev` `healthy` en 5452.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; los tipos del contrato; la ruta, sus respuestas (`201`, `400`, `403`,
+  `500`) con ejemplos reales; el cableado del módulo.
+- Tus decisiones de las trampas 1 a 7, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo DTO en contratos frente a ADR-007, el filtro
+  mínimo frente a `T-C10-40`, la parte de i18n del AC2, el adaptador provisional de SLA hasta `T-C1-58`,
+  y cualquier código de error que falte en el contrato.
+
+### Response:
+
+Implementado ticket T-C1-08
+
+</br>
+
+**Prompt 23:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-99.md ·
+Caso de uso `GetIncidentByReference` y el método de lectura del repositorio
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`, con el núcleo en **`type:domain` + `type:application`: sin NestJS, sin
+TypeORM, sin HTTP** en esas capas. Mandan `sport-itsm-architecture` (§5.4 dónde vive un puerto, §6.2–§6.3)
+y `sport-itsm-engineering-principles` (ISP, errores tipados, YAGNI). `sport-itsm-backend` para el
+adaptador TypeORM. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Primer ticket del bloque 5 de la rebanada 1: la mitad "verla" de *"un requester registra una incidencia
+y la ve"*. El Product Owner decidió que "verla" es **leerla por referencia** (lo persistido), no repetir
+lo que devolvió el `POST`. Detrás vienen `T-C1-100` (`GET /api/incidents/{reference}`) y `T-C1-101` (la
+pantalla de detalle). Aquí **nada escribe**.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=incident-domain,incident-application,incident-infrastructure   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Trampas del entorno — ya pagadas
+- `libs/incident/infrastructure` tiene `test` (unitario, sin BD, corre en CI) e **`integration`** (base
+  efímera en 5499; no lo lances a la vez que `nx e2e api-e2e`).
+- Los `*.entity.ts` no pueden importar alias `@sport-itsm/*` (la CLI de TypeORM no los resuelve).
+- El `DataSource` es perezoso; no lo cambies.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero.
+- `libs/incident/domain`: `IncidentRepositoryPort` (+ `INCIDENT_REPOSITORY`), `Incident` (incluidos
+  `reconstitute()` e `IncidentSnapshot`), `IncidentReferencePolicy`, errores.
+- `libs/incident/application`: `LogIncidentUseCase` (el patrón vigente: clase pura, puertos por
+  constructor, contexto con actor), `IncidentActor`.
+- `libs/incident/infrastructure`: `TypeOrmIncidentRepository`, `IncidentMapper`, sus specs y el
+  integration spec.
+- `@sport-itsm/shared-domain` (`TicketReference`) y **`@sport-itsm/shared-util`** (ya exporta
+  `Result`/`ok`/`err` desde `T-C10-07`: úsalo si encaja, no inventes otro).
+
+#### Trampa 1 — el AC3: "no method on the port it calls can mutate a row"
+El Scope dice añadir `findByReference()` a `IncidentRepositoryPort`, pero ese puerto **tiene `save()`**.
+Si el caso de uso depende de él, el AC3 es **falso por construcción**: el puerto que llama sí puede
+mutar.
+- Aplica **segregación de interfaces**: declara en `libs/incident/domain` un puerto de **solo lectura**
+  (con `findByReference()` y nada que escriba) y su token, y haz que el caso de uso dependa **solo** de
+  él. Decide y justifica si `IncidentRepositoryPort` lo extiende o si son independientes.
+- `TypeOrmIncidentRepository` implementa ambos. En `T-C1-100` el mismo adaptador se enlazará a los dos
+  tokens; **no cablees nada en `IncidentModule` aquí** (es de `T-C1-100`).
+- Demuestra el AC3 con un test que se apoye en el **tipo** del puerto (no solo en que el stub no escriba).
+- Reporta la desviación del Scope ("added to `IncidentRepositoryPort`") para `architect-tech-lead`.
+
+#### Trampa 2 — el resultado "no encontrado" tipado, sin excepciones
+El AC2 exige un resultado tipado, **nunca** una excepción que el llamante tenga que adivinar.
+- Usa una unión discriminada o el `Result` de `shared-util`. Justifica la elección.
+- Piensa qué entra en el caso de uso: ¿un `string` o un `TicketReference` ya validado? Si entra un
+  `string` con formato inválido o con otro prefijo (`SRQ0000001`), ¿es "no encontrado" o un resultado
+  distinto? `TicketReference.fromString` y `IncidentReferencePolicy.parse` **lanzan**: si el caso de uso
+  las usa, captura y traduce a un resultado tipado; si la validación del formato es del borde
+  (`T-C1-100`), dilo y deja que el caso de uso reciba un `TicketReference`. Decide y justifica; lo que no
+  puede pasar es que un formato inválido acabe como excepción genérica.
+
+#### Trampa 3 — qué devuelve: "the full aggregate state"
+- Devolver el **agregado** entrega al llamante un objeto con métodos de dominio (hoy pocos; mañana
+  `categorize()`, `assign()`…), desde un caso de uso de **lectura**. Recomendación: devolver una vista de
+  solo lectura del estado completo (p. ej. el `IncidentSnapshot` que ya existe, o un tipo de lectura
+  propio de `application`), que `T-C1-100` mapeará a su contrato. Justifica la elección.
+- "Estado completo" incluye los slots aún vacíos (Priority sin derivar, sin categoría, flag `false`):
+  que se vean como tales, no se omitan.
+
+#### Trampa 4 — autorización
+El Scope dice que en esta rebanada no hay visibilidad acotada y que el caso de uso queda abierto a
+cualquier actor resuelto, **de forma provisional**. Decide si el caso de uso recibe ya el contexto con
+el actor (firma estable para cuando lleguen los predicados de `US-C1-06`) aunque hoy no lo use, o si lo
+omites (YAGNI). Justifícalo y déjalo documentado en el código como hueco a cerrar, sin inventar ningún
+predicado.
+
+#### Trampa 5 — el adaptador
+- `findByReference()` en `TypeOrmIncidentRepository`: `SELECT` por `reference` (hay `uq_incident_reference`),
+  sin bloqueo, reconstituyendo con el mapper (`reconstitute()`, sin eventos). Devuelve "no hay" como
+  `null` o como la forma que decida el puerto, nunca lanzando por ausencia.
+- Unitario con el `DataSource` simulado; y un caso en el target **`integration`** contra PostgreSQL
+  real: guardar, leer por referencia, comparar todos los campos; referencia inexistente → vacío.
+
+#### Lo que NO debes tocar
+`libs/shared/**`, `libs/incident/{feature,ui,data-access}`, `apps/**` (ni controlador, ni ruta, ni
+cableado: `T-C1-100`), `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu memoria),
+`package.json`, `prompts.md`. No cambies el comportamiento de `LogIncidentUseCase`. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-application`: encontrado (estado completo, incluidos los slots vacíos), no
+   encontrado (resultado tipado), entrada inválida según tu decisión de la trampa 2, y el AC3. Pega el
+   resumen.
+2. `pnpm nx test incident-domain` e `incident-infrastructure` en verde.
+3. `pnpm nx run incident-infrastructure:integration` en verde con el caso nuevo de lectura. Pega la salida.
+4. Pureza: `grep -rnE "from '(@nestjs|typeorm|express|pg|node:)" libs/incident/application/src libs/incident/domain/src --include=*.ts`
+   → vacío.
+5. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+6. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la firma pública del puerto de lectura, del caso de uso y de su
+  resultado.
+- Tus decisiones de las trampas 1 a 5, con su porqué.
+- La salida de las seis verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el puerto de lectura frente al Scope, la
+  autorización provisional (`US-C1-06`) y lo que `T-C1-100` tiene que cablear (el adaptador en dos tokens).
+
+### Response:
+
+Implementado ticket T-C1-99
+
+</br>
+
+**Prompt 24:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-100.md ·
+La ruta `GET /incidents/{reference}` y su contrato de respuesta
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (controladores finos, DTO validados,
+`ValidationPipe` global, DI por tokens), `sport-itsm-architecture` (ADR-007: contratos solo tipos; §3.2)
+y `sport-itsm-engineering-principles`. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Cierra el **backend de la rebanada 1**: con él, "registrar una incidencia **y verla**" funciona entero por
+HTTP. Es la mitad HTTP de `T-C1-99` y el destino al que redirigirá el formulario (`T-C1-10` → `T-C1-101`).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t test --projects=shared-contracts,incident-application,api   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Trampas del entorno — ya pagadas
+- `api-e2e` levanta su PostgreSQL efímera (5499), migra y sirve la API con `NODE_ENV=test`; el
+  `DataSource` es perezoso. `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash. No lo lances a la
+  vez que `incident-infrastructure:integration` (mismo stack).
+- Postgres de desarrollo en 5452; las variables globales `POSTGRES_*` pisan el `.env`: pasa los valores
+  en la misma llamada. Antes de una verificación manual comprueba que no haya un proceso viejo
+  escuchando en el puerto (`netstat`/`Get-NetTCPConnection`) y ciérralo al terminar.
+- `apps/api` no tiene `express`/`@types/express` resolubles: usa interfaces estructurales locales, como
+  ya hace `T-C1-08`.
+
+#### El ticket es el contrato — y esta vez ya está alineado con el código
+`architect-tech-lead` lo reescribió tras `T-C1-99`: su Scope, su sección *Resolved* y sus **seis** AC
+describen lo que existe (filtro global, `ErrorEnvelope`, `stopAtFirstError`, el caso de uso con `Result`).
+Léelo entero y síguelo. Lee además, del repo:
+- `libs/incident/application`: `GetIncidentByReferenceUseCase`, `GetIncidentByReferenceResult`,
+  `IncidentNotFoundOutcome`.
+- `libs/incident/domain`: `IncidentSnapshot`, `Incident.toSnapshot()`, `IncidentReadRepositoryPort` +
+  `INCIDENT_READ_REPOSITORY`.
+- `apps/api/src/app/incident/incident.controller.ts` (el `POST` de `T-C1-08`: patrón de
+  `resolveCorrelationId`, cabecera de correlación, DTO → caso de uso), `incident.module.ts`,
+  `dto/`, `apps/api/src/app/global-exception.filter.ts`, `request-validation.exception.ts`,
+  `apps/api/src/main.ts`.
+- `libs/shared/contracts` (`ErrorCode`, `ErrorEnvelope`, `IncidentCreatedResponse`, convención del barrel).
+- `apps/api-e2e/src/features/incident-intake.feature` y sus steps (reutiliza lo que puedas).
+
+#### Trampa 1 — qué campos lleva `IncidentDetailResponse`
+El ticket dice "excluye `IncidentSnapshot.id`; el resto se mapea directamente". Pero el AC4 prohíbe
+también "any internal identifier that leaks storage details unrelated to the reference itself", y el
+snapshot lleva **otros UUID**: `reporterId`, `loggedBy`, `affectedServiceId`.
+- Decide **campo a campo** qué entra en el contrato y justifícalo contra el AC4 y contra lo que la
+  pantalla de detalle (`T-C1-101`) necesita mostrar. No expongas un identificador interno sin un motivo
+  que el requester entienda.
+- Instantes como **cadena ISO 8601 en UTC** (el cliente los presenta en su zona, NFR-I18N-03), nunca
+  epoch ms ni `Date`.
+- Los campos todavía vacíos (Priority sin derivar, Impact, Urgency, categoría, flag de competición) van
+  **explícitamente** con su valor vacío (`null`/`false`), no omitidos: "not yet prioritized" es texto que
+  pondrá el cliente.
+- Si la respuesta es distinta de lo que el ticket da a entender, repórtalo.
+
+#### Trampa 2 — la validación del parámetro de ruta
+- DTO de parámetros con `class-validator` y el patrón `^[A-Z]{3}[0-9]{7}$`, validado por el
+  `ValidationPipe` global (con `@Param()` de un objeto DTO; comprueba que `whitelist`/
+  `forbidNonWhitelisted` se comportan bien con parámetros). Con `stopAtFirstError`, un parámetro inválido
+  debe dar **un solo** detalle con `field: 'reference'`.
+- Una referencia con forma válida pero otro prefijo (`SRQ0000001`) pasa la validación y sale **`404`**
+  (decisión de `T-C1-99`: literalmente no existe esa incidencia). No lo conviertas en `400`.
+
+#### Trampa 3 — cableado de los dos tokens
+- `{ provide: INCIDENT_REPOSITORY, useClass: TypeOrmIncidentRepository }` y
+  `{ provide: INCIDENT_READ_REPOSITORY, useExisting: INCIDENT_REPOSITORY }`.
+- `GetIncidentByReferenceUseCase` con `useFactory` e `inject: [INCIDENT_READ_REPOSITORY]`.
+- **AC6**: un test que obtenga los dos tokens del contenedor y compruebe que son **la misma instancia**.
+  Recuerda la trampa de `T-C1-08`: un `TestingModule` que solo importa `IncidentModule` necesita también
+  el módulo global de `EVENT_PUBLISHER` (`EventDispatchModule`) y, si se resuelve el repositorio real,
+  el `DatabaseModule`; sobreescribe lo que haga falta para no necesitar PostgreSQL.
+
+#### Trampa 4 — textos
+El ticket habla de un fichero de constantes para "el mensaje de no encontrado". Pero el `ErrorEnvelope`
+**no tiene campo de mensaje** (§3.2: el texto no es contrato) y el backend de `T-C1-08` no emite ningún
+texto. Si esta ruta tampoco necesita emitir texto, **no crees** el fichero de constantes: el cliente
+(`T-C1-101`) traducirá `NOT_FOUND`. Repórtalo.
+
+#### Trampa 5 — tests
+- Unitarios (sin BD): el DTO de parámetros, el mapeo snapshot → contrato (campo a campo, incluidos los
+  vacíos y la ausencia del `id`), las dos ramas del controlador (`ok` → `200`, `err` → `NotFoundException`).
+- **API-E2E con Cypress/Cucumber** (`apps/api-e2e`, nada de Supertest), contra la base efímera real:
+  - AC1: `POST` una incidencia y luego `GET` su referencia → `200` con el estado **persistido** (compara
+    con lo enviado donde aplique, y comprueba campos que solo pone el servidor: `originChannel: portal`,
+    instante de registro, vacíos de evaluación);
+  - AC2: referencia con forma válida inexistente → `404` `NOT_FOUND`;
+  - AC3: varias formas inválidas (longitud, minúsculas, formato) → `400` `VALIDATION_FAILED` con un único
+    detalle de `reference`;
+  - AC4: el cuerpo no contiene el `id` (ni ningún identificador interno que hayas decidido excluir).
+
+#### Lo que NO debes tocar
+`libs/incident/{domain,application,infrastructure}` (si algo debe cambiar, para y repórtalo),
+`libs/shared/{domain,util}`, `apps/api/src/{database,event-dispatch,testing,migrations,bootstrap}/**`,
+el filtro global salvo que sea imprescindible (justifícalo), `docker/**`, `.github/**`, `docs/**`,
+`.claude/**` (salvo tu memoria), `package.json`, `prompts.md`. No cambies el comportamiento del `POST`.
+El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api` y `pnpm nx test shared-contracts` en verde. Pega el resumen.
+2. **AC5**: `grep -rnE "class-validator|@nestjs|from '@sport-itsm/incident" libs/shared/contracts/src`
+   → solo comentarios (pega la salida).
+3. **AC6**: el test de instancia única en verde.
+4. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde con los escenarios nuevos y todos los
+   anteriores. Pega la salida.
+5. Petición manual real (`POST` + `GET` de esa referencia, un `404` y un `400`) contra la API arrancada:
+   pega estado, cabecera de correlación y cuerpo de cada una. Cierra el servidor al terminar.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Contenedores desechables eliminados; ningún proceso de
+la API escuchando al terminar; `sport-itsm-postgres-dev` `healthy` en 5452.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; el tipo `IncidentDetailResponse` literal; la ruta con respuestas reales
+  (`200`, `404`, `400`); el cableado del módulo.
+- Tus decisiones de las trampas 1 a 5, con su porqué (en especial, qué campos del snapshot expones y
+  cuáles no).
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**.
+
+### Response:
+
+Implementado ticket T-C1-100
+
+</br>
+
+**Prompt 25:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-09.md ·
+`incident/data-access` — servicio de API de incidencias y store basado en signals
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Es el **primer código Angular de negocio** del proyecto. Aplica
+**`sport-itsm-frontend`** (Angular 20.3, standalone, signals, `inject()`, `computed()`, `effect()` con
+moderación, `HttpClient` con interceptores funcionales, errores HTTP nunca tragados, estados de carga y
+error siempre definidos), `sport-itsm-architecture` (§5.3: `type:data-access` solo depende de
+`data-access`, `contracts` y `util`; §7.1) y `sport-itsm-engineering-principles`. `angular-developer` solo
+como referencia genérica: las skills del proyecto mandan. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Primer ticket del bloque 6, el último de la rebanada 1: el **frontend** de "registrar una incidencia y
+verla". El backend ya está completo (`POST /api/incidents` → `201 { reference }`;
+`GET /api/incidents/{reference}` → `200 IncidentDetailResponse`, `404`, `400`). Este ticket es el único
+sitio desde el que el frontend hablará con esa API; detrás vienen el formulario (`T-C1-10`) y la pantalla
+de detalle (`T-C1-101`), que **solo** consumirán este store.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-data-access,web,shared-contracts   # verde
+    pnpm verify:boundaries                   # 10/10
+
+No necesitas la API arrancada: los tests usan `HttpTestingController`.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (su AC5 añade el `GET`, y aclara que la rebanada **no tiene autenticación**).
+- `libs/shared/contracts`: `LogIncidentRequesterRequest`, `IncidentCreatedResponse`,
+  `IncidentDetailResponse`, `ErrorEnvelope`, `ValidationErrorDetail`, `ErrorCode` (`VALIDATION_FAILED`,
+  `NOT_FOUND`, `FORBIDDEN`, `UNAUTHENTICATED`, `INTERNAL_ERROR`), `CORRELATION_ID_HEADER`.
+- `apps/api/src/app/incident/incident.controller.ts` y `apps/api-e2e/src/features/*.feature`: lo que la
+  API responde de verdad en cada caso (incluidos los cuerpos de `400` con `details` de un solo elemento
+  por campo, `stopAtFirstError`).
+- `apps/web/src/app/app.config.ts` (`provideHttpClient(withInterceptors([]))`), `apps/web/project.json`,
+  `libs/incident/data-access` (vacía; `jest.config.ts` con `passWithNoTests` cuyo comentario dice `T-C1-09`).
+- `ARCHITECTURE.md` §7.1 y la sección de frontend de `CLAUDE.md` §3.
+
+#### Trampa 1 — la URL de la API
+No hay configuración de entorno ni proxy en `apps/web`, y el API sirve bajo `/api` en otro puerto (3300).
+- **No codifiques host ni puerto** en la librería. Usa rutas relativas (`/api/incidents`) o un token de
+  inyección para la base, con un valor por defecto sensato, que el shell pueda sobrescribir. Justifícalo.
+- Que el navegador llegue de verdad a la API en desarrollo (proxy de `nx serve web` → 3300, o CORS) es
+  configuración de `apps/web`: **no la hagas aquí**; repórtala para `T-C1-10` (el primero que lo
+  necesitará en un navegador).
+
+#### Trampa 2 — el error tipado
+El AC2 y el AC5 exigen un error **tipado** que nunca se descarte. `HttpClient` entrega un
+`HttpErrorResponse` cuyo cuerpo, cuando viene de la API, es un `ErrorEnvelope`.
+- Define un tipo de error del lado cliente que distinga, al menos: error de la API con su `code` y sus
+  `details` (`VALIDATION_FAILED` con los campos para el formulario de `T-C1-10`; `NOT_FOUND` para la
+  pantalla de `T-C1-101`; el resto), y fallo sin respuesta de la API (red, CORS, cuerpo que no es un
+  `ErrorEnvelope`). Nada de `any`.
+- El `404` del detalle llena la señal de error, **no se propaga** al componente como excepción (AC5).
+- Sin textos para el usuario en esta librería (i18n aplazada a un fichero de constantes **por feature**, y
+  el texto lo pondrán los componentes): solo códigos.
+
+#### Trampa 3 — la forma del store
+- Estados **siempre definidos** para cada una de las dos operaciones (alta y detalle): cargando, error y
+  datos. Decide entre tres signals por operación o un estado discriminado del que se derivan con
+  `computed()`; lo que no puede ocurrir es un estado indefinido ni "cargando + error" a la vez.
+- **Condiciones de carrera**: si se pide el detalle de A y luego de B antes de que responda A, la
+  respuesta de A no puede pisar la de B. Si el usuario envía el formulario dos veces, decide qué pasa
+  (ignorar mientras hay una en curso, o cancelar la anterior) y justifícalo: un doble envío del `POST`
+  crea **dos** incidencias en el servidor.
+- Ámbito del store: `providedIn: 'root'` o proveído por la ruta/feature. Justifícalo pensando en que el
+  formulario redirigirá a la pantalla de detalle.
+- `effect()` solo si hay un motivo real; RxJS con moderación (signals primero). Nada de NgRx.
+- Expón lo que `T-C1-10` y `T-C1-101` necesitarán (p. ej. la referencia creada para navegar, el detalle
+  cargado, los errores por campo) como `computed()` de solo lectura; los signals escribibles no salen de
+  la librería.
+
+#### Trampa 4 — la cabecera de correlación
+La API acepta y devuelve `X-Correlation-Id` (`CORRELATION_ID_HEADER`). Decide si el cliente la envía
+(y cómo la genera) o solo la lee de la respuesta para poder citarla en un error, y justifícalo. No añadas
+interceptores en `apps/web` (fuera de alcance); si crees que debería ser un interceptor, repórtalo.
+
+#### Trampa 5 — fronteras y pureza
+- `incident-data-access` solo puede depender de `type:data-access`, `type:contracts` y `type:util`
+  (AC3). **No** puede importar `incident-domain` ni `shared-domain` (son `platform:backend`/de otro tipo):
+  la referencia es un `string` aquí. Si necesitas validar su forma en el cliente, hazlo localmente y dilo.
+- Quita `passWithNoTests` de `libs/incident/data-access/jest.config.ts`.
+- Nada de componentes, ni rutas, ni cambios en `apps/web` (salvo que sea imprescindible; si lo es, para y
+  repórtalo).
+
+#### Lo que NO debes tocar
+`apps/**`, `libs/incident/{domain,application,infrastructure,feature,ui}`, `libs/shared/**` (si el
+contrato necesita algo, para y repórtalo), `docker/**`, `.github/**`, `docs/**`, `.claude/**` (salvo tu
+memoria), `package.json` (sin dependencias nuevas), `prompts.md`. El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-data-access` (jest-preset-angular, `HttpTestingController`): para el alta y
+   para el detalle, éxito (datos, sin carga, sin error), `400` con `details` (error tipado con los
+   campos), `404` en el detalle (error `NOT_FOUND`, sin excepción), `500`, fallo de red (`status 0`), el
+   estado durante la carga, la condición de carrera del detalle y el doble envío del alta. Pega el resumen.
+2. **AC3**: `pnpm nx lint incident-data-access` en verde; y el grafo (`pnpm nx graph --file=tmp/graph.json`,
+   luego bórralo): `incident-data-access` depende solo de `shared-contracts` (y `shared-util` si lo usas).
+3. `grep -rn "any\b" libs/incident/data-access/src --include=*.ts` → sin `any` en tipos (o justifica cada uno).
+4. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde (incluye `web`) y `pnpm verify:boundaries` 10/10.
+5. `pnpm prettier --check libs/incident/data-access`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la API pública de la librería (servicio, store, tipos de error y
+  selectores `computed()`).
+- Tus decisiones de las trampas 1 a 5, con su porqué.
+- La salida de las cinco verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo, la conexión real navegador → API (proxy o
+  CORS) para `T-C1-10`, y cualquier cosa que el contrato no dé y los componentes vayan a necesitar.
+
+### Response:
+
+Implementado ticket T-C1-09
+
+</br>
+
+**Prompt 26:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-10.md ·
+Formulario de alta del requester — lenguaje llano, móvil, WCAG 2.1 AA
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Aplica **`sport-itsm-frontend`** (Angular 20.3: standalone, `OnPush`,
+signals, `inject()`, Reactive Forms tipados, `@if`/`@for`/`@switch`, sin `NgModule`, sin librerías de
+componentes de terceros, accesibilidad escrita a mano) y `sport-itsm-architecture` (§5.3: `type:feature`
+puede depender de `feature`, `ui`, `data-access`, `contracts`, `util`; §7.1). `angular-developer` solo
+como referencia. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Segundo del bloque 6, el último de la rebanada 1: **la primera pantalla del producto**. El requester
+escribe su problema, lo envía y es redirigido a la ficha de su incidencia (`T-C1-101`, que viene justo
+después). Usa **solo** el `IncidentStore` de `T-C1-09`. El usuario ha aprobado incluir aquí además el
+**proxy de desarrollo** de `apps/web` hacia la API, porque este es el primer ticket que lo necesita en un
+navegador.
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-data-access,incident-feature,web   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero: sus **tres desviaciones aprobadas** (sin design system pero con accesibilidad
+  completa escrita a mano; i18n aplazada a un fichero de constantes; redirigir en vez de repetir), el
+  **criterio pendiente** del AC3 (`aria-live` de `T-C10-14`, que **no** se construye aquí) y el bloqueo
+  **F29** (se construye con la lectura del backlog: texto libre, sin selector estructurado).
+- `libs/incident/data-access`: `IncidentStore` (`logIncidentAsRequester`, `intakeLoading`,
+  `intakeError`, `createdIncidentReference`), `IncidentApiError`, `INCIDENT_API_BASE_URL`.
+- `libs/shared/contracts`: `LogIncidentRequesterRequest` (`shortDescription`, `description`,
+  `affectedServiceId?`), `ErrorEnvelope`, `ValidationErrorDetail`.
+- Lo que la API devuelve de verdad en un `400`: un detalle por campo, `rule` ∈ `isDefined`,
+  `isNotBlank`, `isString`, `maxLength`, `isUuid`, `whitelistValidation`
+  (`apps/api/src/app/incident/dto/log-incident-requester.dto.ts`, `apps/api-e2e/src/features/incident-intake.feature`).
+- `apps/web/src/app/app.routes.ts` (el comentario de `featureRoutes` dice exactamente cómo se añade un
+  contexto), `app.config.ts`, `app.component.ts`, `styles.scss` (sus tokens son de `libs/shared/ui`, que
+  no existe), `apps/web/project.json` (target `serve`) y `apps/web-e2e/project.json` (su `e2e` depende de
+  `web:serve`).
+
+#### Trampa 1 — "campo de texto libre para el contexto de competición"
+El Scope pide un campo para el contexto de competición, pero **el contrato del requester no tiene ese
+campo** y la API rechaza cualquier propiedad no declarada (`forbidNonWhitelisted` → `400`).
+- **No cambies el contrato ni el backend.** FR-INC-01 dice que el requester *puede* describir el
+  contexto de competición en texto libre, y la descripción ya es texto libre.
+- Decide: (a) sin control aparte, con una indicación en la descripción de que puede incluir el contexto
+  de competición; o (b) un control aparte cuyo valor se incorpora a `description` al enviar. Justifícalo
+  (la (b) mezcla dos datos en uno y el agente de triage no podrá distinguirlos). **Repórtalo** para
+  `architect-tech-lead`.
+- **`affectedServiceId`**: pedir a un requester un UUID no tiene sentido, y aún no existe catálogo de
+  servicios. **No pongas ese control**; se envía sin él. Repórtalo.
+- **AC1**: ningún control de Impact, Urgency, Priority ni flag de competición en ningún punto.
+
+#### Trampa 2 — accesibilidad escrita a mano (WCAG 2.1 AA) y móvil
+- `<label for>` en cada control, `<fieldset>`/`<legend>` donde agrupe, `aria-describedby` de cada campo
+  a su ayuda y a su error, `aria-invalid` cuando proceda, `required` nativo, resumen de errores con
+  `role="alert"` y enlaces a cada campo.
+- **Gestión del foco** (AC2): al fallar el envío, el foco va al resumen de errores; al tener éxito, la
+  navegación lo lleva a la ficha (la ficha gestionará su propio foco en `T-C1-101`).
+- **360 px** sin desplazamiento horizontal; operable solo con teclado; el botón deshabilitado (o
+  `aria-disabled`) mientras se envía, y el doble envío ya lo ignora el store.
+- **AC3 pendiente**: el anuncio por la región `aria-live` de `T-C10-14` **no** se construye aquí. Deja
+  el `role="alert"` y documenta en el código que el AC3 queda pendiente de `T-C10-12/13/14`.
+
+#### Trampa 3 — textos y errores
+- **Todo texto de cara al usuario** en **un único fichero de constantes exportado** de
+  `libs/incident/feature` (el mismo que ampliará `T-C1-101`). Nada literal en las plantillas. Nada de
+  Transloco ni `nestjs-i18n`. Lenguaje llano, sin jerga ITSM (NFR-USE-01).
+- Validación en el cliente que refleje la del servidor (obligatorio, no en blanco, máximo 255 en la
+  descripción corta) **y** mapeo de los errores del servidor: cada `details[].field` + `rule` → un
+  mensaje que diga **qué ha pasado y qué hacer** (NFR-USE-05). Una `rule` desconocida o un error de red
+  (`network-error`) → un mensaje genérico con qué hacer, nunca un fallo silencioso. Si el error trae
+  `correlationId`, decide si mostrarlo como "código para soporte".
+
+#### Trampa 4 — rutas y navegación
+- `libs/incident/feature` exporta `incidentRoutes`; `apps/web/src/app/app.routes.ts` añade **una sola
+  entrada** en `featureRoutes` con `loadChildren`, tal como dice su comentario. Decide la ruta del
+  formulario (p. ej. `/incidents/new`) y si `''` redirige a ella; justifícalo.
+- **AC4**: al tener éxito, navega a la ruta de detalle de la referencia devuelta (p. ej.
+  `/incidents/INC0000001`). Esa ruta es de **`T-C1-101`**, que va después: **no la construyas**. Hasta
+  entonces la navegación caerá en el comodín `**`. Declara la forma de la ruta de detalle en un solo sitio
+  que `T-C1-101` reutilice, y **repórtalo**.
+- El componente consume el store por `inject()` y reacciona a `createdIncidentReference` sin `effect()`
+  innecesarios; si usas uno, justifícalo.
+
+#### Trampa 5 — estilos sin design tokens
+`CLAUDE.md` prohíbe colores y espaciados codificados y pide los tokens del design system, pero
+`libs/shared/ui` (donde viven) **no existe** en esta rebanada (desviación 1). SCSS del componente mínimo
+y responsive; si necesitas valores, decláralos como custom properties locales con un comentario que diga
+que se sustituirán por los tokens de `libs/shared/ui`. Sin `::ng-deep`. **Repórtalo.**
+
+#### Trampa 6 — el proxy de desarrollo (aprobado por el usuario)
+- Añade `apps/web/proxy.conf.json` que envíe `/api` a `http://localhost:3300` (sin reescribir la ruta:
+  la API ya sirve bajo `/api`) y enlázalo en las opciones del target `serve` de `apps/web/project.json`.
+- **No** abras CORS en la API.
+- Ojo: `apps/web-e2e` depende de `web:serve`. El proxy no debe romper ese harness (que hoy no tiene API
+  detrás): comprueba que `web-e2e` sigue en verde.
+- **Demuéstralo de verdad**: con la API (`nx serve api`, contra el Postgres de desarrollo en 5452; las
+  variables globales `POSTGRES_*` pisan el `.env`, pásalas en la misma llamada) y la web (`nx serve web`)
+  arrancadas, un `POST /api/incidents` **a través del puerto de la web** responde `201`. Cierra ambos
+  procesos al terminar (`Get-NetTCPConnection`/`netstat`).
+
+#### Trampa 7 — tests
+- Unitarios del componente (jest-preset-angular, `TestBed`, store simulado): AC1 (ningún control
+  prohibido en el DOM), validación en cliente, mapeo de cada `rule` a su mensaje, error de red, estado de
+  envío, foco al resumen tras un fallo, navegación a `/incidents/<ref>` tras un éxito.
+- **UI-E2E con Cypress/Cucumber en `apps/web-e2e`**: viewport 360 px, sin desplazamiento horizontal,
+  recorrido solo con teclado, envío con la API **simulada con `cy.intercept`** (éxito → la URL cambia a la
+  de detalle; `400` → mensajes y resumen). El E2E real contra la API queda para cuando exista la ficha.
+  Si no puedes probar algo del AC2 de forma fiable (p. ej. foco), dilo.
+- Quita `passWithNoTests` de `libs/incident/feature/jest.config.ts`.
+
+#### Lo que NO debes tocar
+`libs/incident/{domain,application,infrastructure,data-access,ui}` (si el store necesita algo, para y
+repórtalo), `libs/shared/**`, `apps/api/**`, `apps/api-e2e/**`, `docker/**`, `.github/**`, `docs/**`,
+`.claude/**` (salvo tu memoria), `package.json`, `prompts.md`. En `apps/web`: solo `app.routes.ts`,
+`proxy.conf.json` y el target `serve`. Nada de la pantalla de detalle (`T-C1-101`). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-feature` y `pnpm nx test web` en verde. Pega el resumen.
+2. `pnpm nx lint incident-feature` en verde (incluye las reglas de `angular-eslint`: prefijo `incident`,
+   `OnPush`, control flow); `grep -rnE "\*ngIf|\*ngFor|NgModule|::ng-deep" libs/incident/feature/src` → vacío.
+3. AC1: `grep -rniE "impact|urgency|priority|competitionAffects" libs/incident/feature/src --include=*.html`
+   → vacío (pega la salida) y el test del DOM en verde.
+4. `pnpm nx e2e web-e2e` en verde con los escenarios nuevos y el anterior (pega la salida; si Cypress
+   falla con "bad option --smoke-test", `unset ELECTRON_RUN_AS_NODE;` en la misma llamada).
+5. Proxy real: la petición a través del puerto de la web → `201` (pega estado y cuerpo) y ambos procesos
+   cerrados después.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+   Grafo: `incident-feature` depende solo de `incident-data-access` y `shared-contracts` (y `util` si lo
+   usas); `web` → `incident-feature` solo por `loadChildren`.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Ningún proceso de la API ni de la web escuchando al
+terminar.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; la ruta del formulario y la de detalle declarada; el fichero de
+  constantes.
+- Tus decisiones de las trampas 1 a 7, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el campo de contexto de competición frente
+  al contrato, `affectedServiceId` en el formulario, el AC3 pendiente, los estilos sin tokens y la ruta de
+  detalle que construirá `T-C1-101`.
+
+### Response:
+
+Implementado ticket T-C1-10
+
+</br>
+
+**Prompt 27:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-101.md ·
+Componente de detalle de la incidencia — HTML semántico, enrutado por referencia
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Aplica **`sport-itsm-frontend`** (Angular 20.3: standalone, `OnPush`,
+signals, `inject()`, `@if`/`@for`/`@switch`, sin `NgModule`, accesibilidad escrita a mano) y
+`sport-itsm-architecture` (§5.3, §7.1). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es **el último ticket de la rebanada 1**. Con él, *"un requester registra una incidencia y la ve"* queda
+completo de extremo a extremo: el formulario (`T-C1-10`) redirige aquí y esta pantalla muestra lo que el
+servidor **persistió**, leído con `GET /api/incidents/{reference}` (`T-C1-100`) a través del
+`IncidentStore` (`T-C1-09`).
+
+#### Precondición
+    git status --porcelain                   # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-data-access,incident-feature,web   # verde
+    pnpm verify:boundaries                   # 10/10
+
+#### Trampas del entorno — ya pagadas
+- Cypress: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash si falla con "bad option --smoke-test".
+- Para arrancar la API a mano: Postgres de desarrollo en 5452; las variables globales `POSTGRES_*` pisan
+  el `.env`, pásalas en la misma llamada. `nx serve web` ya tiene el proxy `/api` → 3300. Antes de una
+  prueba manual comprueba que no haya procesos viejos en 3300/4200 y ciérralos al terminar.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero y sus dos desviaciones aprobadas.
+- `libs/incident/feature/src/lib/`: `incident-routes.ts` (`incidentDetailUrl()`, y el comentario que te
+  dice dónde registrar `path: ':reference'`), `incident-messages.ts` (el fichero de textos de la feature),
+  el componente del formulario (patrón de estilos con custom properties locales, foco, mensajes).
+- `libs/incident/data-access`: `IncidentStore` (`loadIncidentByReference`, `detailLoading`,
+  `detailError`, `incidentDetail`), `IncidentApiError` (`api-error` con `code`/`details`/`correlationId`;
+  `network-error`).
+- `libs/shared/contracts`: `IncidentDetailResponse` (sin `id`; `loggedAt` ISO UTC; `affectedServiceId`,
+  `categoryId`, `impact`, `urgency`, `priority` a `null`; `competitionAffectsInProgress`).
+- Lo que devuelve la API: `200`; `404 NOT_FOUND` (referencia bien formada inexistente, también `SRQ…`);
+  `400 VALIDATION_FAILED` con `{ field: 'reference', rule: 'matches' }` (forma inválida).
+- `apps/web-e2e/src/features/incident-intake.feature` y sus steps: su escenario de éxito **afirma hoy
+  que el navegador acaba en `/`** porque la ruta de detalle no existía.
+
+#### Trampa 1 — el fichero de textos ya existe
+El ticket nombra `i18n-strings.ts`, pero `T-C1-10` ya creó **`incident-messages.ts`** como el único fichero
+de textos de la feature. **Amplía ese**; no crees otro. Nada literal en la plantilla (AC4).
+
+#### Trampa 2 — no son tres estados, son más
+El Scope habla de cargando, no encontrado y cargado. La API y el store dan además: forma de referencia
+inválida (`400`), error del servidor (`500`) y error de red.
+- Renderiza **siempre** un estado explícito para cada caso; ninguno puede quedar en blanco ni lanzar.
+  Decide si la referencia mal formada se muestra como "no encontrada" o como "esta no es una referencia
+  válida", y justifícalo pensando en el usuario (lenguaje llano).
+- Si el error trae `correlationId`, muéstralo como "código para soporte", igual que el formulario.
+- **Estado anterior**: el store es `providedIn: 'root'`. Al entrar en la ficha de B después de haber visto
+  A, **no** puede verse ni un instante el detalle de A. Comprueba cómo resetea el store al empezar una
+  carga; si no lo hace y hace falta cambiarlo, **para y repórtalo** (no toques `data-access` sin decirlo).
+
+#### Trampa 3 — la ruta y el parámetro
+- Registra `path: ':reference'` en `incidentRoutes`, junto a `new` (ojo con el orden: `new` no puede
+  interpretarse como una referencia).
+- Lee el parámetro con el enlace de inputs del router (`withComponentInputBinding`, que hoy no está en
+  `app.config.ts`: si lo añades, es un cambio de `apps/web` y dilo) o con `ActivatedRoute`; justifícalo.
+  El componente tiene que reaccionar si la referencia cambia sin destruirse (de `/incidents/A` a
+  `/incidents/B`).
+- Un título de página (`title` de la ruta) desde el fichero de textos, si encaja.
+
+#### Trampa 4 — qué se muestra y cómo
+- Lista de campos con HTML semántico (`<dl>`/`<dt>`/`<dd>`), jerarquía de encabezados, estado de carga
+  con `role="status"` (AC3).
+- **Foco**: al llegar a la ficha (redirección desde el formulario), el foco va al encabezado principal
+  (`tabindex="-1"`), como dejó dicho `T-C1-10`.
+- `loggedAt` formateado **en la zona y el idioma del navegador** (NFR-I18N-03), no la cadena ISO en crudo.
+- `originChannel` como texto llano (`portal` → "Portal de autoservicio" o lo que pongas en el fichero de
+  textos), no el código.
+- Campos aún vacíos: Priority → "Todavía sin prioridad asignada" (o equivalente), Impact/Urgency/categoría
+  igual; flag de competición `false`. **No inventes** valores.
+- `affectedServiceId` y `categoryId` son UUID sin nombre (no hay catálogo): decide si los muestras, cómo, o
+  si solo muestras "no indicado" cuando son `null`, y justifícalo. **Repórtalo.**
+
+#### Trampa 5 — el AC1 de extremo a extremo y el E2E que cambia
+- Actualiza el escenario de éxito de `apps/web-e2e/.../incident-intake.feature`: ya **no** acaba en `/`,
+  acaba en `/incidents/<ref>` y muestra la ficha.
+- Añade escenarios de la ficha con `cy.intercept` (cargada, no encontrada, referencia inválida, error de
+  red, estado de carga, cambio de A a B sin parpadeo de A).
+- **AC1 de verdad** ("persisted state, not the values typed"): con `cy.intercept` solo pruebas lo que tú
+  devuelves. Demuéstralo al menos una vez contra la API real: API + web arrancadas a mano, un envío por el
+  formulario en el navegador (p. ej. ejecutando ese escenario de Cypress sin `intercept` contra los
+  servidores reales, o el método que justifiques), y la ficha muestra valores que solo pone el servidor
+  (`originChannel`, la fecha de registro, la referencia). Si no lo consigues, dilo; no lo des por hecho.
+
+#### Lo que NO debes tocar
+`libs/incident/{domain,application,infrastructure,data-access,ui}` (salvo lo que la trampa 2 te obligue a
+reportar), `libs/shared/**`, `apps/api/**`, `apps/api-e2e/**`, `docker/**`, `.github/**`, `docs/**`,
+`.claude/**` (salvo tu memoria), `package.json`, `prompts.md`. En `apps/web`, solo lo imprescindible
+(p. ej. `withComponentInputBinding` en `app.config.ts`), y dilo. Nada de acciones de edición. El ticket
+no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-feature` en verde: cada estado, el cambio de referencia sin parpadeo, el foco,
+   el formato de fecha, los campos vacíos. Pega el resumen.
+2. AC4: `grep` de literales entre comillas en la plantilla de la ficha → ninguno de cara al usuario (pega
+   la salida y explica cualquier coincidencia).
+3. `pnpm nx lint incident-feature` en verde; `grep -rnE "\*ngIf|\*ngFor|NgModule|::ng-deep|ngModel" libs/incident/feature/src` → vacío.
+4. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e web-e2e` en verde (escenarios nuevos y el de éxito del
+   formulario actualizado). Pega la salida.
+5. La prueba real del AC1 de la trampa 5: pega lo que muestra la ficha y cómo lo comprobaste. Cierra los
+   servidores después.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Ningún proceso de la API ni de la web escuchando al
+terminar.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; los estados que renderiza la ficha y el texto de cada uno.
+- Tus decisiones de las trampas 1 a 5, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo los UUID sin nombre, el AC3 del formulario
+  pendiente (si afecta aquí), cualquier cambio que haya necesitado el store y lo que quede para que la
+  rebanada 1 se dé por cerrada.
+
+### Response:
+
+Implementado ticket T-C1-101
+
+</br>
+
+**Prompt 28:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-75.md ·
+Interruptor de configuración `PERSISTENCE_MODE` y guarda del data-source de la CLI
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (config validada, nada de `process.env` fuera de
+`apps/api/src/config/`, sin `console.log`) y `sport-itsm-engineering-principles` (guard clauses, errores con
+nombre). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el primero de la **rebanada 1b** (demo en Render **sin base de datos**, ADR-015). Render no define ninguna
+`POSTGRES_*` en el servicio de la API, y hoy `env.validation.ts` las exige siempre. Este ticket introduce
+`PERSISTENCE_MODE=postgres|memory` (obligatorio, sin default), hace las `POSTGRES_*` condicionales, añade el
+raíl que prohíbe `memory` en `production` y hace que `data-source.ts` se niegue a construir un `DataSource`
+fuera de `postgres`. **No** construye el adaptador en memoria (`T-C10-77`) ni el cableado por modo
+(`T-C10-78`).
+
+**Va en el mismo commit que `T-C10-76`** (`ci-cd-expert`, que añade `PERSISTENCE_MODE=postgres` a los
+targets de `api-e2e`, `incident-infrastructure` y a los compose). Ese ticket se lanza justo después de ti,
+sobre el mismo árbol y sin commit entre medias. Por eso **tú no tocas** ningún `project.json`, `docker/**`
+ni `.github/**`, y `api-e2e`/`incident-infrastructure:integration` se quedarán en rojo hasta que él
+termine: **no los ejecutes** ni intentes arreglarlos.
+
+#### Precondición
+    git status --porcelain                         # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=api   # verde
+
+#### Trampas del entorno — ya pagadas
+- Postgres de desarrollo `sport-itsm-postgres-dev` en el **puerto de host 5452** (5432 está ocupado; nunca
+  lo propongas).
+- Windows tiene variables **globales `POSTGRES_*` de otro proyecto** (usuario `userdev`) que pisan el `.env`:
+  cuando ejecutes la CLI contra la BD de desarrollo, pasa los cinco valores en la misma llamada Bash:
+  `POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres`.
+- Los atajos `pnpm migration:show|run|revert` **ya llevan** `-d apps/api/src/data-source.ts`; no lo repitas.
+- Prettier en Windows da falsos positivos por CRLF en la copia local: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope, los 8 criterios, "Testing methodology").
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 (decisión 1 y consecuencia 8).
+- `apps/api/src/config/`: `env.validation.ts` (el patrón `NodeEnvironment`/`@IsEnum` que debes copiar y el
+  informe "required, but not set"), `environment.ts` (`loadEnvironment()`, el único lector sancionado fuera
+  de Nest), `database-connection.ts`, `configuration.ts`.
+- `apps/api/src/data-source.ts`, `apps/api/src/database/runtime-data-source-options.ts`,
+  `apps/api/src/app/app.module.ts` (llama a `loadEnvironment()` al evaluarse).
+- `apps/api/src/testing/test-event-dispatch.harness-gating.spec.ts` (`BASE_ENVIRONMENT`).
+- `apps/api/project.json`, target `build-migrations`: sus `inputs` enumeran **ficheros concretos** de
+  `config/`. `tools/typeorm.cjs` y los scripts `typeorm`/`migration:*` de `package.json`.
+- `.env.example`.
+
+#### Trampa 1 — dónde vive la guarda y quién lee el entorno
+`data-source.ts` no puede leer `process.env` (privilegio de `config/`, CLAUDE.md §3). La guarda debe obtener
+el modo con `loadEnvironment()` y lanzar **antes** de llamar a `buildDatabaseConnectionOptions()` y antes de
+`new DataSource(...)`. El mensaje nombra `PERSISTENCE_MODE` y el valor recibido.
+Además, el target `build-migrations` compila `data-source.ts` con `tsc` y declara como `inputs` solo
+`config/environment.ts` y `config/env.validation.ts`: **si creas un fichero nuevo en `config/` del que
+dependa `data-source.ts`, la caché de Nx no lo verá**. Recomendación: el enum `PersistenceMode` en
+`env.validation.ts` (como pide el ticket) y la guarda en `data-source.ts` o en `environment.ts`, sin
+ficheros de producción nuevos. Si necesitas uno, **no edites `project.json`: repórtalo** para `T-C10-76`.
+
+#### Trampa 2 — el tipo de `POSTGRES_*` en modo `memory`
+Con `@ValidateIf`, en `memory` los campos `POSTGRES_*!: string` pueden llegar `undefined` aunque el tipo diga
+`string`. El ticket deja **fuera de alcance** `buildDatabaseConnectionOptions()`, `database.module.ts` y
+`runtime-data-source-options.ts`. Recomendación: mantén los tipos declarados (sus únicos consumidores son
+del modo `postgres`), documéntalo en el comentario de la clase y **repórtalo** como hallazgo para `T-C10-78`
+(que es quien hace que `DatabaseModule` solo se cargue en `postgres`). No lo "arregles" volviendo opcionales
+los campos: rompería el tipo de `database-connection.ts`.
+
+#### Trampa 3 — el raíl `memory` + `production`
+Va **después** de la pasada por propiedad de `validateSync()` (ticket). Decide y justifica qué pasa si hay
+errores por propiedad a la vez: recomendación, informar primero los errores por propiedad (con el mismo
+formato de lista) y evaluar el raíl solo cuando ambas claves son válidas. El mensaje nombra **las dos**
+claves (`PERSISTENCE_MODE` y `NODE_ENV`) y sigue el prefijo "Invalid environment configuration. The API will
+not start." que ya existe. Sin `if (environment === …)` repartidos por el código: el raíl vive solo en
+`validateEnvironment()`.
+
+#### Trampa 4 — `AppModule` en modo `memory` todavía importa `DatabaseModule`
+Hoy `app.module.ts` importa `DatabaseModule` sin condición; en `memory` y sin `POSTGRES_*` construiría un
+`DataSource` con `host` indefinido (perezoso, no conecta). **No lo toques**: es `T-C10-78`. Los criterios de
+este ticket sobre `memory` son de **validación**, no de arranque real de la API; no intentes demostrar un
+`nx serve api` en `memory`.
+
+#### Trampa 5 — specs inmunes a las `POSTGRES_*` globales de esta máquina
+Los specs de `env.validation.ts` deben llamar a `validateEnvironment(raw)` con **objetos explícitos**, nunca
+con `process.env`, para que las variables globales de Windows no cambien el resultado (p. ej. un spec de
+"falta `POSTGRES_HOST` en `postgres`" pasaría en falso si leyera el entorno real). El spec de la guarda de
+`data-source.ts` sí pasa por `loadEnvironment()`: aísla el módulo (`jest.isolateModules[Async]`), fija
+`process.env` completo para el caso, restáuralo en `afterEach`, y demuestra con un mock/espía
+(`jest.doMock('typeorm')` o sobre `buildDatabaseConnectionOptions`) que en `memory` no se llama ni a
+`buildDatabaseConnectionOptions()` ni al constructor de `DataSource`. En `postgres` el módulo se carga y
+construye el `DataSource` sin conectar.
+
+#### Trampa 6 — el `.env` local del usuario (ignorado por git)
+`.env` existe en la raíz y **no** tiene `PERSISTENCE_MODE`: tras este ticket, `pnpm nx serve api` y
+`pnpm migration:*` fallarán en local hasta que se añada. **No edites `.env`**: repórtalo y lo añado yo.
+En tus verificaciones pasa `PERSISTENCE_MODE` en línea (Node `--env-file-if-exists` no pisa una variable ya
+definida).
+
+#### Trampa 7 — comentarios que ahora mienten
+La cabecera de `.env.example` ("Every key below is MANDATORY") y el comentario de `EnvironmentVariables`
+("Every key is mandatory") dejan de ser verdad para `POSTGRES_*`. Actualízalos: `PERSISTENCE_MODE` es
+obligatorio y sin default; las `POSTGRES_*` lo son solo en `postgres`. `PERSISTENCE_MODE=postgres` va en
+`.env.example` junto al bloque `POSTGRES_*` que ahora gobierna.
+
+#### Lo que NO debes tocar
+`apps/api/src/app/**`, `apps/api/src/database/**`, `apps/api/src/config/database-connection.ts`,
+`libs/**`, `apps/api-e2e/**`, `apps/web*/**`, cualquier `project.json`, `docker/**`, `.github/**`,
+`package.json`, `tools/**`, `docs/**`, `CLAUDE.md`, `.env`, `prompts.md`, `.claude/**` (salvo tu memoria).
+En el spec de harness-gating, **solo** la línea `PERSISTENCE_MODE: 'postgres'` en `BASE_ENVIRONMENT`
+(y, si acaso, una línea en su comentario). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api --skip-nx-cache` en verde, con los specs nuevos de `env.validation.ts` (enum presente y
+   ausente, valor inválido, `@ValidateIf` en ambos modos, cada `POSTGRES_*` ausente en `postgres`, `memory`
+   sin ninguna `POSTGRES_*`, raíl con `production`, raíl no disparado con `staging`) y de la guarda de
+   `data-source.ts`; y el harness-gating con sus tres casos en verde. Pega el resumen.
+2. AC6, la CLI en `memory` (sin conexión):
+   `PERSISTENCE_MODE=memory NODE_ENV=development PORT=3300 pnpm migration:show` → falla nombrando
+   `PERSISTENCE_MODE` sin intentar conectar. Pega la salida.
+3. AC7, la CLI en `postgres` contra la BD de desarrollo (5452):
+   `PERSISTENCE_MODE=postgres NODE_ENV=development PORT=3300 POSTGRES_HOST=localhost POSTGRES_PORT=5452 POSTGRES_DB=sport_itsm_dev POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres pnpm migration:show`
+   → lista las 4 migraciones como aplicadas, igual que antes. Pega la salida.
+4. AC1: la CLI **sin** `PERSISTENCE_MODE` (con el resto definido) falla nombrándola con "required, but not
+   set in the environment". Pega la salida.
+5. `pnpm nx run api:build-migrations --skip-nx-cache` en verde (compila la guarda con `tsc`), y
+   `pnpm nx run-many -t lint build --projects=api --skip-nx-cache` en verde.
+6. `pnpm prettier --check` sobre tus ficheros.
+7. `git status --porcelain`: solo los ficheros del alcance (más `prompts.md`).
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. No ejecutes `api-e2e` ni
+`incident-infrastructure:integration` (estarán en rojo hasta `T-C10-76`). Ningún proceso escuchando en 3300
+al terminar y ningún contenedor efímero en marcha.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- Tus decisiones de las trampas 1 a 7, con su porqué (en especial dónde vive la guarda y el orden raíl /
+  errores por propiedad).
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el tipado de `POSTGRES_*` en `memory` (para
+  `T-C10-78`), el `.env` local sin `PERSISTENCE_MODE`, y cualquier bloque de entorno que `T-C10-76` deba
+  cubrir y no figure en su Scope.
+
+### Response:
+
+Implementado ticket T-C10-75
+
+</br>
+
+**Prompt 29:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como ci-cd-expert e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-76.md ·
+`PERSISTENCE_MODE` en todos los bloques de entorno que arrancan la API o la CLI
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: ci-cd-expert`. Aplica la skill **`ci-cd`** y cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+`T-C10-75` (Prompt 28) acaba de hacer `PERSISTENCE_MODE` **obligatorio y sin default** en
+`apps/api/src/config/env.validation.ts`, y de hacer que `apps/api/src/data-source.ts` se niegue a construir un
+`DataSource` fuera de `postgres`. Ese cambio está **en el árbol, sin commit**, y va en el **mismo commit** que
+este ticket: hasta que tú añadas la variable, `pnpm nx e2e api-e2e` e
+`incident-infrastructure:integration` fallan al arrancar. Tu trabajo es solo fontanería de configuración:
+`postgres` en todos los entornos que ya usan PostgreSQL, y `memory` solo en el modelo local de stage.
+
+#### Precondición
+    git status --porcelain
+    #  M .env.example
+    #  M apps/api/src/config/env.validation.ts
+    #  M apps/api/src/data-source.ts
+    #  M apps/api/src/testing/test-event-dispatch.harness-gating.spec.ts
+    #  M prompts.md
+    # ?? apps/api/src/config/env.validation.spec.ts
+    # ?? apps/api/src/data-source.spec.ts
+Esos ficheros son de `T-C10-75`: **no los toques ni los reviertas**.
+
+#### Trampas del entorno — ya pagadas
+- Windows tiene variables **globales `POSTGRES_*` de otro proyecto** (usuario `userdev`); los targets de Nx
+  las sobrescriben con su bloque `env`, pero si ejecutas algo a mano, pasa los valores en la misma llamada.
+- `api-e2e` e `incident-infrastructure:integration` usan **la misma PostgreSQL efímera (5499)**: ejecútalos
+  **uno detrás de otro**, nunca a la vez. El Postgres de desarrollo (5452) no se toca.
+- Cypress desde el terminal de VS Code: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- `pnpm migration:run` ya lleva `-d apps/api/src/data-source.ts`.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros. (Ojo: el workflow ejecuta
+  `pnpm prettier --check .` en CI.)
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope, criterios y la lista manual de Render, que **no** ejecutas).
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 (decisión 1, consecuencia 8).
+- El diff de `T-C10-75`: `git diff apps/api/src/config/env.validation.ts apps/api/src/data-source.ts`.
+- `apps/api-e2e/project.json` (`e2e-migrate`, `serve-under-test`), `libs/incident/infrastructure/project.json`
+  (`integration-migrate`, `integration`), `docker/docker-compose.{dev,e2e,stage}.yml`,
+  `docker/backend/Dockerfile`, `.github/workflows/deploy-stage.yml`, `tools/e2e/*.mjs`.
+
+#### Trampa 1 — el target `integration` no arranca la API
+Los dos specs de integración (`libs/incident/infrastructure/src/lib/*.integration-spec.ts`) leen
+`process.env['POSTGRES_*']` directamente y **no** pasan por `env.validation.ts`; por eso ese bloque `env` ni
+siquiera tiene `NODE_ENV`/`PORT`. `integration-migrate` sí pasa por la CLI (necesita la variable de verdad).
+Recomendación: añade `PERSISTENCE_MODE: "postgres"` a los dos, como dice el ticket (coherencia y
+a prueba de futuro), pero **no** añadas `NODE_ENV`/`PORT` a `integration`: no es tu alcance. Dilo en el informe.
+
+#### Trampa 2 — `docker-compose.dev.yml` ya estaba roto
+Su servicio `api` nunca tuvo `POSTGRES_*` (y dentro de la red de compose el host sería `postgres`, no
+`localhost`). El ticket lo deja **reportado, no arreglado**: añade solo `PERSISTENCE_MODE=postgres` y
+**no** añadas las `POSTGRES_*`. Recógelo como hallazgo.
+
+#### Trampa 3 — `NODE_ENV=production` por defecto en la imagen de la API
+`docker/backend/Dockerfile` fija `ENV NODE_ENV=production`. Con `PERSISTENCE_MODE=memory`, el raíl de
+`T-C10-75` **tumba el arranque** si nadie sobrescribe `NODE_ENV`. En `docker-compose.stage.yml` lo cubre
+`NODE_ENV=${NODE_ENV:-staging}`, y en Render el usuario pondrá `NODE_ENV=staging`. No cambies el
+Dockerfile; confirma que el compose de stage lo sobrescribe y **reporta** el riesgo (si alguien olvida
+`NODE_ENV` en Render, la API no arranca — que es justo lo que queremos, pero debe saberse).
+Para el valor en stage: **literal** `PERSISTENCE_MODE=memory`, sin `${…:-memory}` (el ticket pide modelar
+el valor real, no un default sobrescribible).
+
+#### Trampa 4 — comentarios del workflow que describen stage con PostgreSQL
+`.github/workflows/deploy-stage.yml` (≈ líneas 106-123) habla de "Render's pre-deploy command
+(`typeorm migration:run -d data-source.js`, ADR-013)". Con ADR-015 el servicio de Render **no** tiene
+pre-deploy. El paso `api:build-migrations` debe **quedarse** (ADR-015 no retira el camino `postgres`).
+Recomendación: no toques el workflow salvo que encuentres un `pnpm migration:*`/`typeorm` con `env:` en línea
+(el ticket dice que es lo raro); el comentario desfasado se **reporta** como hallazgo, junto con
+`readme.md` §2.4 y las referencias de la skill `ci-cd` que aún describen stage con PostgreSQL.
+
+#### Trampa 5 — `api-e2e` sigue en `postgres`
+`api-e2e` prueba el camino real con PostgreSQL; no lo pases a `memory` "porque es más rápido". El modo
+`memory` todavía no tiene adaptador (`T-C10-77`) ni cableado (`T-C10-78`): `docker compose -f
+docker/docker-compose.stage.yml up` **no** es verificable aún y no debes intentarlo. Sí puedes validar la
+sintaxis con `docker compose -f … config`.
+
+#### Lo que NO debes tocar
+`apps/api/src/**` (todo `T-C10-75` y lo que venga), `libs/**/src/**`, `apps/web*/**`, `docker/backend/Dockerfile`,
+`docker/frontend/**`, el servicio `web` de `docker-compose.stage.yml` (`T-C10-79`), `package.json`, `tools/**`,
+`docs/**`, `readme.md`, `CLAUDE.md`, `.env`, `.env.example`, `prompts.md`, `.claude/**` (salvo tu memoria).
+El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `grep -rn "PERSISTENCE_MODE" apps/api-e2e/project.json libs/incident/infrastructure/project.json docker/ .github/`
+   → exactamente los 4 targets con `postgres`, `docker-compose.dev.yml` con `postgres` y
+   `docker-compose.stage.yml` (servicio `api`) con `memory`. Pega la salida.
+2. `docker compose -f docker/docker-compose.dev.yml config` y lo mismo con `docker-compose.stage.yml`: sin
+   errores, y el `environment` del `api` de stage muestra `PERSISTENCE_MODE: memory` y `NODE_ENV: staging`.
+3. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde. Pega el resumen.
+4. **Después** (no a la vez): `pnpm nx run incident-infrastructure:integration` en verde. Pega el resumen.
+5. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+6. `pnpm prettier --check` sobre tus ficheros.
+7. Al terminar: `docker ps` sin contenedores efímeros (solo `sport-itsm-postgres-dev`), nada escuchando en
+   3300/3333/4200, y `git status --porcelain` con solo tus ficheros más los de `T-C10-75`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. No lances el despliegue ni toques Render/GitHub.
+
+#### Informa al terminar — en español
+- Ficheros modificados, con el diff de cada bloque `env`/`environment`.
+- Tus decisiones de las trampas 1 a 5, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo el `docker-compose.dev.yml` sin `POSTGRES_*`, el
+  `NODE_ENV=production` de la imagen frente al raíl, los comentarios del workflow / `readme.md` §2.4 / skill
+  `ci-cd` que describen stage con PostgreSQL, y que `incident-infrastructure:integration` sigue sin estar
+  enganchado al pipeline.
+
+### Response:
+
+Implementado ticket T-C10-76
+
+</br>
+
+**Prompt 30:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-77.md ·
+`InMemoryIncidentRepository` — adaptador de persistencia de Incidencias en memoria
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`**, `sport-itsm-architecture` (§5.4: el adaptador
+vive en el `type:infrastructure` de su contexto) y `sport-itsm-engineering-principles` (errores tipados,
+inmutabilidad, funciones pequeñas). Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Rebanada 1b (demo en Render **sin base de datos**, ADR-015 decisión 2). `T-C10-75`/`T-C10-76` ya están en
+commit: existe `PERSISTENCE_MODE=postgres|memory`. Este ticket construye el **segundo adaptador** de
+`IncidentRepositoryPort` + `IncidentReadRepositoryPort`, en memoria, y lo exporta. **No** lo enlaza a ningún
+token ni lee el modo: eso es `T-C10-78`, el siguiente. Es un **adaptador de producción del prototipo, no un
+doble de test**: se revisa con el mismo rigor que `TypeOrmIncidentRepository`.
+
+Alcance recortado por decisión del usuario: **sin suite de contrato compartida** entre adaptadores
+(consecuencia 7 de ADR-015, aplazada). Los specs unitarios propios son toda la superficie de prueba.
+
+#### Precondición
+    git status --porcelain                                      # limpio
+    pnpm nx run-many -t lint test --projects=incident-infrastructure,incident-domain   # verde
+
+#### Trampas del entorno — ya pagadas
+- Este ticket **no necesita base de datos**: solo el target `test` de `incident-infrastructure`. No ejecutes
+  `incident-infrastructure:integration` ni `api-e2e` (no cambias nada que cubran; si decides ejecutarlos,
+  uno detrás de otro, nunca a la vez: comparten la PostgreSQL efímera en 5499).
+- Los `*.entity.ts` no pueden importar alias `@sport-itsm/*` (la CLI de TypeORM no los resuelve). No toques
+  `incident.entity.ts`.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope, 7 criterios, "Out of scope").
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 (decisión 2) y `DATA-MODEL.md` §3.2 ("gaps acceptable, reuse
+  never") y §3.8.
+- `libs/incident/domain/src/lib/`: `incident-repository.port.ts`, `incident-read-repository.port.ts`,
+  `incident-reference.policy.ts` (`format()` ya lanza `IncidentReferenceSequenceOutOfRangeError`),
+  `incident.aggregate.ts` (`log()` / `reconstitute()`).
+- `libs/shared/domain/src/lib/identity.ts` (regex `UUID_V7`: versión `7`, variante `[89ab]`).
+- `libs/incident/infrastructure/src/lib/`: `typeorm-incident.repository.ts` (el contrato observable que
+  debes igualar: `null` en ausencia, agregado nuevo en cada lectura), `incident.mapper.ts`,
+  `incident-mapping.error.ts` (el patrón de error de infraestructura: `extends Error`, `name` fijado),
+  `incident.entity.ts`, y sus specs para el estilo de fixtures.
+- `libs/incident/infrastructure/src/index.ts`.
+- `apps/api/src/app/global-exception.filter.ts`: un `Error` que no es `DomainError` ni mapeado sale como
+  `500 INTERNAL_ERROR`. Eso es lo que el ticket quiere para tus tres errores; **no** añadas código de error
+  al contrato ni mapeos al filtro.
+
+#### Trampa 1 — el AC de la llamada 10 000 000 de `nextReference()`
+El AC pide que la llamada número diez millones lance `IncidentReferenceSequenceOutOfRangeError`. Llamar diez
+millones de veces en un spec puede ser lento (cada llamada construye un `TicketReference`). **Mídelo
+primero.** Si cabe en unos pocos segundos, hazlo literalmente, con timeout propio del caso. Si no, **no**
+metas una costura solo para test en la API pública del adaptador (p. ej. un parámetro de constructor con el
+contador inicial que `T-C10-78` podría acabar usando); elige la costura mínima que respete el diseño,
+justifícala y repórtala. En cualquier caso: el contador **sube antes** de formatear y **nunca baja**, de modo
+que la llamada 10 000 001 también lanza (y no reutiliza). No reimplementes el control de rango: `format()`.
+
+#### Trampa 2 — orden de las tres reglas de `save()`
+Decide y justifica un orden único y documentado. Recomendación:
+1. id **conocido** → si su `reference` difiere de la almacenada, error de **inmutabilidad**; si coincide,
+   se sobrescribe la instantánea (sigue contando como 1, **no** activa el tope aunque haya 10 000).
+2. id **nuevo** → si la `reference` ya está indexada a otro id, error de **unicidad**; si el almacén ya
+   tiene 10 000, error de **capacidad**.
+Toda comprobación **antes** de mutar el mapa o el índice: una `save()` rechazada deja el estado exactamente
+igual (lo exigen tres AC). `IncidentMapper.toEntity()` también puede lanzar `IncidentMappingError`: llámalo
+antes de mutar nada.
+
+#### Trampa 3 — "el llamante no puede mutar la instantánea"
+`IncidentEntity` lleva `Date` (`createdAt`/`updatedAt`), que son mutables. Garantiza que ni el agregado que
+recibe `save()` ni el que devuelven `findById()`/`findByReference()` comparten estado mutable con lo
+almacenado (copia defensiva de la entidad y/o `Object.freeze`, tú decides y lo justificas). Pruébalo:
+mutar lo que devolvió una lectura (o la entidad de entrada, si fuera accesible) no cambia la siguiente
+lectura, y dos lecturas devuelven instancias distintas (`not.toBe`).
+
+#### Trampa 4 — UUID v7 a mano con `node:crypto`
+Sin dependencia nueva. 48 bits de `Date.now()` big-endian, nibble de versión `0111`, 12 bits `rand_a`,
+variante `10` + 62 bits `rand_b` desde `randomBytes`, en minúsculas 8-4-4-4-12. Función **privada** de la
+carpeta `in-memory/` (no exportada desde el barrel, no en `shared/util`). Prueba que pasa
+`Identity.fromString()`, que los primeros 12 hex codifican el `Date.now()` del momento (con `jest` fijando
+el reloj o comparando rango) y que N llamadas dan N valores distintos. Si el lint de fronteras o de
+`import` protesta por `node:crypto` en un `type:infrastructure`, **repórtalo**, no relajes la regla.
+
+#### Trampa 5 — nada de `DataSource`
+El adaptador importa `IncidentEntity` (que trae decoradores de `typeorm`), pero **no** puede importar ni
+construir `DataSource`. El ticket pide una comprobación estructural: elige cómo (lectura del fuente
+buscando el import, o `jest.mock('typeorm')` espiando el constructor) y justifícalo.
+
+#### Trampa 6 — qué se exporta y cómo se inyecta
+Exporta `InMemoryIncidentRepository` desde `libs/incident/infrastructure/src/index.ts`, junto a
+`TypeOrmIncidentRepository`. `@Injectable()` como el adaptador TypeORM, ámbito por defecto (singleton),
+constructor sin dependencias. Los tres errores tipados: exporta solo lo que un consumidor fuera de la
+librería necesite de verdad hoy (probablemente nada — `T-C10-78` solo enlaza la clase); dilo en el informe.
+Nombres en inglés ITSM y mensajes que nombren los valores implicados (id, referencia, tope).
+
+#### Lo que NO debes tocar
+`apps/**` (el cableado es `T-C10-78`), `libs/incident/{domain,application,data-access,feature,ui}/**`,
+`libs/shared/**`, `typeorm-incident.repository.ts`, `incident.mapper.ts`, `incident.entity.ts` y los
+`*.integration-spec.ts`, cualquier `project.json`, `docker/**`, `.github/**`, `package.json`, `docs/**`,
+`CLAUDE.md`, `prompts.md`, `.claude/**` (salvo tu memoria). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-infrastructure --skip-nx-cache` en verde, con un caso por cada AC (1 a 7) más los
+   de las trampas 2 a 5. Pega el resumen y el tiempo del caso de la trampa 1.
+2. `pnpm nx lint incident-infrastructure` en verde.
+3. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+4. `grep -rn "DataSource" libs/incident/infrastructure/src/lib/in-memory/` → solo en el spec estructural, si
+   acaso. Pega la salida.
+5. `pnpm prettier --check` sobre tus ficheros.
+6. `git status --porcelain`: solo `libs/incident/infrastructure/src/lib/in-memory/**` e `index.ts`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Ningún contenedor efímero ni proceso escuchando al terminar.
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- Tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las seis verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo que tras un reinicio las referencias vuelven a
+  `INC0000001` (aceptado en ADR-015, pero que se diga), cualquier diferencia de comportamiento observable
+  que veas frente a `TypeOrmIncidentRepository` (p. ej. qué pasa con una `save()` de un id conocido), y
+  lo que `T-C10-78` necesite saber para enlazarlo.
+
+### Response:
+
+Implementado ticket T-C10-77
+
+</br>
+
+**Prompt 31:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como backend-engineer e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-78.md ·
+`PersistenceModule.forMode()` — la persistencia se elige una vez, en la raíz de composición, como datos
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: backend-engineer`. Aplica **`sport-itsm-backend`** (DI por tokens, composición solo en `apps/api`),
+`sport-itsm-architecture` (§6.3 raíz de composición; dominio y aplicación intactos) y
+`sport-itsm-engineering-principles`. Cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es la pieza que hace real la demo de Render **sin base de datos** (ADR-015, decisión 3). Ya están en commit
+`PERSISTENCE_MODE` (`T-C10-75`/`T-C10-76`) e `InMemoryIncidentRepository` (`T-C10-77`, exportado desde
+`@sport-itsm/incident-infrastructure`). Aquí el enlace de `INCIDENT_REPOSITORY`/`INCIDENT_READ_REPOSITORY`
+pasa a ser una **función del modo**, resuelta una sola vez; `memory` no importa `DatabaseModule` ni construye
+ningún `DataSource`. Después de este ticket, la API puede arrancar en Render con `PERSISTENCE_MODE=memory`.
+
+#### Precondición
+    git status --porcelain                                       # limpio
+    pnpm nx run-many -t lint test --projects=api,incident-infrastructure   # verde
+
+#### Trampas del entorno — ya pagadas
+- Postgres de desarrollo en el **puerto de host 5452** (nunca 5432). Windows tiene variables **globales
+  `POSTGRES_*` de otro proyecto** (usuario `userdev`): si arrancas la API a mano en `postgres`, pasa los
+  cinco valores en la misma llamada; para probar `memory` **sin** ninguna `POSTGRES_*`, quítalas con
+  `env -u POSTGRES_HOST -u POSTGRES_PORT -u POSTGRES_DB -u POSTGRES_USER -u POSTGRES_PASSWORD …`.
+- El `.env` de la raíz (ignorado por git) lleva `PERSISTENCE_MODE=postgres` y las `POSTGRES_*`, y
+  `ConfigModule` lo carga desde el **directorio de trabajo** (`envFilePath: ['.env']`), añadiendo al entorno
+  lo que falte. No lo edites.
+- `api-e2e` e `incident-infrastructure:integration` comparten la PostgreSQL efímera (5499): **uno detrás de
+  otro**. Cypress: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- Un `@Global()` no llega a un `TestingModule` que no lo importe: por eso los specs de `IncidentModule`
+  importan `EventDispatchModule` a mano (y ahora también necesitarán `PersistenceModule`).
+- Antes de una prueba manual, comprueba que no hay procesos en 3300/4200 y ciérralos al terminar.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope y 7 criterios).
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 y las notas de §6.3 sobre `apps/api/src/persistence/`
+  (≈ líneas 823 y 1175-1176).
+- `apps/api/src/app/app.module.ts` (lectura pre-DI con `loadEnvironment()`), `app/incident/incident.module.ts`
+  y sus comentarios, `app/incident/incident.module.spec.ts`, `app/incident/log-incident.fixed-actor.spec.ts`,
+  `database/database.module.ts`, `event-dispatch/event-dispatch.module.ts`, `main.ts`,
+  `config/configuration.ts`, `config/env.validation.ts` (`PersistenceMode`),
+  `testing/test-event-dispatch.harness-gating.spec.ts` (patrón `jest.isolateModulesAsync` para arrancar
+  `AppModule` con otro entorno).
+- `libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts`.
+
+#### Trampa 1 — el AC3 (grep) contradice el propio Scope
+El Scope y el ADR dicen que `AppModule` llama a `PersistenceModule.forMode(loadEnvironment().PERSISTENCE_MODE)`;
+el AC3 dice que, fuera de `apps/api/src/persistence/`, `PERSISTENCE_MODE` solo aparece en
+`env.validation.ts` y en `data-source.ts`. `app.module.ts` está fuera de `persistence/`. Además hay
+apariciones legítimas en fixtures de specs, `.env.example`, `project.json` y compose.
+Recomendación: **sigue el Scope y el ADR** (`forMode(mode)` con el modo como parámetro, llamado desde
+`AppModule`), que es lo que mantiene `forMode` probable sin tocar el entorno; interpreta el AC3 como "ningún
+controlador, caso de uso, adaptador ni módulo *condiciona* por el modo" y **reporta** la redacción del AC
+para `architect-tech-lead`. Pega el grep completo y clasifica cada coincidencia.
+
+#### Trampa 2 — los overrides de los specs existentes dejan de encontrar el token
+`incident.module.spec.ts` y `log-incident.fixed-actor.spec.ts` hacen `.overrideProvider(INCIDENT_REPOSITORY)`;
+al sacar el token de `IncidentModule`, sin `PersistenceModule.forMode(PersistenceMode.Memory)` en los
+`imports` el override no tiene a quién sustituir y el use case no resuelve. Añádelo como pide el ticket.
+- En `incident.module.spec.ts`: mantén el caso actual con stub y **añade** uno sin override que pruebe que en
+  `memory` ambos tokens resuelven a la **misma** instancia de `InMemoryIncidentRepository` (el AC5 dice
+  "requiring no live database": pruébalo, no lo supongas).
+- En `log-incident.fixed-actor.spec.ts`: ya existe una clase **local** llamada `InMemoryIncidentRepository`
+  (un doble con identidad fija). No importes el adaptador real con el mismo nombre; recomendación: renombra
+  el doble local (p. ej. `FixedIdentityIncidentRepository`) y conserva el override. Cambio mínimo, justificado.
+
+#### Trampa 3 — probar "sin `POSTGRES_*`" de verdad
+El spec de arranque en `memory` debe arrancar `AppModule` (patrón `jest.isolateModulesAsync` del harness)
+con `PERSISTENCE_MODE=memory`, `NODE_ENV` distinto de `production` y **borrando** del `process.env` del caso
+las cinco `POSTGRES_*` (esta máquina las tiene globales). Ojo al `.env`: si Jest corre con el directorio de
+trabajo en la raíz, `ConfigModule` lo cargará y **re-inyectará** `POSTGRES_*` en el entorno, falseando
+"sin `POSTGRES_*`". **Comprueba** cuál es el cwd de `nx test api` y cómo se comporta; neutralízalo sin tocar
+`configuration.ts` si puedes (p. ej. aserción sobre lo que valida `ConfigService`, o `process.chdir` a un
+directorio temporal en el caso, restaurado en `afterEach`), y si no puedes, **repórtalo**. Afirma además:
+`moduleRef.get(DataSource)` (o `app.get`) falla — no hay proveedor `DataSource` — y `INCIDENT_REPOSITORY`
+es `instanceof InMemoryIncidentRepository`. Restaura `process.env` y el cwd en `afterEach`.
+Y el caso espejo en `postgres` (POSTGRES_* ficticias, `DataSource` perezoso, sin conectar):
+`INCIDENT_REPOSITORY` es `instanceof TypeOrmIncidentRepository` y `DataSource` sí resuelve.
+
+#### Trampa 4 — el AC7 de extremo a extremo sin HTTP real
+El ticket pide `@nestjs/testing` sin HTTP real ni BD, pero la configuración HTTP (`ValidationPipe`,
+`GlobalExceptionFilter`, prefijo) vive en `main.ts` y no se comparte. **No refactorices `main.ts`** (fuera de
+alcance). Recomendación, en dos niveles:
+1. **Spec**: en el contenedor arrancado en `memory`, resuelve `LogIncidentUseCase` y
+   `GetIncidentByReferenceUseCase` (y el actor de `INCIDENT_ACTOR_RESOLVER`), registra una incidencia y
+   léela por la referencia devuelta: los campos coinciden exactamente.
+2. **Prueba manual real** (el objetivo de la demo): `pnpm nx build api`, y desde un directorio **sin `.env`**
+   (p. ej. `dist/apps/api`) `env -u POSTGRES_HOST -u POSTGRES_PORT -u POSTGRES_DB -u POSTGRES_USER
+   -u POSTGRES_PASSWORD PERSISTENCE_MODE=memory NODE_ENV=staging PORT=3300 node main.js` — lo mismo que hará
+   Render —; `curl -X POST /api/incidents` con un cuerpo válido (mira el DTO) → 201 `{reference}`;
+   `curl /api/incidents/<reference>` → 200 con lo registrado; `curl /api/incidents/INC9999999` → 404
+   `NOT_FOUND`. Pega las tres respuestas y el log de arranque (no debe aparecer
+   "PostgreSQL DataSource constructed"). Cierra el proceso.
+
+#### Trampa 5 — `pg` en el camino `memory`
+El Scope dice que el grafo "prueba que `pg` no se carga" en `memory`. En el bundle de webpack no hay grafo
+separable; `pg` lo pide el driver de TypeORM al construir el `DataSource`. Lo demostrable es: en `memory` no
+se construye ningún `DataSource`. Si puedes probar además que `pg` no entra en `require.cache` en el spec de
+`memory`, hazlo; si no, **dilo** — no lo afirmes.
+
+#### Trampa 6 — exhaustividad y forma del módulo
+- `incidentPersistenceBindings: Record<PersistenceMode, Provider[]>` en
+  `apps/api/src/app/incident/incident-persistence.bindings.ts`. Prueba el AC4 sin dejar código roto en el
+  repo: p. ej. un `// @ts-expect-error` en un spec con un mapa al que le falta una clave, o describe el
+  experimento que hiciste (añadir un valor al enum y ver el fallo de `tsc`) y **revértelo**.
+- `PersistenceModule`: `@Global()`, `static forMode(mode: PersistenceMode): DynamicModule`, `providers` y
+  `exports` = concatenación de los mapas (hoy solo el de incident), `imports: [DatabaseModule]` **solo** en
+  `postgres`. En `memory`, `INCIDENT_REPOSITORY` con `useFactory: () => new InMemoryIncidentRepository()` y
+  `INCIDENT_READ_REPOSITORY` con `useExisting`: **una** instancia, singleton, dos puertos.
+- `IncidentModule` pierde solo las dos entradas de repositorio; todo lo demás igual. Actualiza sus
+  comentarios, que hoy dicen que `TypeOrmIncidentRepository` se enlaza ahí y que `DatabaseModule` es global
+  desde `AppModule`, y el comentario de `AppModule` sobre `DatabaseModule`.
+- Nada de `if (mode === …)` fuera de `PersistenceModule.forMode()` (y ahí, solo el de `DatabaseModule`).
+
+#### Lo que NO debes tocar
+`libs/**` (dominio, aplicación, infraestructura — incluido el adaptador en memoria), `apps/api/src/config/**`,
+`apps/api/src/data-source.ts`, `apps/api/src/database/**`, `apps/api/src/main.ts`, `apps/api-e2e/**`,
+`apps/web*/**`, cualquier `project.json`, `docker/**`, `.github/**`, `package.json`, `docs/**`,
+`CLAUDE.md`, `.env`, `prompts.md`, `.claude/**` (salvo tu memoria). El ticket no se edita.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test api --skip-nx-cache` en verde: spec nuevo (memory y postgres), los dos adaptados y el
+   harness-gating. Pega el resumen.
+2. `grep -rn "PERSISTENCE_MODE" apps libs --include=*.ts` → pégalo y clasifica cada línea (trampa 1).
+3. `grep -rn "INCIDENT_REPOSITORY\|INCIDENT_READ_REPOSITORY" apps/api/src --include=*.ts | grep -v spec`
+   → los `provide:` solo en `incident-persistence.bindings.ts`.
+4. La prueba manual de la trampa 4 (build + `node main.js` en `memory` sin `.env` ni `POSTGRES_*`): log de
+   arranque y las tres respuestas `curl`. Cierra el proceso y confirma 3300 libre.
+5. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` en verde (camino `postgres`, sin cambios de
+   comportamiento). Pega el resumen.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros; `git status --porcelain` solo con ficheros del alcance.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias. No hagas commit ni push. Al terminar, nada escuchando en 3300/3333/4200 y ningún
+contenedor efímero en marcha (solo `sport-itsm-postgres-dev`).
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados.
+- Tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la redacción del AC3, lo que hayas visto del
+  `.env` y el cwd de Jest, si `pg` queda o no fuera en `memory`, la duplicación de la configuración HTTP de
+  `main.ts` (que impide probar el AC7 por HTTP en un spec) y cualquier cosa que `T-C10-79` (proxy nginx) o
+  el despliegue en Render deban saber.
+
+### Response:
+
+Implementado ticket T-C10-78
+
+</br>
+
+**Prompt 32:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-103.md ·
+Página de inicio en `/` con enlace al formulario de registro
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Aplica **`sport-itsm-frontend`** (Angular 20.3: standalone, `OnPush`, signals,
+`@if`/`@for`, sin `NgModule`, accesibilidad escrita a mano, SCSS con custom properties locales) y
+`sport-itsm-architecture` (§7.1: el shell solo se acopla a los contextos por carga perezosa). Cierra con
+`sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Rebanada 1b, demo en Render. Hoy la raíz `/` sale **en blanco**: quien abra la URL de Render no ve nada.
+El usuario decidió una **página propia en `/`** (no una redirección), en **español**, con un título y un
+enlace **"Reportar un problema"** a `/incidents/new`. El backend de la demo (modo `memory`) ya está en commit;
+el proxy nginx (`T-C10-79`) va después de ti y su imagen incluirá esta página. La traducción al español del
+formulario y la ficha es `T-C1-104`, **no** este ticket.
+
+#### Precondición
+    git status --porcelain                  # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-feature,web   # verde
+
+#### Trampas del entorno — ya pagadas
+- Cypress desde el terminal de VS Code: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- `web-e2e` depende de `web:serve` (dev server en 4200, proxy `/api` → 3300). Antes de ejecutarlo,
+  comprueba que no hay procesos en 3300/4200 y ciérralos al terminar.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Context, Scope, 6 criterios, handoff).
+- `apps/web/src/app/app.routes.ts` (la ruta `''` vacía y sus comentarios), `app.component.ts`
+  (`main#main-content`, pureza del shell), `apps/web/src/index.html`.
+- `libs/incident/feature/src/`: `index.ts` (el barrel y su comentario), `lib/incident-routes.ts`
+  (`INCIDENT_INTAKE_ROUTE_PATH`, `incidentDetailUrl()`), `lib/incident-messages.ts` (secciones y la regla de
+  lenguaje llano `NFR-USE-01`), los componentes del formulario y de la ficha (patrón de estilos, foco, specs).
+- `apps/web-e2e/src/features/harness-smoke.feature` + `step-definitions/harness-smoke.steps.ts`, e
+  `incident-intake.feature` + sus steps (estilo de escenarios y viewport).
+
+#### Trampa 1 — la URL del enlace sin repetir `'/incidents/new'`
+`INCIDENT_INTAKE_ROUTE_PATH` es solo `'new'` (relativo); el prefijo `incidents` vive en el shell
+(`app.routes.ts`), y `incidentDetailUrl()` ya repite `'/incidents/'`. Recomendación: una constante o función
+exportada en `incident-routes.ts` junto a `incidentDetailUrl()` (p. ej. `INCIDENT_INTAKE_URL`, construida con
+`INCIDENT_INTAKE_ROUTE_PATH`) y úsala en el `routerLink`. No toques el shell para esto. Si ves que la
+duplicación del prefijo `incidents` entre shell y feature merece otra solución, **repórtalo**.
+
+#### Trampa 2 — el barrel y la carga perezosa
+El ticket pide `loadComponent: () => import('@sport-itsm/incident-feature').then((m) => m.HomePageComponent)`.
+`@sport-itsm/incident-feature` ya se carga de forma perezosa desde el shell: **no** lo importes estáticamente en
+ningún sitio de `apps/web` (la regla de fronteras marca la librería como perezosa y rompería). Exporta
+`HomePageComponent` en el barrel y actualiza su comentario. Anota en el informe que la página de inicio arrastra
+el mismo chunk que el formulario y la ficha (el barrel importa `incidentRoutes`); es aceptable para la demo,
+pero dilo.
+
+#### Trampa 3 — el texto: español, lenguaje llano, todo en constantes
+Nueva sección `home` en `INCIDENT_MESSAGES` (encabezado, una frase de introducción y la etiqueta del enlace),
+**en español**, sin jerga ("incidencia", "ticket", "SLA", "prioridad") en el encabezado ni en la introducción.
+La etiqueta del enlace es exactamente **"Reportar un problema"** (decisión del usuario). No traduzcas las
+secciones existentes (`intake`, `detail`, `validation`): eso es `T-C1-104`. Ningún literal de cara al usuario
+en la plantilla (AC5).
+
+#### Trampa 4 — `harness-smoke.feature` y quién escribe el E2E
+- El ticket dice "both of its scenarios", pero el fichero tiene **uno**. Debe seguir pasando **sin cambios**
+  en sus pasos. Su comentario de cabecera ("the shell renders none" de texto) deja de ser verdad para `/`:
+  puedes actualizar **solo ese comentario**, sin tocar el escenario; dilo.
+- El ticket asigna el E2E a `testing-implementer`, pero en esta rebanada el precedente (`T-C1-10`, `T-C1-101`)
+  es que el `frontend-engineer` escribe también sus escenarios de `apps/web-e2e`. Hazlo tú: un
+  `apps/web-e2e/src/features/home.feature` + steps — carga de `/`, un único `<h1>`, un único enlace al
+  formulario con `href` resuelto `/incidents/new`, navegación por teclado (Tab hasta el enlace, foco visible,
+  Enter navega a `/incidents/new`) y viewport de 360 px sin scroll horizontal. **Reporta** la desviación
+  del handoff. Para el teclado en Cypress sin plugins nuevos: enfoca con el método que ya use el repo o
+  justifica el tuyo, sin instalar `cypress-real-events` ni similares.
+
+#### Trampa 5 — comentarios del shell que ahora mienten
+`app.routes.ts` explica que `''` no tiene hijo enrutado y que "whichever ticket first needs one" decidirá;
+el comentario del comodín menciona que `T-C1-101` aún no registra la ruta de detalle (ya lo hizo).
+Actualiza esos comentarios para que describan lo que hay. `app.component.ts` y `app.config.ts` no se tocan.
+
+#### Trampa 6 — `lang="en"` y el título de la pestaña
+`apps/web/src/index.html` declara `lang="en"` y `<title>Sport ITSM</title>`, y ahora la página está en
+español (WCAG 3.1.1, idioma de la página). **No lo cambies aquí**: es de `T-C1-104` (que traduce toda la
+web) — **repórtalo** como hallazgo para ese ticket. Igual con un `title` de ruta para `/`: si lo añades,
+que salga de `INCIDENT_MESSAGES.home` sin importar internals de la librería en el shell; si no es posible
+sin romper el barrel, repórtalo.
+
+#### Lo que NO debes tocar
+`apps/api/**`, `apps/api-e2e/**`, `libs/incident/{domain,application,infrastructure,data-access,ui}/**`,
+`libs/shared/**`, las secciones existentes de `incident-messages.ts`, los componentes del formulario y de la
+ficha, `apps/web/src/app/{app.component.ts,app.config.ts}`, `apps/web/src/index.html`,
+`apps/web/proxy.conf.json`, los escenarios de `harness-smoke.feature` e `incident-intake.feature`,
+cualquier `project.json`, `docker/**`, `.github/**`, `package.json`, `docs/**`, `CLAUDE.md`, `prompts.md`,
+`.claude/**` (salvo tu memoria). El ticket no se edita. No instales dependencias.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-feature --skip-nx-cache` en verde con el spec nuevo
+   (`home-page.component.spec.ts`: un `<h1>`, un enlace con `href` `/incidents/new`, textos iguales a
+   `INCIDENT_MESSAGES.home`). Pega el resumen.
+2. AC5: `grep` de literales entre comillas en `home-page.component.html` → ninguno de cara al usuario.
+   Pega la salida.
+3. AC6: `grep -rnE "https?://" apps/web/src libs/incident/feature/src libs/incident/data-access/src` →
+   pega la salida y clasifica cada coincidencia (ninguna apunta a la API ni a Render).
+4. `pnpm nx lint incident-feature web` en verde; `grep -rnE "\*ngIf|\*ngFor|NgModule|::ng-deep|ngModel" libs/incident/feature/src` → vacío.
+5. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e web-e2e` en verde: `home.feature` nuevo, `harness-smoke.feature`
+   sin cambios en sus pasos, `incident-intake.feature` intacto. Pega el resumen.
+6. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde y `pnpm verify:boundaries` 10/10.
+7. `pnpm prettier --check` sobre tus ficheros; `git status --porcelain` solo con ficheros del alcance;
+   nada escuchando en 3300/4200.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No hagas commit ni push. No ejecutes nada de `docker/**` (el compose de stage usa el 4200 y lo lanza
+`T-C10-79` después de ti).
+
+#### Informa al terminar — en español
+- Ficheros creados y modificados; los textos exactos de la sección `home`.
+- Tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo `lang="en"`/`<title>` para `T-C1-104`, la
+  desviación del handoff E2E, el chunk compartido y que el ticket debe re-alojarse en `C9` cuando se
+  despiece esa épica.
+
+### Response:
+
+Implementado ticket T-C1-103
+
+</br>
+
+**Prompt 33:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como ci-cd-expert e implementa UN SOLO ticket: docs/backlog/C10/tickets/T-C10-79.md ·
+nginx hace de proxy inverso de `/api/` hacia el servicio de la API — mismo origen, sin CORS
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: ci-cd-expert`. Aplica la skill **`ci-cd`** (Docker, nginx, compose) y cierra con `sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Último eslabón de infraestructura de la demo en Render (ADR-015, decisión 4). Hoy `docker/frontend/nginx.conf`
+no tiene `location /api/`: en stage, toda llamada a la API cae en el fallback SPA y devuelve `index.html` con
+`200`. El frontend ya llama a la ruta **relativa** `/api` (`INCIDENT_API_BASE_URL`), así que la solución es
+que nginx reenvíe `/api/` a la API (`API_UPSTREAM_URL`), mismo origen, sin CORS y **sin tocar el frontend**.
+Ya están en commit la API en modo `memory` (`T-C10-75`…`78`) y la página de inicio (`T-C1-103`), así que la
+prueba local completa (inicio → formulario → ficha, todo por `localhost:4200`) es posible.
+
+#### Precondición
+    git status --porcelain                 # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test build --projects=api,web   # verde
+
+#### Trampas del entorno — ya pagadas
+- Los ficheros `*.sh` y `Dockerfile*` van con **LF** (`.gitattributes`); un shebang con CRLF rompe el
+  contenedor con "no such file or directory". Compruébalo en lo que crees.
+- `apps/web-e2e` usa `web:serve` (dev server en 4200), **no** nginx: este ticket no lo afecta, pero el `web` del
+  compose de stage publica también el **4200**. Antes de levantar stage, comprueba que no hay nada en
+  3300/4200; al terminar, `docker compose … down` y puertos libres.
+- Las imágenes de stage son solo de ejecución: necesitan `dist/` construido antes (lee la cabecera de
+  `docker/docker-compose.stage.yml` y `docker/backend/Dockerfile` para saber qué targets hacen falta, p. ej.
+  `api:build-migrations`/`prune`, y `web:build`).
+- La API de stage arranca con `NODE_ENV=staging` y `PERSISTENCE_MODE=memory` (`T-C10-76`); la imagen trae
+  `NODE_ENV=production` por defecto, y `memory`+`production` tumba el arranque a propósito.
+- Prettier en Windows da falsos positivos por CRLF: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Scope, 7 criterios, lista manual de Render que **no** ejecutas).
+- ADR-015 en `docs/product/ARCHITECTURE.md` §10 (decisión 4) y lo que dice §9/§11.3/§12 del proxy.
+- `docker/frontend/{Dockerfile,nginx.conf}`, `docker/docker-compose.stage.yml`, `docker/backend/Dockerfile`,
+  `.github/workflows/deploy-stage.yml` (cómo construye y publica la imagen web: el contexto debe seguir
+  valiendo en CI), `apps/api/src/app/global-exception.filter.ts` (la forma del 404 JSON).
+- La documentación de la imagen oficial `nginx` sobre `/etc/nginx/templates`, `NGINX_ENVSUBST_OUTPUT_DIR`,
+  `NGINX_ENVSUBST_FILTER` y los scripts de `/docker-entrypoint.d/` (orden por nombre; los `*.envsh` se
+  cargan con `source`) — **compruébalo dentro de la imagen** (`docker run --rm nginx:alpine cat /docker-entrypoint.sh`),
+  no de memoria.
+
+#### Trampa 1 — `nginx.conf` es un fichero **completo**, no un `conf.d/`
+El `Dockerfile` copia `nginx.conf` sobre `/etc/nginx/nginx.conf` (con su bloque `http`), y ese fichero **no**
+incluye `conf.d/*.conf`. Si dejas la plantilla en la ruta por defecto (salida en `/etc/nginx/conf.d`), nginx
+**no la cargará**. Recomendación: plantilla del fichero entero (p. ej. `docker/frontend/nginx.conf.template`
+→ `/etc/nginx/templates/nginx.conf.template`) con `NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx`, de modo que el
+resultado sea exactamente `/etc/nginx/nginx.conf`. Elimina el `nginx.conf` estático si queda huérfano y dilo.
+
+#### Trampa 2 — `envsubst` y las variables propias de nginx
+`$uri`, `$host`, `$scheme`, `$remote_addr`… conviven en la plantilla con `${API_UPSTREAM_URL}`. El script de la
+imagen solo sustituye variables definidas en el entorno, pero no te fíes: fija `NGINX_ENVSUBST_FILTER` para
+que solo se sustituyan las variables que tú declares, y **inspecciona el `nginx.conf` renderizado** dentro del
+contenedor (`docker exec … cat /etc/nginx/nginx.conf`) para demostrar que las variables de nginx siguen
+intactas. Pega el fragmento de `location /api/` renderizado.
+
+#### Trampa 3 — `proxy_pass` con variable: sin URI y sin barra final
+Con `proxy_pass $variable;` (necesario para resolver en cada petición), nginx reenvía la URI original **solo**
+si el valor no lleva parte de ruta. Si `API_UPSTREAM_URL` llega como `https://x.onrender.com/` (con barra
+final), nginx reemplaza toda la URI por `/` y todas las llamadas llegarían a la raíz de la API. El script de
+comprobación de `/docker-entrypoint.d/` debe **fallar** (o normalizar, y decirlo) si la variable falta, está
+vacía, no empieza por `http://`/`https://` o lleva ruta/barra final. Nombre del script con un prefijo que lo
+ejecute **antes** del de `envsubst` (p. ej. `10-…`), y **ejecutable** en la imagen (`COPY --chmod=755` o
+`chmod`): un script sin bit de ejecución se **ignora en silencio** y la comprobación no existiría.
+
+#### Trampa 4 — `resolver`: Docker local y Render no comparten DNS
+`127.0.0.11` solo existe dentro de una red de Docker; en Render no. Recomendación: que el script (un `*.envsh`
+para poder exportar) lea el primer `nameserver` de `/etc/resolv.conf` y lo exporte (p. ej. `NGINX_RESOLVER`)
+para la plantilla, con `valid=` corto e `ipv6=off` si no hay IPv6. Justifica tu elección. `Host` y SNI:
+`proxy_set_header Host $proxy_host;`, `proxy_ssl_server_name on;` (y `proxy_ssl_name $proxy_host;` si hace
+falta) — **no** el `Host` del navegador. Tiempos: `proxy_connect_timeout` y `proxy_read_timeout` ≥ 60 s
+(`proxy_connect_timeout` no admite más de ~75 s). `X-Forwarded-For` (`$proxy_add_x_forwarded_for`),
+`X-Forwarded-Proto` (en Render el TLS termina antes de nginx: considera respetar un `X-Forwarded-Proto`
+entrante y caer en `$scheme`, y justifícalo) y `X-Forwarded-Host` (`$host`).
+
+#### Trampa 5 — `add_header` y la herencia: no rompas nada y no lo empeores
+En nginx, un `add_header` dentro de un `location` **anula** la herencia de los `add_header` del `server`. La
+configuración actual ya lo sufre (las `location` de assets, `= /index.html` y `/health` pierden las cabeceras
+de seguridad). El ticket es **aditivo**: no cambies esas reglas, pero **no** pongas `add_header` en
+`location /api/` (para que herede las tres cabeceras de seguridad), y **reporta** el fallo preexistente.
+Demuéstralo con `curl -I` a `/api/…` y a `/` (pega las cabeceras).
+
+#### Trampa 6 — el compose de stage y su cabecera
+Añade `API_UPSTREAM_URL=http://api:3300` al `environment` del servicio `web`. La cabecera del fichero aún
+dice "stage uses Render's managed PostgreSQL instance" (desfasado por ADR-015, lo reportaste en `T-C10-76`):
+como este ticket ya edita ese fichero, puedes corregir **esa frase** para que describa ADR-015 (sin
+PostgreSQL, API en memoria, web con proxy `/api/`). Nada más de ese comentario. No toques el servicio `api`.
+
+#### Trampa 7 — cómo probar lo que el ticket pide sin navegador
+- AC2: `docker run` de la imagen web **sin** `API_UPSTREAM_URL` → sale con código ≠ 0 y el log nombra la
+  variable. Repite con `https://x.onrender.com/` (barra final) → también falla (trampa 3). Pega los logs.
+- AC3: stage completo (`docker compose -f docker/docker-compose.stage.yml up -d --build` tras construir
+  `dist/`): `curl -i http://localhost:4200/api/incidents/INC9999999` → 404 JSON de la API, nunca `index.html`.
+- AC4 (cabeceras del lado de la API): la API no las registra. Usa un eco **temporal y no versionado** (p. ej.
+  un `node -e` en el host que devuelva las cabeceras recibidas, y `API_UPSTREAM_URL=http://host.docker.internal:<puerto>`)
+  para mostrar `Host` = upstream y los tres `X-Forwarded-*`. Opcional pero valioso: apunta a un HTTPS público
+  cualquiera para demostrar que SNI y el `resolver` funcionan (cualquier respuesta del servidor remoto, no un
+  `502` de nginx). Borra todo lo temporal.
+- AC7 (sin navegador): por `http://localhost:4200` haz `GET /` (HTML de la SPA), `POST /api/incidents` con un
+  cuerpo válido (mira el DTO) → 201 `{reference}`, `GET /api/incidents/<reference>` → 200 con lo registrado,
+  y `GET /incidents/<reference>` → HTML de la SPA (fallback, no 404). La parte de navegador la haré yo: déjalo
+  indicado como **pendiente de prueba manual del usuario**.
+
+#### Lo que NO debes tocar
+`apps/**`, `libs/**`, `apps/web/proxy.conf.json`, `docker/backend/**`, `docker/docker-compose.{dev,e2e}.yml`,
+el servicio `api` de `docker-compose.stage.yml`, `.github/**` (salvo que la ruta de la plantilla obligue a
+cambiar el paso de construcción — en ese caso, cambio mínimo y dilo), `package.json`, `docs/**`, `readme.md`,
+`CLAUDE.md`, `.env`, `prompts.md`, `.claude/**` (salvo tu memoria). El ticket no se edita. No actives CORS.
+
+#### Verificación — ejecútala, no la afirmes
+1. `docker build -f docker/frontend/Dockerfile .` en verde (tras `pnpm nx build web`).
+2. AC2: los dos arranques fallidos de la trampa 7, con sus logs.
+3. El `nginx.conf` renderizado dentro del contenedor (trampa 2): `location /api/`, `resolver` y una muestra de
+   variables de nginx intactas.
+4. AC3 y AC7 vía `docker compose -f docker/docker-compose.stage.yml up`: las cuatro respuestas de la trampa 7
+   (código, cabeceras relevantes y cuerpo). `/health` → 200.
+5. AC4: la salida del eco temporal (y, si lo hiciste, la prueba HTTPS).
+6. Trampa 5: `curl -I` de `/` y de `/api/incidents/INC9999999` con sus cabeceras de seguridad.
+7. Limpieza: `docker compose … down`, `docker ps` solo con `sport-itsm-postgres-dev`, nada en 3300/4200,
+   eco temporal borrado, `git status --porcelain` solo con tus ficheros (`docker/frontend/**`,
+   `docker/docker-compose.stage.yml`) y `file`/`od` mostrando LF en tus `*.sh`/`*.envsh`.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No instales dependencias en el repo. No hagas commit ni push. No lances el despliegue ni toques Render/GitHub.
+
+#### Informa al terminar — en español
+- Ficheros creados, modificados y eliminados, con la plantilla final completa.
+- Tus decisiones de las trampas 1 a 7, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la herencia de `add_header`, lo que el usuario debe
+  poner en Render para el servicio web (`API_UPSTREAM_URL` exacta, sin barra final; `PORT`; health check
+  `/health`), el comportamiento esperado del primer acceso tras la suspensión de la API, y los comentarios
+  desfasados que sigan describiendo stage con PostgreSQL (workflow, `readme.md` §2.4, skill `ci-cd`).
+
+### Response:
+
+Implementado ticket T-C10-79
+
+</br>
+
+**Prompt 34:**
+
+Agent: Claude Code - Opus 5.5 (1M context)
+
+### Request:
+
+Actúa como frontend-engineer e implementa UN SOLO ticket: docs/backlog/C1/tickets/T-C1-104.md ·
+Traducir al español el formulario de registro y la ficha
+Raíz del repositorio: d:\repositories\ai4devs\proyecto_final\AI4Devs-finalproject
+
+#### Rol
+`agent: frontend-engineer`. Aplica **`sport-itsm-frontend`** y `sport-itsm-engineering-principles`. Cierra con
+`sport-itsm-workflow`.
+
+#### Por qué este ticket y por qué ahora
+Es el **último ticket de la rebanada 1b**. La demo en Render ya funciona de punta a punta en memoria (el
+usuario lo ha probado en local): la página `/` está en español, pero el formulario `/incidents/new` y la ficha
+`/incidents/:reference` siguen en inglés. Decisión del usuario: **toda la web en español**, con los textos solo
+en el fichero de constantes (sin i18n real, deuda aceptada). Es un cambio **de contenido**: se sustituyen
+valores, no se reestructuran componentes, formularios ni rutas.
+
+#### Precondición
+    git status --porcelain                  # limpio (salvo prompts.md)
+    pnpm nx run-many -t lint test --projects=incident-feature,web   # verde
+
+#### Trampas del entorno — ya pagadas
+- Esta máquina tiene variables **globales de Windows** `PORT=3000` y `POSTGRES_*` de otro proyecto que pisan
+  el `.env`. Si arrancas la API a mano, pasa `PORT=3300` (y el modo) en la misma llamada:
+  `PORT=3300 PERSISTENCE_MODE=memory NODE_ENV=development pnpm nx serve api`.
+- Cypress desde el terminal de VS Code: `unset ELECTRON_RUN_AS_NODE;` en la misma llamada Bash.
+- `web-e2e` depende de `web:serve` (4200, proxy `/api` → 3300). Antes, comprueba que no hay procesos en
+  3300/4200 (el usuario puede tener los suyos abiertos: **si los hay, no los mates; avísalo en el informe** y
+  no ejecutes el E2E hasta que estén libres) y ciérralos al terminar si son tuyos.
+- Prettier en Windows: comprueba solo tus ficheros.
+
+#### Lee antes, del repo y no de memoria
+- El ticket entero (Context con la tabla de aserciones, Scope, 5 criterios).
+- `libs/incident/feature/src/lib/incident-messages.ts` **entero**, incluidos sus comentarios (`NFR-USE-01`).
+- Las plantillas y componentes del formulario y la ficha, para ver **cómo se compone cada texto en pantalla**
+  (p. ej. `detail.headingPrefix` + referencia → "Report INC0000001"; `supportCodePrefix` + código).
+- `incident-intake-form.component.spec.ts`, `incident-detail.component.spec.ts`,
+  `incident-detail-formatting.ts` (+ spec), `home-page.component.spec.ts`.
+- `apps/web-e2e/src/step-definitions/{incident-intake,home,harness-smoke}.steps.ts` y los `.feature`.
+- `apps/web/src/index.html`.
+
+#### Trampa 1 — el ticket se deja textos fuera
+El Scope enumera `intakeForm`, `detail`, `validation`, `COMMON_ERROR_MESSAGES`, `ORIGIN_CHANNEL_LABELS` y
+`PRIORITY_LABELS`, pero **`GENERIC_FIELD_MESSAGE`** ("Please check this field and try again.") también se
+renderiza y está en inglés. Tradúcelo. Criterio general (AC2): **ningún texto en inglés** en lo que pinta
+cualquiera de las dos pantallas, en ninguno de sus 6 estados de la ficha ni en los errores del formulario.
+Recorre el fichero entero y las plantillas, no solo la lista del ticket, y di qué añadiste.
+
+#### Trampa 2 — los specs **sí** afirman literales en inglés
+El AC5 dice que ningún spec Jest afirma un literal en inglés. **Es falso**: al menos
+`incident-intake-form.component.spec.ts` (~línea 260, `'Please check this field and try again.'`) e
+`incident-detail.component.spec.ts` (~línea 148, `'Self-service portal'`) lo hacen. El propio AC5 dice que un
+spec así se corrige en este ticket. Recomendación: que afirmen **contra la constante**
+(`ORIGIN_CHANNEL_LABELS.portal`, el mensaje genérico exportado o leído vía `messageForFieldRule`), no contra
+otro literal, para que la próxima traducción no los rompa. Si para eso necesitas exportar
+`GENERIC_FIELD_MESSAGE` dentro de la librería (no desde el barrel), hazlo y dilo. Los datos de prueba que
+"teclea" el usuario (`'Cannot submit match roster'`…) **no** se traducen: son datos, no interfaz. Haz un grep
+de literales en inglés en todos los specs de `incident-feature` y clasifica cada uno (dato de prueba / texto de
+interfaz).
+
+#### Trampa 3 — español llano y sin jerga, también en español
+`NFR-USE-01`: ni "ticket", "prioridad", "SLA", "triaje" ni "incidencia" en ningún texto visible (sí en
+comentarios técnicos). Cuidado con los calcos: el encabezado de la ficha es `headingPrefix` + referencia
+("Report INC0000001"); en español busca un sustantivo llano ("Aviso", "Tu aviso", "Problema"…) coherente con
+"Reportar un problema" de la página de inicio, y úsalo igual en `pageTitle`, `loadingMessage`, `notFound*`.
+**Coherencia de tratamiento**: la página de inicio tutea ("cuéntanoslo"); mantén el **tú** en todo.
+Lenguaje **inclusivo/neutro** cuando se pueda sin forzar. Las etiquetas de prioridad no deben decir
+"prioridad" (describen "cuándo lo atenderemos"). Conserva `${SHORT_DESCRIPTION_MAX_LENGTH}` y el `as const`.
+Entrega en el informe la **tabla completa inglés → español** de cada clave.
+
+#### Trampa 4 — la página de inicio y `index.html`
+- `home.heading` es "Bienvenido a Sport ITSM": masculino genérico. Propón una forma neutra coherente con el
+  tú (p. ej. "Te damos la bienvenida a Sport ITSM") y cámbiala; `Sport ITSM` es el nombre del producto y se
+  queda. Actualiza lo que dependa (spec, `home.steps.ts` si afirma el texto).
+- `apps/web/src/index.html` declara `lang="en"` con toda la web ya en español (WCAG 3.1.1): cámbialo a
+  `lang="es"`. El `<title>Sport ITSM</title>` es el nombre del producto: déjalo salvo que veas razón, y dilo.
+  Son dos cambios fuera del Scope literal del ticket, **autorizados por el usuario** (web entera en español);
+  menciónalos como tales en el informe.
+
+#### Trampa 5 — la fecha de la ficha depende del navegador
+`formatLoggedAt` usa `Intl.DateTimeFormat(undefined, …)`: el locale del **navegador del lector**
+(`NFR-I18N-03`, decisión de `T-C1-101`). En un navegador en inglés la fecha saldría en inglés en una página
+en español. **No lo cambies** (contradiría un NFR del PRD): **repórtalo** como hallazgo con tu recomendación,
+para que el usuario/PO decida.
+
+#### Trampa 6 — el E2E
+Las cuatro aserciones en inglés de `incident-intake.steps.ts` (líneas ~189, ~198, ~205, ~212) pasan a
+subcadenas estables del texto en español (subcadena, no el texto completo). El ticket asigna esta parte a
+`testing-implementer`; como en `T-C1-10`/`T-C1-101`/`T-C1-103`, hazla tú y **repórtalo**. Los `.feature` no
+cambian (texto Gherkin en inglés por norma del repo): verifícalo, no lo edites. Busca además cualquier otra
+aserción de texto de interfaz en `apps/web-e2e` (incluido `home.steps.ts`) que tu cambio rompa.
+
+#### Lo que NO debes tocar
+`apps/api/**`, `apps/api-e2e/**`, `libs/incident/{domain,application,infrastructure,data-access,ui}/**`,
+`libs/shared/**`, la lógica, estructura y reglas de validación de los componentes (solo texto), las claves y la
+forma de `INCIDENT_MESSAGES`, `messageForFieldRule`/`isIncidentIntakeField`, `incident-detail-formatting.ts`,
+los `.feature`, `apps/web/src/app/**`, `apps/web/proxy.conf.json`, cualquier `project.json`, `docker/**`,
+`.github/**`, `package.json`, `docs/**`, `CLAUDE.md`, `.env`, `prompts.md`, `.claude/**` (salvo tu memoria).
+En `apps/web/src/index.html`, solo el atributo `lang`. El ticket no se edita. No instales dependencias.
+
+#### Verificación — ejecútala, no la afirmes
+1. `pnpm nx test incident-feature --skip-nx-cache` en verde. Pega el resumen.
+2. AC1: pega la tabla inglés → español y un grep de `incident-messages.ts` para `ticket|prioridad|SLA|triaje|incidencia`
+   (sin `-i` para no confundir con comentarios en inglés, y luego con `-i`), clasificando cada coincidencia.
+3. Trampa 2: el grep de literales en los specs y su clasificación.
+4. `grep -rn "Self-service portal\|couldn't find\|isn't in the right\|could not reach" apps/web-e2e/src` → vacío.
+5. `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e web-e2e` en verde (`incident-intake`, `home`, `harness-smoke`).
+   Pega el resumen.
+6. AC2 real: API en `memory` (`PORT=3300 PERSISTENCE_MODE=memory NODE_ENV=development pnpm nx serve api`) +
+   `pnpm nx serve web`; registra una incidencia por el formulario y abre su ficha, más una ficha inexistente
+   (`/incidents/INC9999999`) y una referencia inválida (`/incidents/abc`), y un envío con un campo vacío.
+   Comprueba (con Cypress contra los servidores reales, o el método que justifiques) que el texto visible
+   de cada pantalla no contiene inglés, y pégalo. Cierra los servidores al terminar.
+7. `pnpm nx run-many -t lint test build --skip-nx-cache` en verde, `pnpm verify:boundaries` 10/10,
+   `pnpm prettier --check` sobre tus ficheros, `git status --porcelain` solo con ficheros del alcance y nada
+   escuchando en 3300/4200.
+
+Un criterio que no has ejecutado se reporta como no ejecutado, jamás como pasado.
+
+#### Restricciones
+No hagas commit ni push.
+
+#### Informa al terminar — en español
+- Ficheros modificados.
+- La tabla completa inglés → español y tus decisiones de las trampas 1 a 6, con su porqué.
+- La salida de las siete verificaciones.
+- Hallazgos — **repórtalos, no los corrijas**: como mínimo la fecha según el navegador, la falsedad del AC5 del
+  ticket (para `architect-tech-lead`), la desviación del handoff E2E, y cualquier texto en inglés que quede
+  fuera de estas dos pantallas (p. ej. títulos de pestaña o mensajes que vengan del servidor).
+
+### Response:
+
+Implementado ticket T-C10-104
+
+</br>
+

@@ -1,0 +1,160 @@
+# Sport ITSM — nginx configuration TEMPLATE (T-C10-79, ADR-015 decision 4).
+#
+# This is the WHOLE file nginx loads, `http {}` block included — not a
+# `conf.d/*.conf` fragment. docker/frontend/Dockerfile copies this file to
+# `/etc/nginx/templates/nginx.conf.template` and sets
+# `NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx`, so the official nginx:alpine
+# image's own `20-envsubst-on-templates.sh` (run from `/docker-entrypoint.d/`
+# before nginx starts) renders it to exactly `/etc/nginx/nginx.conf` — the
+# path nginx actually reads. Rendering it at the image's default output
+# directory (`/etc/nginx/conf.d`) would produce a file this configuration
+# never `include`s, so it would render and simply never be loaded.
+#
+# `${API_UPSTREAM_URL}` and `${NGINX_LOCAL_RESOLVERS}` are the only two
+# placeholders substituted at container start — see this Dockerfile's
+# `NGINX_ENVSUBST_FILTER`. Every nginx variable below ($uri, $host, $scheme,
+# $proxy_host, $http_x_forwarded_proto, $remote_addr, …) is left untouched by
+# that filter regardless of whether it is written as `$name` or `${name}`.
+worker_processes auto;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    sendfile on;
+    keepalive_timeout 65;
+    gzip on;
+    gzip_vary on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    # Render terminates TLS before this container: a request that reached
+    # the browser over HTTPS arrives here as plain HTTP, with Render's own
+    # edge already having set X-Forwarded-Proto. Trust that header when
+    # present and fall back to this connection's own $scheme only when it is
+    # absent — e.g. a direct `docker compose up` smoke test with no edge in
+    # front (ADR-015 decision 4, Trap 4). `map` must live in the `http {}`
+    # context, which is why it is declared here rather than inside `server`.
+    map $http_x_forwarded_proto $sport_itsm_forwarded_proto {
+        default $http_x_forwarded_proto;
+        ''      $scheme;
+    }
+
+    server {
+        listen 80;
+        server_name _;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        # Security headers — shared with every location below that declares
+        # its own `add_header` (nginx does not merge a location's
+        # `add_header` with what it inherits from `server`; see
+        # docker/frontend/security-headers.conf for the full explanation).
+        # A location with no `add_header` of its own (`/`, `/api/`) still
+        # inherits these from here unchanged.
+        include /etc/nginx/security-headers.conf;
+
+        # Security: Deny hidden files
+        location ~ /\. {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+
+        # SPA routing
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        # Cache para assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            # This location's own `add_header` above replaces (does not add
+            # to) the server-level security headers, so they are repeated
+            # here via the shared include — see the `server`-level comment.
+            include /etc/nginx/security-headers.conf;
+        }
+
+        # Sin cache para index.html
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            expires 0;
+            include /etc/nginx/security-headers.conf;
+        }
+
+        # Health check
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+            include /etc/nginx/security-headers.conf;
+        }
+
+        # ADR-015 decision 4 — same-origin reverse proxy to the API service,
+        # no CORS. Additive: every rule above is unchanged. Deliberately no
+        # `add_header` in this location — a location-level `add_header`
+        # REPLACES the server block's inherited ones instead of merging with
+        # them (nginx semantics), so staying free of it is what lets this
+        # location inherit the three security headers declared on `server`
+        # above via the shared include (T-C10-79 Trap 5, fixed: every other
+        # `add_header`-bearing location above now repeats the same include
+        # instead of losing the inherited headers).
+        location /api/ {
+            # Resolved AT REQUEST TIME, not once at nginx startup — required
+            # because a literal host in `proxy_pass` makes nginx resolve it
+            # once at config load and either refuse to start if that lookup
+            # fails, or never notice the address changing afterwards
+            # (ADR-015 decision 4). `NGINX_LOCAL_RESOLVERS` is the official
+            # nginx:alpine image's own `/docker-entrypoint.d/15-local-
+            # resolvers.envsh` mechanism (activated by this Dockerfile's
+            # `NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1`, not written by this
+            # ticket): it reads every `nameserver` line of /etc/resolv.conf —
+            # Docker's embedded DNS (127.0.0.11) locally, whatever Render's
+            # container runtime provides there — not only the first, and
+            # already formats an IPv6 nameserver in the bracketed form this
+            # directive expects. `ipv6=off`: this workspace's upstreams
+            # (`api:3300` locally, a Render `*.onrender.com` host) are
+            # resolved over IPv4; short `valid=` so a changed address is
+            # picked up quickly instead of cached for nginx's 5-minute
+            # default.
+            resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+            # A variable (not a literal) is what makes the `resolver` above
+            # take effect per request instead of once at config parse time.
+            set $sport_itsm_api_upstream ${API_UPSTREAM_URL};
+
+            # No URI segment here: with `proxy_pass` to a variable, nginx
+            # forwards the original request URI unchanged only when the
+            # target carries no path of its own — required so
+            # `/api/incidents/...` reaches the API with its path intact,
+            # matching `apps/api`'s global `/api` prefix. The container
+            # never gets this far with a path-bearing or trailing-slash
+            # `API_UPSTREAM_URL`: docker-entrypoint.d/10-check-api-upstream-
+            # url.sh rejects it before nginx starts (Trap 3).
+            proxy_pass $sport_itsm_api_upstream;
+
+            # Render routes by SNI/Host. $proxy_host is the host[:port]
+            # nginx is actually connecting to — derived from the
+            # `proxy_pass` variable above at request time — never the
+            # browser's own Host header.
+            proxy_set_header Host $proxy_host;
+            proxy_ssl_server_name on;
+
+            # Render's free-tier API instance spins down when idle; the
+            # first request after that must wait for the cold start instead
+            # of failing with a 504 (ADR-015 decision 4). 60s is inside
+            # nginx's own ~75s ceiling for proxy_connect_timeout.
+            proxy_connect_timeout 60s;
+            proxy_read_timeout 60s;
+
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $sport_itsm_forwarded_proto;
+            proxy_set_header X-Forwarded-Host $host;
+        }
+    }
+}

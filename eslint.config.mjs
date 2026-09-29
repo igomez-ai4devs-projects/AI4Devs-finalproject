@@ -15,7 +15,7 @@ import prettier from 'eslint-config-prettier/flat';
  * Every Nx project carries exactly three tags, one per axis. This object declares
  * *which values exist*; it deliberately does NOT declare which may depend on which.
  * The `@nx/enforce-module-boundaries` `depConstraints` matrix that consumes this
- * vocabulary is delivered by ticket T-C10-03 and is intentionally absent here.
+ * vocabulary (T-C10-03) is declared separately below, as `depConstraints`.
  */
 export const TAG_VOCABULARY = Object.freeze({
   platform: Object.freeze(['backend', 'frontend', 'shared']),
@@ -153,7 +153,18 @@ const tagsFor = (axis, values) => values.map((v) => `${axis}:${v}`);
 /**
  * `depConstraints` — the three orthogonal rule families of §5.3. Every source
  * matcher demands all three axes, so the families compose: the plugin applies
- * *every* matching constraint, and a dependency must satisfy all of them.
+ * *every* matching constraint, and a dependency is accepted only if it
+ * satisfies all of them.
+ *
+ * Reporting is not cumulative, though. The plugin walks the matching
+ * constraints in array order and stops at the first one the dependency
+ * violates (`@nx/eslint-plugin` `enforce-module-boundaries`: `return` right
+ * after the first `context.report`), so an import that breaks several families
+ * is reported once, for the earliest. The type matrix is declared first, so a
+ * dependency that is illegal on both the type and the scope or platform axis
+ * surfaces as a type-matrix violation; the later families only speak when the
+ * type axis is legal. Fixing the reported violation can therefore reveal the
+ * next one on the following lint run.
  */
 const depConstraints = [
   // ── 1. Type matrix (§5.3) ────────────────────────────────────────────────
@@ -239,8 +250,8 @@ export default [
   },
 
   // Nx workspace rules. `flat/base` registers the `@nx` plugin without enabling
-  // any rule: `@nx/enforce-module-boundaries` stays off until T-C10-03 turns it
-  // on together with its constraint matrix.
+  // any rule; `@nx/enforce-module-boundaries` is switched on, with its
+  // `depConstraints` matrix (T-C10-03), by the block further below.
   ...nx.configs['flat/base'],
   ...nx.configs['flat/typescript'],
   ...nx.configs['flat/javascript'],

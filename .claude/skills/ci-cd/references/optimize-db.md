@@ -1,6 +1,6 @@
 # CI/CD — Optimize-DB: squashing / consolidating migrations
 
-> **Not applicable yet.** There is no migration in this repository — the chain starts with
+> **Not applicable yet.** The chain holds a single migration — the bootstrap migration of
 > **`T-C10-17`**. Squashing a chain of zero or one migration is meaningless. Keep this procedure for
 > when the chain has grown, and say so plainly if asked to run it today.
 

@@ -1,1 +1,2 @@
-- [Cypress/Nx e2e local verification limits](feedback_cypress_local_verification.md) — this sandbox cannot run `cypress run` at all; say what you verified, and never dismiss an `nx e2e` failure as environmental without checking.
+- [Cypress/Nx e2e local verification](feedback_cypress_local_verification.md) — `unset ELECTRON_RUN_AS_NODE` in the same Bash call to actually run `cypress run`/`nx e2e` here; never dismiss a failure as environmental without checking.
+- [`.gitattributes` added 2026-09-25](project_no_gitattributes_crlf_drift.md) — fixes future checkouts, not files already CRLF on disk; a `git status` "M" after a line-ending-only rewrite is stat-dirty, not a real diff — check `git diff --raw`.

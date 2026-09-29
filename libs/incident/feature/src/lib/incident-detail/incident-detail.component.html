@@ -1,0 +1,121 @@
+<section class="incident-detail" aria-labelledby="incident-detail-heading">
+  <h1
+    id="incident-detail-heading"
+    #mainHeading
+    tabindex="-1"
+    class="incident-detail__heading"
+  >
+    {{ messages.headingPrefix }} {{ reference() }}
+  </h1>
+
+  @switch (viewState().kind) {
+    @case ('loading') {
+      <p class="incident-detail__status" role="status">
+        {{ messages.loadingMessage }}
+      </p>
+    }
+
+    @case ('invalid-reference') {
+      <div class="incident-detail__outcome">
+        <h2>{{ messages.invalidReferenceHeading }}</h2>
+        <p>{{ messages.invalidReferenceMessage }}</p>
+      </div>
+    }
+
+    @case ('not-found') {
+      <div class="incident-detail__outcome">
+        <h2>{{ messages.notFoundHeading }}</h2>
+        <p>{{ messages.notFoundMessage }}</p>
+      </div>
+    }
+
+    @case ('network-error') {
+      <div
+        class="incident-detail__outcome incident-detail__outcome--error"
+        role="alert"
+      >
+        <h2>{{ messages.errorHeading }}</h2>
+        <p>{{ messages.networkErrorMessage }}</p>
+      </div>
+    }
+
+    @case ('server-error') {
+      <div
+        class="incident-detail__outcome incident-detail__outcome--error"
+        role="alert"
+      >
+        <h2>{{ messages.errorHeading }}</h2>
+        <p>{{ messages.genericErrorMessage }}</p>
+        @if (serverErrorSupportCode(); as code) {
+          <p class="incident-detail__support-code">
+            {{ messages.supportCodePrefix }} {{ code }}
+          </p>
+        }
+      </div>
+    }
+
+    @case ('loaded') {
+      @if (loadedIncident(); as incident) {
+        <h2 class="incident-detail__fields-heading">
+          {{ messages.fieldsHeading }}
+        </h2>
+        <dl class="incident-detail__fields">
+          <dt>{{ messages.referenceLabel }}</dt>
+          <dd>{{ incident.reference }}</dd>
+
+          <dt>{{ messages.loggedAtLabel }}</dt>
+          <dd>{{ formatLoggedAt(incident.loggedAt) }}</dd>
+
+          <dt>{{ messages.originChannelLabel }}</dt>
+          <dd>{{ originChannelText(incident.originChannel) }}</dd>
+
+          <dt>{{ messages.shortDescriptionLabel }}</dt>
+          <dd>{{ incident.shortDescription }}</dd>
+
+          <dt>{{ messages.descriptionLabel }}</dt>
+          <dd>{{ incident.description }}</dd>
+
+          <dt>{{ messages.affectedServiceLabel }}</dt>
+          <dd>
+            {{
+              identifierPresenceText(
+                incident.affectedServiceId,
+                messages.affectedServiceUnset,
+                messages.affectedServicePresent
+              )
+            }}
+          </dd>
+
+          <dt>{{ messages.categoryLabel }}</dt>
+          <dd>
+            {{
+              identifierPresenceText(
+                incident.categoryId,
+                messages.categoryUnset,
+                messages.categoryPresent
+              )
+            }}
+          </dd>
+
+          <dt>{{ messages.impactLabel }}</dt>
+          <dd>{{ impactText(incident.impact) }}</dd>
+
+          <dt>{{ messages.urgencyLabel }}</dt>
+          <dd>{{ urgencyText(incident.urgency) }}</dd>
+
+          <dt>{{ messages.priorityLabel }}</dt>
+          <dd>{{ priorityText(incident.priority) }}</dd>
+
+          <dt>{{ messages.competitionAffectsInProgressLabel }}</dt>
+          <dd>
+            {{
+              competitionAffectsInProgressText(
+                incident.competitionAffectsInProgress
+              )
+            }}
+          </dd>
+        </dl>
+      }
+    }
+  }
+</section>
