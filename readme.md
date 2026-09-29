@@ -3252,6 +3252,316 @@ These hold for every table above and are stated once rather than repeated per en
 
 > Si tu backend se comunica a través de API, describe los endpoints principales (máximo 3) en formato OpenAPI. Opcionalmente puedes añadir un ejemplo de petición y de respuesta para mayor claridad
 
+This section documents only the routes that exist in the code today, checked against `apps/api` (`grep -r "@Controller"` over `apps/api/src` and every `libs/**` project returns exactly two files). It does not restate PRD-defined endpoints that are not implemented yet.
+
+#### 4.1 Implemented and working
+
+Two routes are reachable and usable by an end user against the running system, both served by [`IncidentController`](apps/api/src/app/incident/incident.controller.ts) under the global `/api` prefix ([`global-prefix.ts`](apps/api/src/app/global-prefix.ts)):
+
+- `POST /api/incidents` — requester intake of an Incident (`T-C1-08`, `US-C1-01`, `FR-INC-01`). Request: [`LogIncidentRequesterDto`](apps/api/src/app/incident/dto/log-incident-requester.dto.ts), which structurally implements the contract's [`LogIncidentRequesterRequest`](libs/shared/contracts/src/lib/incident-intake.contract.ts). Response: [`IncidentCreatedResponse`](libs/shared/contracts/src/lib/incident-intake.contract.ts).
+- `GET /api/incidents/{reference}` — read an Incident back by its reference (`T-C1-100`, `US-C1-01`, `FR-INC-01`). Route parameter: [`GetIncidentByReferenceParamsDto`](apps/api/src/app/incident/dto/get-incident-by-reference-params.dto.ts). Response: [`IncidentDetailResponse`](libs/shared/contracts/src/lib/incident-detail.contract.ts), built field-by-field by [`incident-detail-response.mapper.ts`](apps/api/src/app/incident/incident-detail-response.mapper.ts).
+
+`@nestjs/swagger` is not installed in this repository (listed under "not yet implemented" in [§2.5.10](#2510-designed-not-yet-implemented)), so the OpenAPI document below is hand-written directly from the controller, the two DTOs and `libs/shared/contracts` — nothing here is generated. Validation rules, the error envelope and the correlation-id header are already described in [§2.5.2](#252-input-validation-at-the-api-boundary) / [§2.5.3](#253-error-handling-that-does-not-leak-internals) and exercised by the acceptance suite in [§2.6.4](#264-acceptance-tests-cypress--cucumber); this section only restates the wire shape an OpenAPI document needs, not the reasoning behind it.
+
+```yaml
+openapi: 3.0.3
+info:
+  title: Sport ITSM API — Incident intake and read-back
+  description: >
+    Hand-written from the code (no @nestjs/swagger installed). Covers the two
+    Incident routes that exist and are reachable outside NODE_ENV=test.
+  version: "0.1.0"
+servers:
+  - url: /api
+paths:
+  /incidents:
+    post:
+      summary: Log an Incident as the requester (T-C1-08, FR-INC-01)
+      operationId: logIncidentAsRequester
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogIncidentRequesterRequest'
+      responses:
+        '201':
+          description: Incident created; only the reference the requester may see.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationIdResponse'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentCreatedResponse'
+        '400':
+          description: >
+            Validation failed — a required field is missing/blank, over
+            length, the wrong type, or the request carries a field the
+            requester may not set (priority, impact, urgency,
+            competitionAffectsInProgress), rejected by forbidNonWhitelisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /incidents/{reference}:
+    get:
+      summary: Read a single Incident by its reference (T-C1-100, FR-INC-01)
+      operationId: getIncidentByReference
+      parameters:
+        - name: reference
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}[0-9]{7}$'
+            example: INC0000001
+        - $ref: '#/components/parameters/CorrelationIdHeader'
+      responses:
+        '200':
+          description: The Incident's full persisted state, keyed on reference.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationIdResponse'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentDetailResponse'
+        '400':
+          description: The reference does not match ^[A-Z]{3}[0-9]{7}$.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: >
+            Well-formed reference, no matching Incident — including a
+            foreign, non-INC prefix (e.g. SRQ0000001).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    CorrelationIdHeader:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: >
+        Echoed back only if it is a well-formed UUID; otherwise the server
+        mints a fresh one (correlation-id.util.ts).
+      schema:
+        type: string
+        format: uuid
+  headers:
+    CorrelationIdResponse:
+      description: The correlation id this request was handled under; always set.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    InternalError:
+      description: >
+        Unexpected server-side failure; never carries `details`, never
+        reflects the underlying error or a stack trace back to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    LogIncidentRequesterRequest:
+      type: object
+      additionalProperties: false
+      required: [shortDescription, description]
+      description: >
+        No originChannel, reporterId, impact, urgency, priority or
+        competition-in-progress flag — a requester cannot set any of them
+        (FR-OMN-02); the global ValidationPipe's forbidNonWhitelisted rejects
+        the whole request if one is sent anyway.
+      properties:
+        shortDescription:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Must not be blank (whitespace-only is rejected, not just empty).
+        description:
+          type: string
+          minLength: 1
+          description: Must not be blank; no explicit maxLength today (known gap, §2.5.9).
+        affectedServiceId:
+          type: string
+          format: uuid
+          description: UUID of the affected Service (service-catalog); optional.
+    IncidentCreatedResponse:
+      type: object
+      required: [reference]
+      properties:
+        reference:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{7}$'
+          example: INC0000001
+    IncidentDetailResponse:
+      type: object
+      required:
+        - reference
+        - loggedAt
+        - originChannel
+        - shortDescription
+        - description
+        - affectedServiceId
+        - categoryId
+        - impact
+        - urgency
+        - priority
+        - competitionAffectsInProgress
+      properties:
+        reference:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{7}$'
+        loggedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 UTC, never epoch milliseconds (NFR-I18N-03).
+        originChannel:
+          type: string
+          enum: [portal, agent_logged, email, in_app]
+        shortDescription:
+          type: string
+        description:
+          type: string
+        affectedServiceId:
+          type: string
+          format: uuid
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null before US-C1-07's categorization gate runs.
+        impact:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        urgency:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        priority:
+          type: string
+          enum: [P1, P2, P3, P4]
+          nullable: true
+          description: Null until Priority is derived from Impact x Urgency (FR-INC-04).
+        competitionAffectsInProgress:
+          type: boolean
+          description: False until T-C1-14 derives it.
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHENTICATED
+                - FORBIDDEN
+                - VALIDATION_FAILED
+                - NOT_FOUND
+                - INTERNAL_ERROR
+            details:
+              type: array
+              description: Present only for VALIDATION_FAILED.
+              items:
+                type: object
+                required: [field, rule]
+                properties:
+                  field:
+                    type: string
+                  rule:
+                    type: string
+                    description: >
+                      Machine-readable constraint key, e.g. isDefined,
+                      isNotBlank, maxLength, isUuid, matches,
+                      whitelistValidation — never free text.
+```
+
+**`POST /api/incidents` — example.** Captured by actually running the API locally (`NODE_ENV=development PERSISTENCE_MODE=memory PORT=3300 pnpm nx serve api`, host Postgres port 5452 not needed in `memory` mode):
+
+```bash
+curl -i -X POST http://localhost:3300/api/incidents \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-Id: 8f14e45f-ceea-467e-b7c1-00000000000a" \
+  -d '{
+        "shortDescription": "Standings not updating after match result",
+        "description": "The League Stage standings table for the U19 Regional Cup still shows yesterday'\''s results after two matches were confirmed this morning."
+      }'
+```
+
+```http
+HTTP/1.1 201 Created
+X-Correlation-Id: 8f14e45f-ceea-467e-b7c1-00000000000a
+Content-Type: application/json; charset=utf-8
+
+{"reference":"INC0000001"}
+```
+
+The same run, with `shortDescription` omitted, returns `400`:
+
+```json
+{"error":{"code":"VALIDATION_FAILED","details":[{"field":"shortDescription","rule":"isDefined"}]}}
+```
+
+…and a request that tries to set `priority` (a field the requester may not declare) also returns `400`, creating nothing:
+
+```json
+{"error":{"code":"VALIDATION_FAILED","details":[{"field":"priority","rule":"whitelistValidation"}]}}
+```
+
+**`GET /api/incidents/{reference}` — example.** Same run, reading the Incident just created:
+
+```bash
+curl -i http://localhost:3300/api/incidents/INC0000001 \
+  -H "X-Correlation-Id: 8f14e45f-ceea-467e-b7c1-00000000000a"
+```
+
+```http
+HTTP/1.1 200 OK
+X-Correlation-Id: 8f14e45f-ceea-467e-b7c1-00000000000a
+Content-Type: application/json; charset=utf-8
+
+{"reference":"INC0000001","loggedAt":"2026-09-29T18:08:32.004Z","originChannel":"portal","shortDescription":"Standings not updating after match result","description":"The League Stage standings table for the U19 Regional Cup still shows yesterday's results after two matches were confirmed this morning.","affectedServiceId":null,"categoryId":null,"impact":null,"urgency":null,"priority":null,"competitionAffectsInProgress":false}
+```
+
+A well-formed but unknown reference returns `404`; a malformed one returns `400` — same run:
+
+```json
+// GET /api/incidents/INC9999999 → 404
+{"error":{"code":"NOT_FOUND"}}
+
+// GET /api/incidents/not-a-reference → 400
+{"error":{"code":"VALIDATION_FAILED","details":[{"field":"reference","rule":"matches"}]}}
+```
+
+#### 4.2 Implemented but not user-testable
+
+Besides the two routes above, exactly one more `@Controller` exists in the repository — [`TestEventDispatchController`](apps/api/src/testing/test-event-dispatch.controller.ts) — and it is never reachable by an end user against any environment a person actually runs the product in:
+
+| Route | Where | Why it is not user-testable |
+| --- | --- | --- |
+| `POST /api/test-harness/events/dispatch-with-failing-subscriber` | [`test-event-dispatch.controller.ts`](apps/api/src/testing/test-event-dispatch.controller.ts), wired only by [`TestEventDispatchModule`](apps/api/src/testing/test-event-dispatch.module.ts) | [`AppModule`](apps/api/src/app/app.module.ts) imports `TestEventDispatchModule` only when `NODE_ENV=test` ([§2.5.7](#257-authorization-seam-and-test-only-surfaces)). Verified live above: the same API process, run under `NODE_ENV=development`, answers `404 NOT_FOUND` for this path — indistinguishable from any unmapped route. It exists only so `apps/api-e2e`'s own acceptance suite can drive the real, DI-wired in-process event dispatcher end to end (`T-C10-73`); it carries no product behavior, no bounded context and no persistence. |
+
+`grep -r "@Controller" apps/api/src libs` finds no other controller, so this table is complete, not a sample. The API does not expose a `/health` route of its own: `/health/live` and `/health/ready` are reserved as exclusions from the `/api` prefix ([`global-prefix.ts`](apps/api/src/app/global-prefix.ts)) but no handler for either exists yet ([§2.5.10](#2510-designed-not-yet-implemented)). The `/health` nginx answers in front of the web client ([§2.4](#24-infraestructura-y-despliegue)) is a static reverse-proxy response, not a route of this API, so it is out of scope here.
+
 ---
 
 ## 5. Historias de Usuario
