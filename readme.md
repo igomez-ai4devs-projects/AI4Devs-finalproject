@@ -231,6 +231,232 @@ The demo shows the Requester's first interaction end to end — report a problem
 
 > Documenta de manera precisa las instrucciones para instalar y poner en marcha el proyecto en local (librerías, backend, frontend, servidor, base de datos, migraciones y semillas de datos, etc.)
 
+This section gets a fresh clone running locally, verified step by step. Commands are given in **bash** (Git Bash / macOS / Linux); where the syntax changes — inline environment variables, copying a file — the **PowerShell** equivalent follows. §2.3.6 ["Useful commands"](#236-useful-commands) is the full command surface (lint, boundary verification, bootstrap acceptance criteria); this section only points to it rather than repeating it.
+
+#### 1.4.1 Prerequisites
+
+| Tool | Required version | Where it is pinned | Check |
+|---|---|---|---|
+| **Node.js** | 22 LTS | `.nvmrc` (`22`), `package.json` → `engines.node` (`>=22.0.0 <23.0.0`) | `node --version` |
+| **pnpm** | 10.18.3, via **Corepack** — pnpm is the *only* supported package manager; `npm install`/`yarn` here produces a second lockfile | `package.json` → `packageManager` | `corepack enable` (once per machine), then `pnpm --version` |
+| **Docker** | any recent version with Compose v2 (`docker compose`, not `docker-compose`) — needed for the local PostgreSQL and for the Cypress E2E suites; **not** needed for the quick-start path (A) below | — | `docker --version` |
+| **Git** | any recent version | — | `git --version` |
+
+These steps were last verified with `node v22.20.0`, `pnpm 10.18.3` and `Docker 27.3.1`.
+
+#### 1.4.2 Clone and install
+
+```bash
+git clone https://github.com/igomez-ai4devs-projects/AI4Devs-finalproject.git
+cd AI4Devs-finalproject
+corepack enable
+pnpm install
+```
+
+`pnpm install` is the only install command — it writes a single `pnpm-lock.yaml` at the repository root. Nothing else (`npm`, `yarn`) is supported.
+
+#### 1.4.3 Configure the environment
+
+```bash
+cp .env.example .env
+```
+
+```powershell
+# PowerShell equivalent
+Copy-Item .env.example .env
+```
+
+`.env` is gitignored; `.env.example` is the committed template and the only in-repo record of which keys the API needs. The API validates this environment at boot (`apps/api/src/config/env.validation.ts`) and **refuses to start**, naming every offending key, rather than falling back to a plausible default.
+
+| Key | Mandatory when | Meaning |
+|---|---|---|
+| `NODE_ENV` | always | `development \| test \| staging \| production` |
+| `PORT` | always | TCP port the API binds to (1–65535); `3300` in every local path below |
+| `PERSISTENCE_MODE` | **always, with no default** (ADR-015) | `postgres \| memory` — choosing the non-durable `memory` store must be an explicit act, never an inferred one |
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | **only when `PERSISTENCE_MODE=postgres`** | The connection to the local PostgreSQL (Path B below). Ignored, and never read by any code path, in `memory` mode |
+
+One combination is rejected outright: **`PERSISTENCE_MODE=memory` together with `NODE_ENV=production` aborts the boot** — a non-durable store must never be selected in production (there is no production environment for this delivery, ADR-013, but the guard is unconditional).
+
+#### 1.4.4 Run it — three paths
+
+Pick one. All three use the same ports (API `3300`, web `4200`), so **run only one path at a time**.
+
+**A. Quick start, no database** (`PERSISTENCE_MODE=memory`) — this is what the deployed demo runs (ADR-015).
+
+```bash
+# terminal 1
+PERSISTENCE_MODE=memory pnpm nx serve api
+
+# terminal 2
+pnpm nx serve web
+```
+
+```powershell
+# PowerShell — terminal 1
+$env:PERSISTENCE_MODE = "memory"; pnpm nx serve api
+
+# PowerShell — terminal 2
+pnpm nx serve web
+```
+
+(If `.env` already sets `PERSISTENCE_MODE=memory`, the inline variable above is redundant but harmless.) Open **`http://localhost:4200/`** — `apps/web/proxy.conf.json` forwards `/api` to `http://localhost:3300`, so the browser never talks to the API port directly. You should see the Sport ITSM home page in Spanish, with one button, *"Reportar un problema"*.
+
+**B. With PostgreSQL** (`PERSISTENCE_MODE=postgres`) — start **only** the `postgres` service of the development compose file, never a bare `up` (see Troubleshooting):
+
+```bash
+docker compose -f docker/docker-compose.dev.yml up -d postgres
+pnpm migration:run
+pnpm migration:show
+```
+
+```powershell
+# PowerShell — identical, docker compose and pnpm read the same way
+docker compose -f docker/docker-compose.dev.yml up -d postgres
+pnpm migration:run
+pnpm migration:show
+```
+
+`pnpm migration:show` must list every migration with `[X]` (applied) — 4 today:
+
+```
+[X] 5 CreateIamSchemaAndExtensions1790349248155
+[X] 6 CreateIncidentSchema1790366187635
+[X] 7 CreateIncidentTicketTable1790380866140
+[X] 8 CreateIncidentReferenceSequenceAndImmutabilityTrigger1790383684993
+```
+
+Then start the API and the web client as in Path A, with `PERSISTENCE_MODE=postgres` instead:
+
+```bash
+PERSISTENCE_MODE=postgres pnpm nx serve api
+pnpm nx serve web
+```
+
+```powershell
+$env:PERSISTENCE_MODE = "postgres"; pnpm nx serve api
+pnpm nx serve web
+```
+
+Open `http://localhost:4200/` as in Path A. Data now survives an API restart — Path A's counter resets to `INC0000001` on every restart, Path B's does not.
+
+**C. Production-like (stage topology)** — builds both applications and runs the same images the pipeline pushes to `ghcr.io` (ADR-013/ADR-015): nginx on `4200` serving the built Angular bundle and reverse-proxying `/api/` to the API, which runs `PERSISTENCE_MODE=memory` (the stage prototype has no database, ADR-015).
+
+```bash
+pnpm nx build api
+pnpm nx run api:build-migrations
+pnpm nx build web
+docker compose -f docker/docker-compose.stage.yml up -d --build
+```
+
+```powershell
+pnpm nx build api
+pnpm nx run api:build-migrations
+pnpm nx build web
+docker compose -f docker/docker-compose.stage.yml up -d --build
+```
+
+Open `http://localhost:4200/` — the browser only ever talks to this one origin, same as on Render. Tear it down with `docker compose -f docker/docker-compose.stage.yml down` once you are done (§1.4.8).
+
+#### 1.4.5 Database, migrations and seed data
+
+The schema changes **only** through TypeORM migrations — `synchronize` is always `false` (`CLAUDE.md` §3). The chain lives in `apps/api/src/migrations/` (conventions in its own `README.md`), applied against the data source at `apps/api/src/data-source.ts`:
+
+```bash
+pnpm migration:run       # apply every pending migration
+pnpm migration:revert    # roll back the last applied migration
+pnpm migration:show      # list migrations and their applied state
+```
+
+These shorthands already carry `-d apps/api/src/data-source.ts` — do not append a second `-d`. They need a reachable PostgreSQL, i.e. Path B's `postgres` service on host port **5452** (not 5432 — see Troubleshooting).
+
+**There is no seed data, and none is needed.** The demo registers every Incident under a single fixed Requester actor set at boot (`T-C10-74`) — there is no sign-in yet (§1.3.5) — so no user, role or reference data has to be seeded for the flow in §1.4.6 to work. The only "data" a fresh environment needs is the schema itself, produced by the migrations above.
+
+#### 1.4.6 Verify it works
+
+**Through the browser** (any of the three paths): open `http://localhost:4200/`, click *"Reportar un problema"*, fill in the summary and description, submit, and confirm you land on the Incident record (`/incidents/INC000000N`) showing what you just typed, with every triage field marked as not yet assessed (§1.3.3).
+
+**From the command line**, the same flow plus the 404 case, always through `http://localhost:4200` — the dev-server proxy in Paths A and B, nginx in Path C:
+
+```bash
+curl -i -X POST http://localhost:4200/api/incidents \
+  -H "Content-Type: application/json" \
+  -d '{"shortDescription":"Smoke test","description":"Verifying the install steps in readme.md section 1.4."}'
+# -> 201, body: {"reference":"INC000000N"}
+
+curl -i http://localhost:4200/api/incidents/INC000000N
+# -> 200, the full record
+
+curl -i http://localhost:4200/api/incidents/INC9999999
+# -> 404, body: {"error":{"code":"NOT_FOUND"}}
+```
+
+```powershell
+Invoke-WebRequest -Method Post -Uri http://localhost:4200/api/incidents `
+  -ContentType "application/json" `
+  -Body '{"shortDescription":"Smoke test","description":"Verifying the install steps in readme.md section 1.4."}'
+
+Invoke-WebRequest -Uri http://localhost:4200/api/incidents/INC9999999
+# throws / reports 404 — Invoke-WebRequest raises on a non-2xx status; read $_.Exception.Response.StatusCode
+```
+
+Expected result, verified end to end on all three paths: `201` on the `POST`, `200` on the matching `GET`, `404` with `{"error":{"code":"NOT_FOUND"}}` on `INC9999999`.
+
+#### 1.4.7 Run the tests
+
+| Suite | Command | Notes |
+|---|---|---|
+| Unit tests, lint, build | `pnpm nx run-many -t lint test build` | Every project of the workspace (13 today); no database or Docker needed |
+| API E2E (Cypress + Cucumber) | `pnpm nx e2e api-e2e` | Brings up its own ephemeral PostgreSQL (host port **5499**), migrates it, serves the built API, runs, and tears the stack down — pass or fail. Needs Docker running |
+| Web E2E (Cypress + Cucumber) | `pnpm nx e2e web-e2e` | Starts the web dev server on `4200` itself (keep that port free); no database involved |
+
+From a VS Code integrated terminal, `ELECTRON_RUN_AS_NODE` is inherited and breaks the Cypress binary — unset it in the **same** command (see Troubleshooting). The full command surface — boundary verification, the bootstrap/lint acceptance criteria, formatting, the dependency graph — is §2.3.6 ["Useful commands"](#236-useful-commands); this table only orients a first run.
+
+#### 1.4.8 Stop and clean up
+
+```bash
+# Stop nx serve api / nx serve web: Ctrl+C in each terminal. If a process
+# outlived its terminal, find the PID actually holding the port and kill that:
+netstat -ano | grep -E ':3300|:4200'      # note the PID in the last column
+taskkill //PID <pid> //F                  # Git Bash on Windows
+kill -9 <pid>                             # macOS / Linux
+
+# Path C containers
+docker compose -f docker/docker-compose.stage.yml down
+
+# Path B's PostgreSQL is meant to stay up between sessions — stop it only when
+# you are done with local development entirely:
+docker compose -f docker/docker-compose.dev.yml down       # keeps postgres-data
+docker compose -f docker/docker-compose.dev.yml down -v    # also deletes it (destructive)
+```
+
+```powershell
+Get-NetTCPConnection -LocalPort 3300,4200 -ErrorAction SilentlyContinue |
+  Select-Object LocalPort, OwningProcess
+Stop-Process -Id <pid> -Force
+
+docker compose -f docker/docker-compose.stage.yml down
+docker compose -f docker/docker-compose.dev.yml down        # keeps postgres-data
+docker compose -f docker/docker-compose.dev.yml down -v     # also deletes it (destructive)
+```
+
+#### 1.4.9 Troubleshooting
+
+**The API listens on the wrong port, or won't connect to the database, even though `.env` looks right.** A variable **already set in your shell or system environment always wins over `.env`** — neither `@nestjs/config`'s loader nor `node --env-file-if-exists` overwrites a variable that is already there. If your machine happens to export `PORT`, or `POSTGRES_HOST`/`POSTGRES_USER`/etc. — commonly left behind by another local project — the API silently binds to that port, or authenticates against that other database, instead of the values in `.env`.
+
+- Check in bash: `echo "PORT=$PORT POSTGRES_HOST=$POSTGRES_HOST POSTGRES_USER=$POSTGRES_USER"`
+- Check in PowerShell: `"PORT=$env:PORT POSTGRES_HOST=$env:POSTGRES_HOST POSTGRES_USER=$env:POSTGRES_USER"`
+- Fix without touching your global environment: pass the value on the **same command line** as the one that starts the process (`PORT=3300 pnpm nx serve api` / `$env:PORT = "3300"; pnpm nx serve api`) — an inline assignment does take precedence. Or clear it for the current session (`unset PORT` / `Remove-Item Env:PORT`); on Windows, a persistent user-level variable is removed with `[Environment]::SetEnvironmentVariable('PORT', $null, 'User')`, after which every terminal (and VS Code) must be reopened.
+
+**The development compose file's `api` and `web` services do not work — start `postgres` only.** `docker/docker-compose.dev.yml` is reported (`T-C10-76`) to have a broken `api` service (it declares no `POSTGRES_*` variables, so it fails environment validation on its own) and both `docker/backend/Dockerfile.dev` / `docker/frontend/Dockerfile.dev` still comment "there is no `libs/` directory yet", which is no longer true and means neither copies `libs/` into the image. This section deliberately documents `docker compose -f docker/docker-compose.dev.yml up -d postgres` — the service name is required — and never a bare `up`. These are pre-existing findings, reported here and to the CI/CD owner, not fixed as a side effect of this section.
+
+**Port 5452, not 5432.** The development PostgreSQL container still listens on `5432` internally, but the compose file publishes it on host port **5452** (5432 is commonly already taken by another local PostgreSQL). Every local `POSTGRES_PORT` in this section is `5452`; never propose `5432`.
+
+**Cypress fails with `bad option --smoke-test` from a VS Code integrated terminal.** The inherited `ELECTRON_RUN_AS_NODE=1` breaks the Cypress binary before any test runs. Unset it in the same command: `unset ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` (bash) or `Remove-Item Env:ELECTRON_RUN_AS_NODE; pnpm nx e2e api-e2e` (PowerShell).
+
+**`api-e2e` and the `incident-infrastructure` integration suite cannot run at the same time.** Both use the same ephemeral PostgreSQL on host port 5499; run one, let it tear down, then the other.
+
+**Ports already in use.** Paths B and C, and a plain `pnpm nx serve web`, all use `3300`/`4200`. Stop whichever path is running (§1.4.8) before starting another.
+
 ---
 
 ## 2. Arquitectura del Sistema
