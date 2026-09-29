@@ -52,6 +52,8 @@ Sports Competition Management System (SCMS)
 
 > Puedes tenerlo alojado en público o en privado, en cuyo caso deberás compartir los accesos de manera segura. Puedes enviarlos a [alvaro@lidr.co](mailto:alvaro@lidr.co) usando algún servicio como [onetimesecret](https://onetimesecret.com/). También puedes compartir por correo un archivo zip con el contenido
 
+> My public URL Github Repository - AI4Devs-finalproject - IGR: https://github.com/igomez-ai4devs-projects/AI4Devs-finalproject
+
 ---
 
 ## 1. Descripción general del producto
@@ -138,6 +140,92 @@ Sport ITSM delivers the following core capabilities, spanning end-user support a
 ### **1.3. Diseño y experiencia de usuario:**
 
 > Proporciona imágenes y/o videotutorial mostrando la experiencia del usuario desde que aterriza en la aplicación, pasando por todas las funcionalidades principales.
+
+The demonstration MVP covers the first step of every Incident's life, seen from the **Requester** — a player, team manager, organizer or match official who hits a defect in the SCMS platform. In three screens the Requester lands on Sport ITSM, **reports the problem** through the Self-Service Portal's intake form and **checks what the Service Desk has recorded**:
+
+**Home page** (`/`) → **Report a problem** (`/incidents/new`) → **Incident record** (`/incidents/INC0000001`)
+
+The demo's user interface is **in Spanish** and written in **plain language**: ITSM vocabulary is deliberately kept off the requester-facing screens (NFR-USE-01). The Requester reads about an _aviso_ (a report), never about an "incident", a "ticket", a "priority" or an "SLA". Where this section quotes on-screen text, the Spanish original comes first, followed by its English translation in parentheses.
+
+#### 1.3.1 Home page — `/`
+
+![Sport ITSM home page: a welcome heading, a one-line invitation to report anything that does not work on the platform, and a blue "Report a problem" button](img/01.main_page.jpg)
+
+The landing page is the entry point of the Self-Service Portal. It welcomes the visitor — _"Te damos la bienvenida a Sport ITSM"_ ("Welcome to Sport ITSM") — and states the promise in one sentence: _"Si algo no funciona como esperabas en la plataforma, cuéntanoslo y lo revisaremos."_ ("If something on the platform isn't working as you expected, tell us and we'll look into it.").
+
+There is exactly one action on the page, **_"Reportar un problema"_ ("Report a problem")**, which opens the intake form. This page is the first fragment of the full Self-Service Portal (FR-KNW-08), which will later add knowledge search, catalog requests and the Requester's own ticket list.
+
+#### 1.3.2 Report a problem — `/incidents/new`
+
+![Report a problem form: a one-line summary field limited to 255 characters, a multi-line "What happened?" field with guidance text, and a blue "Send report" button](img/02.report_incident.jpg)
+
+This screen **logs an Incident** from the Self-Service Portal (FR-INC-01). Under the heading _"Reportar un problema"_ ("Report a problem") and the reassurance _"Cuéntanos qué ha fallado. Lo revisaremos y te mantendremos al tanto."_ ("Tell us what went wrong. We'll look into it and keep you posted."), the form asks for exactly **two mandatory fields**, grouped as _"Sobre el problema"_ ("About the problem"):
+
+| Field on screen | What the Requester provides | ITSM meaning |
+|---|---|---|
+| _"Resume el problema en pocas palabras"_ ("Summarize the problem in a few words") — hint _"Hasta 255 caracteres."_ ("Up to 255 characters.") | A one-line summary. The field does not accept more than **255 characters**. | The Incident's **short description** |
+| _"¿Qué ha pasado?"_ ("What happened?") | Free text. The hint asks what the Requester was doing, what they expected and what happened instead, and invites them to mention the specific match or competition involved. | The Incident's **detailed description**, including any competition context in the Requester's own words |
+
+What the form deliberately does **not** ask: the Requester never chooses Impact, Urgency, Priority, a category or whether a competition in progress is affected. Those are assessed later by the Service Desk (FR-INC-01, FR-INC-05), so no Requester can inflate the urgency of their own report.
+
+**Validation and error messages.** Both fields are checked when the Requester presses **_"Enviar aviso"_ ("Send report")**; a field containing only spaces counts as empty. If anything is missing, the form does not submit and instead:
+
+- shows a summary at the top — _"No hemos podido enviar tu aviso"_ ("We couldn't send your report") and _"Corrige lo siguiente e inténtalo de nuevo:"_ ("Fix the following and try again:") — with one link per problem that jumps straight to the field concerned, and moves the keyboard focus onto that summary;
+- marks each faulty field and shows its message beneath it: _"Resume el problema en pocas palabras."_ ("Summarize the problem in a few words.") for the summary, _"Describe qué ha pasado."_ ("Describe what happened.") for the description, and _"Acórtalo a 255 caracteres o menos."_ ("Shorten it to 255 characters or fewer.") should an over-long summary ever reach the Service Desk.
+
+Every failure says what happened and what to do next; none is silent (NFR-USE-05). If the connection drops, the Requester reads _"No hemos podido conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo."_ ("We couldn't reach the server. Check your connection and try again."); if the service itself fails, _"Algo ha fallado por nuestra parte. Inténtalo de nuevo en unos minutos."_ ("Something went wrong on our side. Try again in a few minutes."), together with a _"Código para soporte:"_ ("Support code:") that the Service Desk can use to trace the exact failed attempt. While the report is being sent, the button reads _"Enviando aviso…"_ ("Sending report…") and cannot be pressed twice.
+
+**On success**, the Incident is logged and immediately receives its **reference number**: `INC` followed by seven digits (for example `INC0000001`), unique and never reused (FR-INC-02). The Requester is taken straight to the Incident record for that reference.
+
+#### 1.3.3 Incident record — `/incidents/INC0000001`
+
+![Incident record for INC0000001: the reference, the logging date and time, the origin channel "Web form", the summary and the full description, followed by the not-yet-triaged fields such as category, impact, urgency and priority, each marked as not yet assessed](img/03.detail_incident.jpg)
+
+The record is headed _"Aviso INC0000001"_ ("Report INC0000001") and lists, under _"Lo que tenemos registrado"_ ("What we have on record"), exactly what the system recorded. It is read-only: the Requester consults it, and can come back to it at any time through its address, `/incidents/<reference>`.
+
+**What the system recorded at logging**
+
+| Label on screen | English | What it is |
+|---|---|---|
+| _Referencia_ | Reference | The Incident's unique reference number (FR-INC-02). |
+| _Registrado el_ | Logged on | The date and time the Incident was logged, written out in Spanish (for example _"29 de septiembre de 2026 a las 19:04"_) and shown in the viewer's own time zone. |
+| _Cómo nos llegó el aviso_ | How the report reached us | The **origin channel**, set by the system and never by the Requester (FR-OMN-02). A report sent from this form always shows _"Formulario web"_ ("Web form") — the Self-Service Portal channel. |
+| _Resumen_ | Summary | The short description, exactly as submitted. |
+| _Descripción completa_ | Full description | The detailed description, exactly as submitted. |
+
+**What the Service Desk will complete at triage.** The remaining fields belong to **triage** — the Service Desk's assessment of a newly logged Incident — and are therefore still open on a new record. The screen says so explicitly instead of hiding the fields or filling them with a default:
+
+| Label on screen | English | ITSM field and what it means for the customer | Shown on a new record |
+|---|---|---|---|
+| _A qué afecta_ | What it affects | **Affected service** — which SCMS service is failing. Optional when reporting, because the Requester may not know; the Service Desk records it before the Incident moves forward (FR-INC-19). | _"No indicado"_ ("Not specified") |
+| _Tipo de problema_ | Type of problem | **Category** — the classification that routes the Incident to the right Resolver Group (FR-INC-03). | _"Todavía sin clasificar"_ ("Not classified yet") |
+| _Cuánto está afectando esto_ | How much this is affecting things | **Impact** — how widely the failure disrupts users or competitions. | _"Todavía sin evaluar"_ ("Not assessed yet") |
+| _Con qué rapidez hay que atenderlo_ | How quickly it needs attention | **Urgency** — how quickly the business needs it restored. | _"Todavía sin evaluar"_ ("Not assessed yet") |
+| _Cuándo lo atenderemos_ | When we'll deal with it | **Priority** — derived from Impact × Urgency, never chosen by the Requester. Until both are assessed the Incident has no Priority, and the screen says so rather than showing a default one (FR-INC-04). | _"Todavía sin decidir"_ ("Not decided yet") |
+| _Afecta a una competición que está en marcha_ | Affects a competition in progress | **Competition-in-progress flag** — set only by the Service Desk, with a justification, when the failure disrupts a live event; it raises the Impact and therefore the Priority (FR-INC-05). | _"No, de momento no"_ ("No, not for now") |
+
+If the record cannot be shown, the screen says why and what to do: _"Cargando tu aviso…"_ ("Loading your report…") while it loads; _"No hemos encontrado este aviso"_ ("We couldn't find this report") for a well-formed reference that does not exist; _"Esta referencia no parece válida"_ ("This reference doesn't look valid") for an address that is not shaped like a reference, with advice to check the link; and the same connection and service-failure messages as the form.
+
+#### 1.3.4 Accessibility
+
+What the demo screens do today (towards NFR-USE-03 and NFR-USE-04):
+
+- **One main heading per screen**, and the page is declared as Spanish so screen readers pronounce it correctly.
+- **Full keyboard operation**: every action is a native link, field or button, reachable with Tab and activated with Enter, with a clearly visible focus outline.
+- **Focus is placed where it matters**: on the error summary when a submission fails, and on the record's heading when the record opens.
+- **Fields are properly labelled**: each field is tied to its label, its hint and — when there is one — its error message, and faulty fields are announced as invalid; the error summary is announced as an alert.
+- **Mobile-ready**: the three screens fit a 360-pixel-wide phone screen without horizontal scrolling.
+
+#### 1.3.5 Current scope and limitations of the demo
+
+The demo shows the Requester's first interaction end to end — report a problem, see it recorded — and nothing beyond it. For an honest reading:
+
+- **No sign-in.** The demo does not ask who you are. Anyone who knows a reference can open its record. In the product, every user is authenticated (FR-IAM-01), every report carries the Requester's identity (FR-OMN-04) and a Requester sees only their own tickets.
+- **Demonstration data only.** Reports are held temporarily and are **lost whenever the service restarts**; numbering then starts again at `INC0000001`, and a link to an earlier record answers _"No hemos encontrado este aviso"_. Please do not enter real personal data.
+- **The first visit may be slow.** After a period without traffic the demo service goes to sleep, and the first request can take a little while as it wakes up; subsequent requests respond normally.
+- **Consultation only.** There is no list of "my reports", no way to add comments or attachments, no editing, no status notifications, and no Service Desk screens yet.
+
+**What comes next** (PRD §14, no dates committed): the foundations — authenticated users with roles, the categorization taxonomy and the audit trail — then the **MVP**: the complete Incident lifecycle with Service Desk triage (category, Impact × Urgency → Priority, affected service, competition-in-progress flag), SLA targets and escalation, notifications, Service Requests from the Service Catalog, the Knowledge Base and the full Self-Service Portal, and the guard that redirects in-application sport decisions to the right path before submission (FR-INC-15). Governance of SCMS Changes, Releases, Problems and the CMDB follows in the next phase.
 
 ### **1.4. Instrucciones de instalación:**
 
