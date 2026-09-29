@@ -48,6 +48,22 @@ Sports Competition Management System (SCMS)
 
 > Puede ser pública o privada, en cuyo caso deberás compartir los accesos de manera segura. Puedes enviarlos a [alvaro@lidr.co](mailto:alvaro@lidr.co) usando algún servicio como [onetimesecret](https://onetimesecret.com/).
 
+The demonstration MVP is deployed publicly on Render (stage environment):
+
+| Service | URL | What it is |
+|---|---|---|
+| **sport-itsm-web** | **https://sport-itsm-web.onrender.com** | The web application — **open this one to use the demo** (§1.3). |
+| **sport-itsm-api** | **https://sport-itsm-api.onrender.com** | The API behind it. Its root answers `{"error":{"code":"NOT_FOUND"}}` — that is expected: it has no page of its own, and the web application calls it for you. |
+
+> [!CAUTION]
+> **The services are usually asleep — wake them up first.** Both run on Render's free tier, which suspends a service after a period without traffic. Before using the demo:
+>
+> 1. Open **both** URLs in the browser: https://sport-itsm-api.onrender.com and https://sport-itsm-web.onrender.com.
+> 2. **Wait a few seconds** (typically 20–60 s) until each one answers — the API with the `NOT_FOUND` message above, the web application with its home page.
+> 3. Then use the web application normally. If an action fails with a connection error right after waking up, simply try again.
+>
+> Data in the demo is kept in memory only: it is **lost every time the services go to sleep or restart**, and the numbering starts again at `INC0000001` (§1.3.5).
+
 ### 0.5. URL o archivo comprimido del repositorio
 
 > Puedes tenerlo alojado en público o en privado, en cuyo caso deberás compartir los accesos de manera segura. Puedes enviarlos a [alvaro@lidr.co](mailto:alvaro@lidr.co) usando algún servicio como [onetimesecret](https://onetimesecret.com/). También puedes compartir por correo un archivo zip con el contenido
