@@ -3568,11 +3568,66 @@ Besides the two routes above, exactly one more `@Controller` exists in the repos
 
 > Documenta 3 de las historias de usuario principales utilizadas durante el desarrollo, teniendo en cuenta las buenas prácticas de producto al respecto.
 
+The three stories below are reproduced, unmodified, from [`docs/backlog/C1/user-stories.md`](docs/backlog/C1/user-stories.md) — the Business Analyst's artifact for epic **C1 · Incident Management**, itself derived from [`docs/product/PRD.md`](docs/product/PRD.md) §7.1 per the pipeline in `CLAUDE.md` §4.3 (epic map → user stories → tickets). They are the epic's own **Block B · Base record and intake** trio — `US-C1-05` is built before `US-C1-01` in that block precisely because a reference must exist in the same transaction as the record it names — and together they are the most central stories to *adding* (logging) an Incident: a requester submitting a report from the Self-Service Portal (`US-C1-01`), an agent logging one on a caller's behalf (`US-C1-02`), and every Incident receiving a unique, immutable reference number the instant it is created (`US-C1-05`). Each is written to **INVEST**: independently valuable and demoable, negotiable in its own acceptance criteria, sized to fit a handful of ≤3h tickets, and testable — every acceptance criterion is a **Given/When/Then** clause that seeds a Cypress/Cucumber `.feature` file directly. Each also carries explicit **traceability** to a stable PRD requirement ID (`FR-INC-01`, `FR-INC-02`) and persona, never inventing or renumbering one (`CLAUDE.md` §4.3). Two of the three (`US-C1-01`, `US-C1-05`) are shaped as **gap** stories rather than greenfield: at the time they were written, real domain-layer code already existed for part of the requirement, so each carries a **"Today"** note naming exactly what was already built, to stop an implementer from re-deriving working code. The *Implementation* line under each story is this readme's own addition, not part of the source file, and reports the code's current state as verified in this repository.
+
 **Historia de Usuario 1**
+
+## US-C1-01 · A requester logs an Incident from the portal
+
+- **Shape:** gap · **Traces to:** `FR-INC-01` · Player / Competitor · epic `C1`
+- **Phase:** disputed 0/1 — PRD §14.2 places `FR-INC-01/02/03` in Phase 0, §14.3 places `FR-INC-01→13` in the Phase 1 MVP; the cut is not stated (finding **F6**)
+- **Today (as written in the source):** `Incident.log()` in `libs/incident/domain` already enforced the record's creation invariants as pure, unit-tested domain logic — reporter, origin channel, short description (≤255 chars) and detailed description mandatory, each with its own typed error; the affected service already accepted as optional, matching decision D5. What was missing at that time: the `class-validator` DTOs and `ValidationPipe` wiring, the `IncidentController` route, the TypeORM repository adapter, the requester-facing UI, attachments and the structured competition subject.
+
+**As a** Player / Competitor **I want** to report a problem with SCMS in plain language **so that** I get help without needing to know how a service desk works.
+
+Acceptance criteria (condensed from the source's five Given/When/Then clauses):
+- **Given** an authenticated requester on the intake form, **when** they submit a report, **then** an Incident is created capturing reporter (from the session, never a typed field), origin channel, short description, detailed description and, if known, affected service.
+- **Given** a requester who does not know the affected service, **when** they submit without selecting one, **then** creation succeeds with it left unset (decision D5) — it becomes mandatory only when the Incident later tries to leave `New` (`US-C1-33`, `FR-INC-19`).
+- **Given** the requester-facing form, **when** it is rendered, **then** it exposes no priority-bearing field (Impact, Urgency, Priority, competition-in-progress flag), and the server rejects those fields server-side regardless of what the client sent (`NFR-SEC-02`).
+- **Given** the intake form, **when** used by a requester with no ITSM knowledge, **then** it uses plain language with no untranslated ITSM vocabulary (`NFR-USE-01`), works on mobile (`NFR-USE-04`), meets WCAG 2.1 AA, and every validation error states what happened and what to do next (`NFR-USE-05`).
+- **Given** a submission missing a mandatory field, **when** it is posted, **then** it is rejected by a `class-validator` DTO in `libs/shared/contracts`, with field-level messages resolved through i18n.
+
+**Implementation (verified in this repository, not part of the source file):** built. Domain: [`incident.aggregate.ts`](libs/incident/domain/src/lib/incident.aggregate.ts). Application: [`log-incident.use-case.ts`](libs/incident/application/src/lib/log-incident.use-case.ts). API: `POST /api/incidents` in [`incident.controller.ts`](apps/api/src/app/incident/incident.controller.ts), validated by [`log-incident-requester.dto.ts`](apps/api/src/app/incident/dto/log-incident-requester.dto.ts). Web: `/incidents/new` in [`incident-intake-form.component.ts`](libs/incident/feature/src/lib/intake-form/incident-intake-form.component.ts). Tickets: [`T-C1-05`](docs/backlog/C1/tickets/T-C1-05.md) (aggregate), [`T-C1-06`](docs/backlog/C1/tickets/T-C1-06.md) (persistence + migration), [`T-C1-07`](docs/backlog/C1/tickets/T-C1-07.md) (use case), [`T-C1-08`](docs/backlog/C1/tickets/T-C1-08.md) (contracts/DTO), [`T-C1-09`](docs/backlog/C1/tickets/T-C1-09.md)/[`T-C1-10`](docs/backlog/C1/tickets/T-C1-10.md) (web). Also see: §1.3.2–1.3.3 of this readme and §1.4.6's smoke test.
+
+---
 
 **Historia de Usuario 2**
 
+## US-C1-02 · An agent logs a phone- or chat-reported Incident in one flow
+
+- **Shape:** gap · **Traces to:** `FR-INC-01` · Service Desk Agent (L1) · epic `C1`
+- **Phase:** disputed 0/1 (**F6**)
+- **Today (as written in the source):** the domain distinction this story depends on already existed — `Incident.log()`'s `LogIncidentCommand` keeps `reporterId` (who the Incident is *about*) and `actor`/`loggedBy` (who performed the logging) as two separate identities, tested to stay distinct even when a caller passes the same value for both. There is no separate `phone` origin channel: decision D1 confirms `agent_logged` is correct for a phone or chat contact, and `OriginChannel`'s closed set already omitted `phone`. What was entirely missing: the agent-facing UI, reporter lookup/creation, the agent intake contract and controller, and the persistence adapter.
+
+**As a** Service Desk Agent (L1) **I want** to log an Incident on behalf of a caller in a single uninterrupted flow **so that** I can keep talking to a referee mid-match instead of navigating between screens.
+
+Acceptance criteria (condensed):
+- **Given** an agent logging on behalf of a caller reached by phone or chat, **when** they create the Incident, **then** the reporter is the caller (not the agent), the origin channel is `agent_logged`, and the acting agent is recorded separately (`loggedBy`).
+- **Given** the agent intake surface, **when** it is used, **then** reporter lookup, description, affected service, category, competition subject and the assessment fields are reachable in one continuous flow with no forced navigation and no loss of typed data (`NFR-USE-02`).
+- **Given** an agent filling the assessment fields, **when** they set Impact, Urgency and the competition-in-progress flag, **then** it succeeds — an agent, unlike a requester, holds the permission for priority-bearing fields.
+- **Given** a caller who is not yet a registered user, **when** the agent searches for the reporter, **then** the flow states a reporter must exist and offers the correct path, rather than silently creating an anonymous ticket (`NFR-SEC-01`).
+
+**Implementation (verified in this repository, not part of the source file):** not built. Only the domain-layer distinction the story's "Today" note describes exists — [`origin-channel.vo.ts`](libs/incident/domain/src/lib/origin-channel.vo.ts) and the `reporterId`/`actor` separation in [`incident.aggregate.ts`](libs/incident/domain/src/lib/incident.aggregate.ts). No agent controller route, no agent intake contract and no agent-facing UI exist in this codebase; the corresponding tickets ([`T-C1-11`](docs/backlog/C1/tickets/T-C1-11.md), [`T-C1-12`](docs/backlog/C1/tickets/T-C1-12.md), [`T-C1-13`](docs/backlog/C1/tickets/T-C1-13.md)) are outside the delivered "slice 1" (`docs/backlog/C1/tickets/README.md`, *Delivery slices*).
+
+---
+
 **Historia de Usuario 3**
+
+## US-C1-05 · A unique, human-readable reference number
+
+- **Shape:** gap · **Traces to:** `FR-INC-02` · Service Desk Agent (L1) · epic `C1`
+- **Phase:** disputed 0/1 (**F6**)
+- **Today (as written in the source):** `IncidentReferencePolicy` in `libs/incident/domain` already rendered and parsed the documented shape — `INC` + seven zero-padded digits, round-trip unit tested, no I/O — and `IncidentRepositoryPort.nextReference()` was already declared as the port `Incident.log()` expects a reference from. What was missing: the `incident.incident_reference_seq` sequence and its migration, the TypeORM adapter implementing `nextReference()`, the database-level uniqueness guarantee, and the same-transaction assignment `NFR-DAT-01` depends on.
+
+**As a** Service Desk Agent (L1) **I want** every Incident to carry a readable reference number from the moment it is created **so that** I can quote it to a caller on the phone and find it again later.
+
+Acceptance criteria (condensed):
+- **Given** a new Incident, **when** it is created, **then** it is assigned a reference number in the same transaction, so no Incident can ever exist without one.
+- **Given** two Incidents created concurrently, **when** both commit, **then** their reference numbers differ, guaranteed by a database constraint rather than an application-level check a race could defeat.
+- **Given** an existing reference number, **when** any operation attempts to change it, or the Incident is cancelled or deleted, **then** the number is never modified and never re-issued to another Incident (`NFR-DAT-01`).
+- **Given** a reference number, **when** it is displayed, **then** it is readable aloud without ambiguity and its format is stable across environments.
+
+**Implementation (verified in this repository, not part of the source file):** built. Domain: [`incident-reference.policy.ts`](libs/incident/domain/src/lib/incident-reference.policy.ts). Infrastructure: [`typeorm-incident.repository.ts`](libs/incident/infrastructure/src/lib/typeorm-incident.repository.ts) and the sequence/immutability-trigger migration [`1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts`](apps/api/src/migrations/1790383684993-CreateIncidentReferenceSequenceAndImmutabilityTrigger.ts); the in-memory equivalent used by the deployed demo (`PERSISTENCE_MODE=memory`, ADR-015) is [`in-memory-incident.repository.ts`](libs/incident/infrastructure/src/lib/in-memory/in-memory-incident.repository.ts). API surface: `GET /api/incidents/:reference` in [`incident.controller.ts`](apps/api/src/app/incident/incident.controller.ts); web: `/incidents/:reference` in [`incident-detail.component.ts`](libs/incident/feature/src/lib/incident-detail/incident-detail.component.ts). Tickets: [`T-C1-03`](docs/backlog/C1/tickets/T-C1-03.md) (policy/port) and [`T-C1-04`](docs/backlog/C1/tickets/T-C1-04.md) (sequence, trigger, adapter, concurrency proof).
 
 ---
 
